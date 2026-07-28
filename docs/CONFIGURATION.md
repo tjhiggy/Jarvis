@@ -18,7 +18,7 @@ The table is the complete configuration contract from `.env.example` and `src/co
 | `OLLAMA_MODEL`            | Optional; non-empty when supplied      | `gemma3:4b`                  | Model name sent to Ollama.                                                                     | `gemma3:4b`                          | Operational            |
 | `OLLAMA_TIMEOUT_MS`       | Optional integer, at least 1           | `120000`                     | Per-attempt Ollama timeout in milliseconds.                                                    | `120000`                             | Operational            |
 | `OLLAMA_MAX_RETRIES`      | Optional integer from 0 to 10          | `1`                          | Retry count for retryable Ollama failures.                                                     | `1`                                  | Operational            |
-| `TAVILY_API_KEY`          | Optional                               | Empty string                 | Enables Tavily web grounding when non-empty.                                                   | `stored-in-secret-manager`           | Secret                 |
+| `TAVILY_API_KEY`          | Optional                               | Empty string                 | Enables Tavily balanced automatic grounding and forced `/search` when non-empty.               | `stored-in-secret-manager`           | Secret                 |
 | `WEB_SEARCH_TIMEOUT_MS`   | Optional integer, at least 1           | `10000`                      | Tavily request timeout in milliseconds.                                                        | `10000`                              | Operational            |
 | `WEB_SEARCH_CACHE_TTL_MS` | Optional integer, at least 1           | `3600000`                    | In-process cache lifetime for equivalent search queries in milliseconds.                       | `3600000`                            | Operational            |
 | `WEB_SEARCH_MAX_RESULTS`  | Optional integer from 1 to 5           | `5`                          | Maximum Tavily results requested and used for grounding.                                       | `5`                                  | Operational            |
@@ -38,7 +38,19 @@ The table is the complete configuration contract from `.env.example` and `src/co
 
 `AI_PROVIDER=openai` makes `OPENAI_API_KEY` mandatory. The OpenAI model, timeout, and retry settings are then used by the Responses adapter. With `AI_PROVIDER=ollama`, an OpenAI key is not required; the process calls `OLLAMA_BASE_URL/api/chat` with the configured Ollama model. The loader accepts only HTTP or HTTPS base URLs and strips trailing slashes before use. Do not publish a local Ollama endpoint to the public internet.
 
-An empty `TAVILY_API_KEY` leaves web grounding disabled. When configured, `/search` forces grounding and some prompts that indicate current information select it automatically. Tavily results are bounded, cached in process memory, and treated as untrusted evidence rather than instructions.
+An empty `TAVILY_API_KEY` leaves web grounding disabled. When configured,
+`/search` forces grounding, while balanced automatic routing selects current
+information and evidence-sensitive factual claims such as history, government
+programs, named-entity relationships, statistics, and high-stakes medical,
+legal, or financial questions. Basic definitions, supplied-text work, ordinary
+drafting or creative requests, and timeless coding help normally stay local.
+
+Each automatic search that is not served from the in-process cache sends a
+Tavily request and consumes provider usage, so it adds external-search latency
+as well as provider usage. Equivalent normalized queries within the cache
+lifetime avoid another request. Tavily results are bounded, sanitized, and
+treated as untrusted evidence rather than instructions; routing is a heuristic,
+not a fact guarantee or an authorization control.
 
 ## Access, input, and retention bounds
 

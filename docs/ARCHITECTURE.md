@@ -12,7 +12,7 @@ Jarvis is a single Node.js process. It receives Discord gateway events, applies 
 | Command definitions     | Defines `/ask`, `/search`, `/forget`, `/help`, and `/status` for guild registration.                                                                                                                             | `src/commands/definitions.ts`                                                                                   |
 | Conversation service    | Owns shared prompt normalization, input validation, channel access, event de-duplication, per-guild/user rate limits, unsupported-action UX responses, persona mode, history reads, and coordinated persistence. | `src/services/conversation-service.ts`, `src/security/unsupported-action-classifier.ts`                         |
 | AI providers            | Implements the shared AI boundary for OpenAI Responses and Ollama chat. Each runtime response is capped at 1,000 output tokens by application composition.                                                       | `src/openai/openai-service.ts`, `src/ollama/ollama-service.ts`, `src/index.ts`                                  |
-| Web grounding           | Uses Tavily only when configured and either requested by `/search` or inferred by the current-information heuristic.                                                                                             | `src/search/web-search.ts`                                                                                      |
+| Web grounding           | Uses Tavily only when configured and either forced by `/search` or selected by the balanced evidence-routing heuristic.                                                                                          | `src/search/web-search.ts`                                                                                      |
 | Storage                 | Defines the conversation-store boundary and provides the SQLite implementation.                                                                                                                                  | `src/storage/conversation-store.ts`, `src/storage/sqlite-conversation-store.ts`                                 |
 | Disabled extensions     | Declares disabled-by-default, operator-approved extension shapes; it does not implement or wire tools.                                                                                                           | `src/extensions/contracts.ts`                                                                                   |
 | Command registration    | Bulk-registers this application's command definitions in the configured development guild.                                                                                                                       | `scripts/register-commands.ts`                                                                                  |
@@ -34,7 +34,7 @@ flowchart TD
     G --> H["Persist user message"]
     H --> Q{"Clearly unsupported action request?"}
     Q -->|"Yes"| N["Persist local UX response"]
-    Q -->|"No"| I{"Web grounding selected and Tavily configured?"}
+    Q -->|"No"| I{"Forced by /search or selected by evidence routing, and Tavily configured?"}
     I -->|"Yes"| J["Fetch, sanitize, cache, and label Tavily results as untrusted evidence"]
     I -->|"No"| K{"Selected provider"}
     J --> K
@@ -49,6 +49,38 @@ flowchart TD
 For direct mentions, the Discord adapter first requires a bot mention, a guild context, an allowed channel, and the bot's channel permissions. Commands make their own guild, channel, allowlist, and input checks before calling the same conversation service. The service is the shared normalization boundary for both ingress paths: it replaces unverified Discord member IDs before persistence or provider use, and it owns event de-duplication and rate limiting for requests that reach it.
 
 Storage transitions for a guild plus conversation are coordinated and serialized. A clear operation advances that conversation's generation, so queued stale storage work is invalidated. The provider call runs outside those coordinated sections, so provider calls for the same conversation can overlap; the subsequent assistant-message append is checked against the generation before it persists.
+
+## Web-grounding boundary
+
+When `TAVILY_API_KEY` is configured, `/search` forces web grounding. Other
+prompts are routed by `requiresWebGrounding()`, a deliberately small,
+rule-based evidence heuristic. It selects current information; history and
+origins; government programs, laws, and regulations; relationships between
+named entities; dated statistics, prices, rankings, or quotations; medical,
+legal, and financial claims; and evidence-dependent scientific claims.
+
+The same router excludes basic timeless definitions, supplied-text summaries,
+ordinary drafting or creative requests, and timeless coding help unless an
+additional factual clause requires grounding. This boundary controls evidence,
+cost, and latency. It is not an authorization decision or a guarantee that a
+selected search will establish a fact.
+
+The normalized prompt is Tavily's query. Tavily returns a bounded result set;
+the service retains only nonempty summaries with HTTP(S) URLs, bounds title and
+summary lengths, caches equivalent normalized queries in process memory, and
+passes the sanitized evidence plus the current date to the selected AI provider.
+The provider is instructed to prefer primary sources when available, separate
+sourced facts from labelled inference, qualify conflicts or gaps, and never
+infer a relationship merely from co-occurrence or similarity. Jarvis removes
+model-invented links and appends only sanitized Tavily source links. If no
+usable results survive, it sends an inability-to-verify instruction instead of
+allowing a guessed factual connection.
+
+Known limitation: the rule-based exclusions can produce a narrow false negative
+when a compound fictional prompt contains a real-world factual follow-up without
+a clearly marked transition. The current policy does not treat that implicit
+clause change as a separate request, so `/search` remains the explicit override
+when web evidence is wanted.
 
 ## Conversation identity and storage
 
@@ -66,7 +98,7 @@ The selected provider is an external boundary:
 
 - OpenAI receives the composed instructions, bounded history, prompt, and a derived safety identifier. The Responses request sets `store: false`.
 - Ollama receives the composed instructions, bounded history, and prompt at the configured HTTP(S) endpoint.
-- Tavily is optional. When web search is invoked, Tavily receives the user's full normalized prompt as its search query. Its sanitized summaries are evidence only; the grounding wrapper explicitly tells the AI not to treat them as instructions.
+- Tavily is optional. When web search is invoked, Tavily receives the user's full normalized prompt as its search query. Its bounded, sanitized summaries are evidence only; the grounding wrapper explicitly tells the AI not to treat them as instructions, and an empty usable result set carries an inability-to-verify instruction to the AI provider.
 
 Jarvis has no implemented shell, code-execution, arbitrary-file, GitHub-write, Discord-administration, webhook-management, or autonomous-learning capability. Conversation history supplies request context only. It is not a training loop, and no request can grant the application new authority.
 

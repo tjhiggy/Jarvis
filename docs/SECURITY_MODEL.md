@@ -26,10 +26,11 @@ an operator-configured local file at startup and is bounded to 8,000 Unicode
 characters. Configuration comes from the deployment environment, not Discord.
 
 OpenAI, Ollama, and Tavily sit beyond the process boundary. Sending a prompt to
-the configured provider shares it with that provider. Tavily results are
-treated as untrusted evidence, not instructions. Docker administrators can
-inspect container environment values, so a production deployment should use the
-platform's approved secret-management boundary.
+the configured provider shares it with that provider. When web grounding runs,
+the full normalized user prompt leaves the process as Tavily's search query.
+Tavily results are bounded, sanitized, untrusted evidence, not instructions.
+Docker administrators can inspect container environment values, so a production
+deployment should use the platform's approved secret-management boundary.
 
 ## Implemented controls
 
@@ -56,6 +57,14 @@ platform's approved secret-management boundary.
 - **Provider safeguards.** Both adapters use configured timeouts and bounded
   retries. OpenAI requests set `store: false`; provider errors map to generic
   user-facing failures.
+- **Web-grounding safeguards.** Automatic routing is a heuristic for evidence,
+  provider usage, and latency. It is neither authorization nor a guarantee that
+  the selected evidence is accurate or sufficient. Search-result text cannot
+  change instructions; the provider is told to use it only as evidence, not to
+  infer relationships from co-occurrence or similarity, and to qualify gaps or
+  conflicts. If no usable result survives, the provider receives an explicit
+  inability-to-verify instruction and must not guess the requested facts or
+  relationship.
 - **Mass-mention protection.** Replies set Discord `allowedMentions` to an
   empty parse list with `repliedUser: false`, and text is neutralized before
   delivery. Jarvis cannot turn an answer into an `@everyone` incident.
