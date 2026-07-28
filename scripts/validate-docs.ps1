@@ -26,10 +26,47 @@ $secretPatterns = @(
   '\b[A-Za-z0-9_-]{23,28}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}\b'
   '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'
 )
-$detectorDefinitionExpressions = @(
-  '(?i)\brg\b(?:\s+--?[A-Z0-9-]+)*\s+(?<quote>["''])(?<definition>.*?)\k<quote>'
-  '(?i)\bSelect-String\b[^\r\n]*?(?<!\w)-Pattern\s+(?<quote>["''])(?<definition>.*?)\k<quote>'
+$rgOptionsWithValues = @(
+  '-A'
+  '--after-context'
+  '-B'
+  '--before-context'
+  '--colors'
+  '-C'
+  '--context'
+  '--context-separator'
+  '--dfa-size-limit'
+  '-E'
+  '--encoding'
+  '--engine'
+  '--field-context-separator'
+  '--field-match-separator'
+  '-g'
+  '--glob'
+  '--iglob'
+  '-j'
+  '--threads'
+  '-m'
+  '--max-count'
+  '-M'
+  '--max-columns'
+  '--max-depth'
+  '--path-separator'
+  '--pre'
+  '--pre-glob'
+  '-r'
+  '--replace'
+  '--sort'
+  '--sortr'
+  '-t'
+  '--type'
+  '--type-add'
+  '--type-clear'
+  '-T'
+  '--type-not'
 )
+$rgPatternOptions = @('-e', '--regexp')
+$rgPatternFileOptions = @('-f', '--file')
 $requiredReadmeLinks = @(
   'CHANGELOG.md'
   'CODE_OF_CONDUCT.md'
@@ -81,20 +118,188 @@ function Test-IsExcludedPath {
   return $false
 }
 
-function Remove-DetectorDefinitionLiterals {
+function Get-CommandArgumentTokens {
+  param(
+    [Parameter(Mandatory)]
+    [AllowEmptyString()]
+    [string]$Text,
+
+    [Parameter(Mandatory)]
+    [int]$Offset
+  )
+
+  $tokenMatches = [regex]::Matches(
+    $Text,
+    '(?<token>"[^"\r\n]*"|''[^''\r\n]*''|\S+)'
+  )
+  foreach ($tokenMatch in $tokenMatches) {
+    [pscustomobject]@{
+      Value = $tokenMatch.Groups['token'].Value
+      Start = $Offset + $tokenMatch.Groups['token'].Index
+      Length = $tokenMatch.Groups['token'].Length
+    }
+  }
+}
+
+function Remove-DetectorPatternArguments {
   param(
     [Parameter(Mandatory)]
     [AllowEmptyString()]
     [string]$Line
   )
 
-  $maskedLine = $Line
-  foreach ($expression in $detectorDefinitionExpressions) {
-    $definitionMatches = @([regex]::Matches($maskedLine, $expression))
-    for ($index = $definitionMatches.Count - 1; $index -ge 0; $index -= 1) {
-      $definition = $definitionMatches[$index].Groups['definition']
-      $maskedLine = $maskedLine.Remove($definition.Index, $definition.Length)
+  $maskSpans = @()
+  $rgCommands = [regex]::Matches($Line, '(?i)(?<![A-Z0-9_-])rg(?=\s)')
+  foreach ($rgCommand in $rgCommands) {
+    $argumentStart = $rgCommand.Index + $rgCommand.Length
+    $tokens = @(
+      Get-CommandArgumentTokens `
+        -Text $Line.Substring($argumentStart) `
+        -Offset $argumentStart
+    )
+    $hasExplicitPattern = $false
+
+    for ($tokenIndex = 0; $tokenIndex -lt $tokens.Count; $tokenIndex += 1) {
+      $token = $tokens[$tokenIndex]
+      $value = $token.Value
+
+      if ($value -eq '--') {
+        if (-not $hasExplicitPattern -and $tokenIndex + 1 -lt $tokens.Count) {
+          $maskSpans += $tokens[$tokenIndex + 1]
+        }
+        break
+      }
+
+      if ($value.StartsWith('--')) {
+        $equalsIndex = $value.IndexOf('=')
+        $optionName = if ($equalsIndex -ge 0) {
+          $value.Substring(0, $equalsIndex)
+        } else {
+          $value
+        }
+
+        if ($rgPatternOptions -contains $optionName) {
+          $hasExplicitPattern = $true
+          if ($equalsIndex -ge 0) {
+            $maskSpans += [pscustomobject]@{
+              Start = $token.Start + $equalsIndex + 1
+              Length = $token.Length - $equalsIndex - 1
+            }
+          } elseif ($tokenIndex + 1 -lt $tokens.Count) {
+            $tokenIndex += 1
+            $maskSpans += $tokens[$tokenIndex]
+          }
+          continue
+        }
+
+        if ($rgPatternFileOptions -contains $optionName) {
+          $hasExplicitPattern = $true
+          if ($equalsIndex -lt 0 -and $tokenIndex + 1 -lt $tokens.Count) {
+            $tokenIndex += 1
+          }
+          continue
+        }
+
+        if (
+          $rgOptionsWithValues -contains $optionName -and
+          $equalsIndex -lt 0 -and
+          $tokenIndex + 1 -lt $tokens.Count
+        ) {
+          $tokenIndex += 1
+        }
+        continue
+      }
+
+      if ($value.StartsWith('-') -and $value.Length -gt 1) {
+        $matchedShortOption = $false
+        foreach ($optionName in @($rgPatternOptions + $rgPatternFileOptions + $rgOptionsWithValues)) {
+          if (-not $optionName.StartsWith('-') -or $optionName.StartsWith('--')) {
+            continue
+          }
+
+          if ($value -eq $optionName) {
+            $matchedShortOption = $true
+            if ($rgPatternOptions -contains $optionName) {
+              $hasExplicitPattern = $true
+              if ($tokenIndex + 1 -lt $tokens.Count) {
+                $tokenIndex += 1
+                $maskSpans += $tokens[$tokenIndex]
+              }
+            } elseif ($rgPatternFileOptions -contains $optionName) {
+              $hasExplicitPattern = $true
+              if ($tokenIndex + 1 -lt $tokens.Count) {
+                $tokenIndex += 1
+              }
+            } elseif ($tokenIndex + 1 -lt $tokens.Count) {
+              $tokenIndex += 1
+            }
+            break
+          }
+
+          if ($value.StartsWith($optionName) -and $value.Length -gt $optionName.Length) {
+            $matchedShortOption = $true
+            if ($rgPatternOptions -contains $optionName) {
+              $hasExplicitPattern = $true
+              $maskSpans += [pscustomobject]@{
+                Start = $token.Start + $optionName.Length
+                Length = $token.Length - $optionName.Length
+              }
+            } elseif ($rgPatternFileOptions -contains $optionName) {
+              $hasExplicitPattern = $true
+            }
+            break
+          }
+        }
+
+        if ($matchedShortOption -or $value -match '^-[A-Z0-9-]+$') {
+          continue
+        }
+      }
+
+      if (-not $hasExplicitPattern) {
+        $maskSpans += $token
+      }
+      break
     }
+  }
+
+  $selectStringCommands = [regex]::Matches(
+    $Line,
+    '(?i)(?<![A-Z0-9_-])Select-String(?=\s)'
+  )
+  foreach ($selectStringCommand in $selectStringCommands) {
+    $argumentStart = $selectStringCommand.Index + $selectStringCommand.Length
+    $tokens = @(
+      Get-CommandArgumentTokens `
+        -Text $Line.Substring($argumentStart) `
+        -Offset $argumentStart
+    )
+    for ($tokenIndex = 0; $tokenIndex -lt $tokens.Count; $tokenIndex += 1) {
+      $token = $tokens[$tokenIndex]
+      if ($token.Value -eq '-Pattern' -and $tokenIndex + 1 -lt $tokens.Count) {
+        $maskSpans += $tokens[$tokenIndex + 1]
+        break
+      }
+
+      if ($token.Value -match '^(?i)-Pattern[:=](.+)$') {
+        $separatorIndex = $token.Value.IndexOfAny(@(':', '='))
+        $maskSpans += [pscustomobject]@{
+          Start = $token.Start + $separatorIndex + 1
+          Length = $token.Length - $separatorIndex - 1
+        }
+        break
+      }
+    }
+  }
+
+  $maskedLine = $Line
+  $uniqueSpans = @(
+    $maskSpans |
+      Sort-Object -Property Start, Length -Unique |
+      Sort-Object -Property Start -Descending
+  )
+  foreach ($span in $uniqueSpans) {
+    $maskedLine = $maskedLine.Remove($span.Start, $span.Length)
   }
 
   return $maskedLine
@@ -114,11 +319,17 @@ function Add-ContentPatternErrors {
     [string[]]$Patterns,
 
     [Parameter(Mandatory)]
-    [string]$Message
+    [string]$Message,
+
+    [switch]$MaskDetectorPatterns
   )
 
   for ($lineIndex = 0; $lineIndex -lt $Lines.Count; $lineIndex += 1) {
-    $searchableLine = Remove-DetectorDefinitionLiterals -Line $Lines[$lineIndex]
+    $searchableLine = if ($MaskDetectorPatterns) {
+      Remove-DetectorPatternArguments -Line $Lines[$lineIndex]
+    } else {
+      $Lines[$lineIndex]
+    }
     $matches = @($searchableLine | Select-String -Pattern $Patterns -AllMatches)
 
     if ($matches.Count -gt 0) {
@@ -150,12 +361,14 @@ foreach ($relativePath in $trackedFiles) {
     -RelativePath $relativePath `
     -Lines $lines `
     -Patterns $unfinishedPatterns `
-    -Message 'unfinished placeholder marker'
+    -Message 'unfinished placeholder marker' `
+    -MaskDetectorPatterns
   Add-ContentPatternErrors `
     -RelativePath $relativePath `
     -Lines $lines `
     -Patterns $dummyContactPatterns `
-    -Message 'dummy contact address'
+    -Message 'dummy contact address' `
+    -MaskDetectorPatterns
   Add-ContentPatternErrors `
     -RelativePath $relativePath `
     -Lines $lines `
