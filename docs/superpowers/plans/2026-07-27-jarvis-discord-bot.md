@@ -83,6 +83,7 @@
 ### Task 1: Toolchain and validated configuration
 
 **Files:**
+
 - Create: `package.json`
 - Create: `tsconfig.json`
 - Create: `eslint.config.js`
@@ -93,6 +94,7 @@
 - Test: `tests/config.test.ts`
 
 **Interfaces:**
+
 - Produces: `loadConfig(env: NodeJS.ProcessEnv): AppConfig`
 - Produces: `AppConfig` with `discord`, `openai`, `storage`, `security`, `persona`, and `logging` sections.
 - Produces scripts: `dev`, `build`, `start`, `test`, `test:watch`, `lint`, `format`, `format:check`, `register-commands`.
@@ -223,12 +225,14 @@ git commit -m "chore: configure TypeScript bot project"
 ### Task 2: Pure Discord safety utilities
 
 **Files:**
+
 - Create: `src/utils/mentions.ts`
 - Create: `src/utils/chunk-response.ts`
 - Test: `tests/mentions.test.ts`
 - Test: `tests/chunk-response.test.ts`
 
 **Interfaces:**
+
 - Produces: `removeBotMention(content: string, botUserId: string): string`
 - Produces: `neutralizeDiscordMentions(content: string): string`
 - Produces: `chunkDiscordResponse(content: string, limit?: number): string[]`
@@ -267,11 +271,13 @@ Expected: PASS.
 Cover empty output, exact boundary, paragraph preference, hard splitting,
 surrogate-pair safety, and fenced blocks:
 
-```ts
+````ts
 const chunks = chunkDiscordResponse('```ts\n' + 'x'.repeat(80) + '\n```', 40);
 expect(chunks.every((chunk) => chunk.length <= 40)).toBe(true);
-expect(chunks.every((chunk) => (chunk.match(/```/g) ?? []).length % 2 === 0)).toBe(true);
-```
+expect(
+  chunks.every((chunk) => (chunk.match(/```/g) ?? []).length % 2 === 0),
+).toBe(true);
+````
 
 - [ ] **Step 5: Verify chunk tests fail**
 
@@ -300,12 +306,14 @@ git commit -m "feat: add safe Discord text utilities"
 ### Task 3: Bounded abuse controls
 
 **Files:**
+
 - Create: `src/security/rate-limiter.ts`
 - Create: `src/security/event-deduplicator.ts`
 - Test: `tests/rate-limiter.test.ts`
 - Test: `tests/event-deduplicator.test.ts`
 
 **Interfaces:**
+
 - Produces: `RateLimiter.consume(key: string, now?: number): { allowed: boolean; retryAfterMs: number }`
 - Produces: `EventDeduplicator.accept(eventId: string, now?: number): boolean`
 - Produces: `prune(now?: number): void` and bounded map sizes on both classes.
@@ -348,11 +356,13 @@ git commit -m "feat: add bounded Discord abuse controls"
 ### Task 4: Jarvis persona selection
 
 **Files:**
+
 - Create: `config/jarvis-persona.md`
 - Create: `src/config/persona.ts`
 - Test: `tests/persona.test.ts`
 
 **Interfaces:**
+
 - Produces: `PersonaMode = 'immersive' | 'restrained'`
 - Produces: `resolvePersonaMode(input: { channelId: string; parentChannelId?: string; restrainedChannelIds: ReadonlySet<string> }): PersonaMode`
 - Produces: `loadPersona(path: string, maxChars?: number): Promise<string>`
@@ -401,11 +411,13 @@ git commit -m "feat: define channel-aware Jarvis persona"
 ### Task 5: Replaceable SQLite conversation storage
 
 **Files:**
+
 - Create: `src/storage/conversation-store.ts`
 - Create: `src/storage/sqlite-conversation-store.ts`
 - Test: `tests/storage.test.ts`
 
 **Interfaces:**
+
 - Produces: `ConversationMessage` with guild ID, conversation ID, user ID,
   role, content, timestamp, and optional OpenAI response ID.
 - Produces: `ConversationStore.append`, `getRecent`, `clear`, `cleanup`,
@@ -414,7 +426,11 @@ git commit -m "feat: define channel-aware Jarvis persona"
 ```ts
 export interface ConversationStore {
   append(message: NewConversationMessage): Promise<void>;
-  getRecent(guildId: string, conversationId: string, limit: number): Promise<ConversationMessage[]>;
+  getRecent(
+    guildId: string,
+    conversationId: string,
+    limit: number,
+  ): Promise<ConversationMessage[]>;
   clear(guildId: string, conversationId: string): Promise<number>;
   cleanup(olderThan: Date): Promise<number>;
   healthCheck(): Promise<boolean>;
@@ -458,11 +474,13 @@ git commit -m "feat: persist isolated conversations in SQLite"
 ### Task 6: OpenAI Responses service
 
 **Files:**
+
 - Create: `src/openai/openai-errors.ts`
 - Create: `src/openai/openai-service.ts`
 - Test: `tests/openai-service.test.ts`
 
 **Interfaces:**
+
 - Produces: `AIService.respond(request: AIRequest): Promise<AIResponse>`
 - Produces: `AIRequest = { instructions: string; history: ConversationTurn[]; prompt: string; safetyIdentifier: string }`
 - Produces: `AIResponse = { text: string; responseId?: string }`
@@ -519,10 +537,12 @@ git commit -m "feat: integrate OpenAI Responses API"
 ### Task 7: Conversation orchestration
 
 **Files:**
+
 - Create: `src/services/conversation-service.ts`
 - Test: `tests/conversation-service.test.ts`
 
 **Interfaces:**
+
 - Consumes: `ConversationStore`, `AIService`, persona functions, `RateLimiter`,
   and maximum input/history configuration.
 - Produces: `ConversationService.ask(request): Promise<ConversationResult>`
@@ -565,6 +585,7 @@ git commit -m "feat: orchestrate safe channel conversations"
 ### Task 8: Discord commands, access checks, and delivery
 
 **Files:**
+
 - Create: `src/commands/definitions.ts`
 - Create: `src/commands/handlers.ts`
 - Create: `src/discord/access.ts`
@@ -572,6 +593,7 @@ git commit -m "feat: orchestrate safe channel conversations"
 - Test: `tests/commands.test.ts`
 
 **Interfaces:**
+
 - Produces serializable command definitions for `ask`, `forget`, `help`,
   `status`.
 - Produces `handleCommand(interaction, dependencies): Promise<void>`.
@@ -619,10 +641,12 @@ git commit -m "feat: add safe Discord slash commands"
 ### Task 9: Discord event routing and mention handling
 
 **Files:**
+
 - Create: `src/discord/handlers.ts`
 - Test: `tests/handlers.test.ts`
 
 **Interfaces:**
+
 - Consumes: discord.js message/interaction shapes through narrow structural
   types, `ConversationService`, `EventDeduplicator`, and command handler.
 - Produces: `createDiscordHandlers(dependencies)` with `onMessageCreate` and
@@ -664,6 +688,7 @@ git commit -m "feat: route Discord mentions and interactions"
 ### Task 10: Extension contracts, composition root, registration, and shutdown
 
 **Files:**
+
 - Create: `src/extensions/contracts.ts`
 - Create: `src/utils/logger.ts`
 - Create: `src/index.ts`
@@ -672,6 +697,7 @@ git commit -m "feat: route Discord mentions and interactions"
 - Test: `tests/application.test.ts`
 
 **Interfaces:**
+
 - Produces disabled contracts for GitHub read-only, MCP, repository context,
   PR summaries, recaps, gaming scores, images, and admin authorization.
 - Produces no implementations or runtime tool registry entries.
@@ -732,6 +758,7 @@ git commit -m "feat: compose Jarvis runtime safely"
 ### Task 11: Docker and operator documentation
 
 **Files:**
+
 - Create: `Dockerfile`
 - Create: `docker-compose.yml`
 - Create: `.dockerignore`
@@ -739,6 +766,7 @@ git commit -m "feat: compose Jarvis runtime safely"
 - Modify: `.gitignore`
 
 **Interfaces:**
+
 - Produces an unprivileged production image.
 - Produces persistent `/app/data` storage and a read-only root filesystem in
   Compose.
@@ -808,10 +836,12 @@ git commit -m "docs: add secure deployment and setup guide"
 ### Task 12: Full verification and security closure
 
 **Files:**
+
 - Modify only files implicated by verified failures.
 - Create security-scan artifacts only if required by the active security skill.
 
 **Interfaces:**
+
 - Produces evidence for formatting, lint, tests, build, dependency health,
   Docker configuration, and scoped security review.
 

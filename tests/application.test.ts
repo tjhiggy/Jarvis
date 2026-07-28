@@ -4,7 +4,11 @@ import type { TrustedPersona } from '../src/config/persona.js';
 import { createApplication } from '../src/index.js';
 
 const config: AppConfig = {
-  discord: { token: 'discord-token', clientId: 'client-id', guildId: 'guild-id' },
+  discord: {
+    token: 'discord-token',
+    clientId: 'client-id',
+    guildId: 'guild-id',
+  },
   openai: {
     apiKey: 'openai-key',
     model: 'test-model',
@@ -137,7 +141,7 @@ describe('createApplication', () => {
 
     const starting = createApplication({
       loadConfig: () => config,
-      loadPersona: async () => ({} as TrustedPersona),
+      loadPersona: async () => ({}) as TrustedPersona,
       createStore: () => ({
         append: async () => undefined,
         getRecent: async () => [],
@@ -190,7 +194,7 @@ describe('createApplication', () => {
     await expect(
       createApplication({
         loadConfig: () => config,
-        loadPersona: async () => ({} as TrustedPersona),
+        loadPersona: async () => ({}) as TrustedPersona,
         createStore: () => ({
           append: async () => undefined,
           getRecent: async () => [],

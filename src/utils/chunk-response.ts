@@ -24,7 +24,9 @@ const splitText = (content: string, limit: number): string[] => {
     const candidate = takeWithinLimit(remaining, limit);
 
     if (candidate.length === 0) {
-      throw new RangeError('Discord response chunk limit is too small for content.');
+      throw new RangeError(
+        'Discord response chunk limit is too small for content.',
+      );
     }
 
     if (candidate.length === remaining.length) {
@@ -32,8 +34,8 @@ const splitText = (content: string, limit: number): string[] => {
       break;
     }
 
-    const separator = ['\n\n', '\n', ' '].find((value) =>
-      candidate.lastIndexOf(value) >= 0,
+    const separator = ['\n\n', '\n', ' '].find(
+      (value) => candidate.lastIndexOf(value) >= 0,
     );
 
     if (separator === undefined) {
@@ -85,9 +87,10 @@ const splitFencedBlock = (
 
   return bodyChunks.map((chunk, index) => {
     const isLastChunk = index === bodyChunks.length - 1;
-    const closing = isLastChunk && closingFence !== undefined
-      ? closingFence
-      : syntheticClosingFence;
+    const closing =
+      isLastChunk && closingFence !== undefined
+        ? closingFence
+        : syntheticClosingFence;
 
     return `${openingFence}${chunk}${closing}`;
   });
@@ -98,7 +101,9 @@ export const chunkDiscordResponse = (
   limit = DEFAULT_DISCORD_LIMIT,
 ): string[] => {
   if (!Number.isInteger(limit) || limit < 1) {
-    throw new RangeError('Discord response chunk limit must be a positive integer.');
+    throw new RangeError(
+      'Discord response chunk limit must be a positive integer.',
+    );
   }
 
   const chunks: string[] = [];
@@ -120,7 +125,14 @@ export const chunkDiscordResponse = (
     const closingMatch = closingFencePattern.exec(content);
 
     if (closingMatch === null) {
-      chunks.push(...splitFencedBlock(openingFence, content.slice(bodyStart), undefined, limit));
+      chunks.push(
+        ...splitFencedBlock(
+          openingFence,
+          content.slice(bodyStart),
+          undefined,
+          limit,
+        ),
+      );
       return chunks;
     }
 

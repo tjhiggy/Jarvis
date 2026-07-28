@@ -20,7 +20,9 @@ export interface DisabledExtensionContract {
 
 export interface GitHubReadOnlyContract extends DisabledExtensionContract {
   readonly name: 'github-read-only';
-  getRepositorySummary(repository: string): Promise<Readonly<{ summary: string }>>;
+  getRepositorySummary(
+    repository: string,
+  ): Promise<Readonly<{ summary: string }>>;
 }
 
 export interface McpContract extends DisabledExtensionContract {
@@ -33,8 +35,7 @@ export interface RepositoryContextContract extends DisabledExtensionContract {
   getContext(repository: string): Promise<Readonly<{ context: string }>>;
 }
 
-export interface PullRequestSummariesContract
-  extends DisabledExtensionContract {
+export interface PullRequestSummariesContract extends DisabledExtensionContract {
   readonly name: 'pull-request-summaries';
   getSummary(pullRequest: number): Promise<Readonly<{ summary: string }>>;
 }
@@ -51,7 +52,9 @@ export interface GamingScoresContract extends DisabledExtensionContract {
 
 export interface ImagesContract extends DisabledExtensionContract {
   readonly name: 'images';
-  getImageDescription(imageId: string): Promise<Readonly<{ description: string }>>;
+  getImageDescription(
+    imageId: string,
+  ): Promise<Readonly<{ description: string }>>;
 }
 
 /** This contract cannot grant Discord permissions or server authority. */

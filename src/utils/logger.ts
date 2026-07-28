@@ -23,7 +23,10 @@ const safeErrorProjection = (error: Error): Record<string, string | number> => {
 const safeName = (value: string, fallback: string): string =>
   safeIdentifier.test(value) ? value : fallback;
 
-const redactLogObject = (value: unknown, seen = new WeakSet<object>()): unknown => {
+const redactLogObject = (
+  value: unknown,
+  seen = new WeakSet<object>(),
+): unknown => {
   if (Array.isArray(value)) {
     return value.map((item) => redactLogObject(item, seen));
   }

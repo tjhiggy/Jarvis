@@ -11,7 +11,10 @@ describe('chunkDiscordResponse', () => {
   });
 
   it('prefers paragraph boundaries before smaller separators', () => {
-    expect(chunkDiscordResponse('alpha\n\nbeta', 10)).toEqual(['alpha\n\n', 'beta']);
+    expect(chunkDiscordResponse('alpha\n\nbeta', 10)).toEqual([
+      'alpha\n\n',
+      'beta',
+    ]);
   });
 
   it('falls back to hard splits when no separator fits', () => {
@@ -35,7 +38,10 @@ describe('chunkDiscordResponse', () => {
   });
 
   it('closes and reopens fenced blocks so every chunk is valid Discord markdown', () => {
-    const chunks = chunkDiscordResponse('```ts\n' + 'x'.repeat(80) + '\n```', 40);
+    const chunks = chunkDiscordResponse(
+      '```ts\n' + 'x'.repeat(80) + '\n```',
+      40,
+    );
 
     expect(chunks.every((chunk) => chunk.length <= 40)).toBe(true);
     expect(

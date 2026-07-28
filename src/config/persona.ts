@@ -107,9 +107,7 @@ export const composeInstructions = (
     );
   }
 
-  return [
-    invariantSafetyInstructions,
-    content,
-    modeInstructions[mode],
-  ].join('\n\n');
+  return [invariantSafetyInstructions, content, modeInstructions[mode]].join(
+    '\n\n',
+  );
 };

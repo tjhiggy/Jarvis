@@ -86,7 +86,9 @@ const createDefaultAIService = (config: AppConfig): AIService =>
   });
 
 const createDefaultDiscordClient = (): RuntimeDiscordClient =>
-  new Client({ intents: discordGatewayIntents }) as unknown as RuntimeDiscordClient;
+  new Client({
+    intents: discordGatewayIntents,
+  }) as unknown as RuntimeDiscordClient;
 
 const registerProcessSignal = (
   signal: NodeJS.Signals,
@@ -107,15 +109,19 @@ export const createApplication = async (
   const loadEnvironment = dependencies.loadEnvironment ?? loadEnvironmentOnce;
   const configLoader = dependencies.loadConfig ?? loadConfig;
   const personaLoader = dependencies.loadPersona ?? loadPersona;
-  const storeFactory = dependencies.createStore ?? ((path) => new SQLiteConversationStore(path));
+  const storeFactory =
+    dependencies.createStore ?? ((path) => new SQLiteConversationStore(path));
   const aiFactory = dependencies.createAIService ?? createDefaultAIService;
-  const discordFactory = dependencies.createDiscordClient ?? createDefaultDiscordClient;
+  const discordFactory =
+    dependencies.createDiscordClient ?? createDefaultDiscordClient;
   const loggerFactory = dependencies.createLogger ?? createLogger;
   const timers = dependencies.timers ?? systemTimers;
   const registerSignal = dependencies.registerSignal ?? registerProcessSignal;
-  const setExitCode = dependencies.setExitCode ?? ((code) => {
-    process.exitCode = code;
-  });
+  const setExitCode =
+    dependencies.setExitCode ??
+    ((code) => {
+      process.exitCode = code;
+    });
 
   let logger: Logger | undefined;
   let store: ConversationStore | undefined;
@@ -144,7 +150,10 @@ export const createApplication = async (
         try {
           client.destroy();
         } catch (error) {
-          logger?.warn({ error }, 'Discord client destroy failed during shutdown.');
+          logger?.warn(
+            { error },
+            'Discord client destroy failed during shutdown.',
+          );
         }
       }
     })();
@@ -181,7 +190,8 @@ export const createApplication = async (
       try {
         await initializedStore.cleanup(
           new Date(
-            Date.now() - config.storage.historyRetentionDays * 24 * 60 * 60 * 1_000,
+            Date.now() -
+              config.storage.historyRetentionDays * 24 * 60 * 60 * 1_000,
           ),
         );
       } catch (error) {
