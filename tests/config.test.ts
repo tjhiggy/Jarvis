@@ -25,8 +25,8 @@ describe('loadConfig', () => {
       RESTRAINED_CHANNEL_IDS: '3',
     });
     expect(config.openai.model).toBe('gpt-5.6-luna');
-    expect(config.security.allowedChannelIds).toEqual(new Set(['1', '2']));
-    expect(config.persona.restrainedChannelIds).toEqual(new Set(['3']));
+    expect([...config.security.allowedChannelIds]).toEqual(['1', '2']);
+    expect([...config.persona.restrainedChannelIds]).toEqual(['3']);
     expect(config.storage.maxHistoryMessages).toBe(20);
   });
 
@@ -36,13 +36,22 @@ describe('loadConfig', () => {
     ).toThrow(/MAX_HISTORY_MESSAGES/);
   });
 
-  it('returns immutable configuration', () => {
+  it('keeps channel policy immutable through public and Set prototype paths', () => {
     const config = loadConfig({ ...validEnv, ALLOWED_CHANNEL_IDS: '1' });
+    const channelIds = config.security.allowedChannelIds;
 
     expect(Object.isFrozen(config)).toBe(true);
     expect(Object.isFrozen(config.security)).toBe(true);
-    expect(() =>
-      (config.security.allowedChannelIds as Set<string>).add('2'),
-    ).toThrow(/read-only/);
+    expect(channelIds.has('1')).toBe(true);
+    expect(channelIds.has('2')).toBe(false);
+    expect(() => (channelIds as Set<string>).add('2')).toThrow(TypeError);
+    expect(() => (channelIds as Set<string>).delete('1')).toThrow(TypeError);
+    expect(() => (channelIds as Set<string>).clear()).toThrow(TypeError);
+    expect(() => Set.prototype.add.call(channelIds, '2')).toThrow(TypeError);
+    expect(() => Set.prototype.delete.call(channelIds, '1')).toThrow(TypeError);
+    expect(() => Set.prototype.clear.call(channelIds)).toThrow(TypeError);
+    expect([...channelIds]).toEqual(['1']);
+    expect(channelIds.has('1')).toBe(true);
+    expect(channelIds.has('2')).toBe(false);
   });
 });

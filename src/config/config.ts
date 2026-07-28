@@ -85,14 +85,25 @@ const environmentSchema = z.object({
   RESTRAINED_CHANNEL_IDS: channelIds,
 });
 
-const freezeSet = (values: string[]): ReadonlySet<string> => {
-  const set = new Set(values);
-  Object.defineProperty(set, 'add', {
-    value: () => {
-      throw new TypeError('Configuration sets are read-only');
+const readonlySet = (values: string[]): ReadonlySet<string> => {
+  const valuesSet = new Set(values);
+  const result: ReadonlySet<string> = {
+    get size() {
+      return valuesSet.size;
     },
-  });
-  return Object.freeze(set);
+    has: (value) => valuesSet.has(value),
+    entries: () => valuesSet.entries(),
+    keys: () => valuesSet.keys(),
+    values: () => valuesSet.values(),
+    forEach: (callbackfn, thisArg) => {
+      valuesSet.forEach((value) => {
+        callbackfn.call(thisArg, value, value, result);
+      });
+    },
+    [Symbol.iterator]: () => valuesSet[Symbol.iterator](),
+  };
+
+  return Object.freeze(result);
 };
 
 export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
@@ -128,13 +139,13 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
       historyRetentionDays: parsed.HISTORY_RETENTION_DAYS,
     }),
     security: Object.freeze({
-      allowedChannelIds: freezeSet(parsed.ALLOWED_CHANNEL_IDS),
+      allowedChannelIds: readonlySet(parsed.ALLOWED_CHANNEL_IDS),
       maxInputChars: parsed.MAX_INPUT_CHARS,
       rateLimitRequests: parsed.RATE_LIMIT_REQUESTS,
       rateLimitWindowMs: parsed.RATE_LIMIT_WINDOW_MS,
     }),
     persona: Object.freeze({
-      restrainedChannelIds: freezeSet(parsed.RESTRAINED_CHANNEL_IDS),
+      restrainedChannelIds: readonlySet(parsed.RESTRAINED_CHANNEL_IDS),
       promptPath: parsed.PERSONA_PROMPT_PATH,
     }),
     logging: Object.freeze({ level: parsed.LOG_LEVEL }),
