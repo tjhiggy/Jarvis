@@ -73,14 +73,16 @@ The provider is instructed to prefer primary sources when available, separate
 sourced facts from labelled inference, qualify conflicts or gaps, and never
 infer a relationship merely from co-occurrence or similarity. Jarvis removes
 model-invented links and appends only sanitized Tavily source links. If no
-usable results survive, it sends an inability-to-verify instruction instead of
-allowing a guessed factual connection.
+usable results survive, it sends an inability-to-verify instruction that tells
+the model not to guess a factual connection. That is an instruction-level
+safeguard, not a guarantee of model compliance.
 
 Known limitation: the rule-based exclusions can produce a narrow false negative
-when a compound fictional prompt contains a real-world factual follow-up without
-a clearly marked transition. The current policy does not treat that implicit
-clause change as a separate request, so `/search` remains the explicit override
-when web evidence is wanted.
+when an explicitly fictional compound prompt has a clearly separated real-world
+factual follow-up that itself contains a fiction marker, such as `fictional
+characters`. The current policy treats that marker as applying to the follow-up
+and suppresses automatic search; `/search` remains the explicit override when
+web evidence is wanted.
 
 ## Conversation identity and storage
 

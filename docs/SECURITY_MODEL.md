@@ -63,8 +63,9 @@ deployment should use the platform's approved secret-management boundary.
   change instructions; the provider is told to use it only as evidence, not to
   infer relationships from co-occurrence or similarity, and to qualify gaps or
   conflicts. If no usable result survives, the provider receives an explicit
-  inability-to-verify instruction and must not guess the requested facts or
-  relationship.
+  inability-to-verify instruction telling it not to guess the requested facts
+  or relationship. This is a model-level safeguard, not a guarantee of
+  compliance.
 - **Mass-mention protection.** Replies set Discord `allowedMentions` to an
   empty parse list with `repliedUser: false`, and text is neutralized before
   delivery. Jarvis cannot turn an answer into an `@everyone` incident.
