@@ -10,7 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Discord `/ask`, `/forget`, `/help`, and `/status` commands, plus direct-mention responses.
+- Discord `/ask`, `/forget`, `/help`, `/search`, and `/status` commands, plus direct-mention responses.
 - Short, isolated conversation history per Discord channel or thread.
 - Ollama and OpenAI Responses API provider support.
 - Optional Tavily grounding for questions that need current information.
