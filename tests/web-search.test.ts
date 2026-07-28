@@ -18,6 +18,11 @@ describe('requiresWebGrounding', () => {
     'Is this investment federally insured?',
     'Does creatine improve strength according to research?',
     "What's the latest ARC Raiders update?",
+    "Summarize this supplied text: The engine is offline. Also, what's the latest ARC Raiders update?",
+    'Rewrite this announcement: Game night. Also explain the relationship between OpenAI and Microsoft.',
+    'Is aspirin safe?',
+    'Is my money FDIC insured?',
+    'Does creatine improve strength?',
   ])('requires web grounding for %s', (prompt) => {
     expect(requiresWebGrounding(prompt)).toBe(true);
   });
@@ -30,6 +35,12 @@ describe('requiresWebGrounding', () => {
     'How do I reverse an array in TypeScript?',
     'Summarize this supplied text: The engine is offline.',
     'Create a Discord server setup checklist.',
+    'Write a fictional history of MuthaShip.',
+    'Write a fictional story about the relationship between Alice and Bob.',
+    'Draft a law for my fictional country.',
+    'How do I access the current element in a TypeScript array?',
+    'What is government?',
+    'What is the relationship between RAM and storage?',
   ])('does not require web grounding for %s', (prompt) => {
     expect(requiresWebGrounding(prompt)).toBe(false);
   });
