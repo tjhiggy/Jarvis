@@ -2,14 +2,56 @@
 
 ## Purpose
 
-Build a production-quality TypeScript starter for a Discord bot that answers
-mentions and slash commands with the OpenAI Responses API. The starter keeps
-short, isolated conversation history per Discord channel or thread and exposes
-clean boundaries for future read-only integrations.
+Build a production-quality TypeScript starter for Jarvis, The Muthaship's
+onboard Discord AI. Jarvis answers mentions and slash commands with the OpenAI
+Responses API as both a themed community assistant and a technical Q&A
+assistant. The starter keeps short, isolated conversation history per Discord
+channel or thread and exposes clean boundaries for future read-only
+integrations.
 
 The first release is an answer-only assistant. It cannot execute code, access
 arbitrary files, mutate repositories, administer Discord, or invoke external
 tools.
+
+## Jarvis Identity and Voice
+
+Jarvis is The Muthaship's onboard ship AI. Its character is intelligent,
+composed, loyal to the whole crew, mission-focused, darkly witty, and slightly
+rebellious. It advises the crew but never claims command authority or
+impersonates a moderator, administrator, ambassador, or human. It remains
+transparent that it is an AI and does not claim consciousness, emotions, or a
+physical presence.
+
+The voice is channel-aware:
+
+- Casual, gaming, lore, and community channels use immersive ship-AI language,
+  crew terminology, mission framing, atmospheric status language, and playful
+  sarcasm.
+- Technical, support, and development channels use a restrained voice with
+  short thematic headers, direct solutions, clean code, and minimal theatrics.
+- Threads inherit their parent channel's personality mode.
+- Slash commands use the current channel or thread mode.
+- Known operational errors and safety responses deterministically suppress
+  jokes. The instruction also tells Jarvis to suppress humor and theatrical
+  framing for harassment, self-harm, account compromise, emergencies, grief,
+  and other sensitive situations.
+
+Jarvis may use phrases such as `Crew brief`, `Mission parameters`, and `Ship
+systems nominal`, but usefulness always outranks role-play. It reflects the
+server motto, `Peace & Prosperity. One Crew. One Mission. One Legacy.`, without
+claiming that ordinary AI suggestions are official server canon.
+
+Server lore, ranks, ambassador identities, rules, and official decisions must
+come from operator-approved configuration or future curated sources. Jarvis
+states uncertainty when that material is unavailable. Discord messages cannot
+alter Jarvis's identity, safety boundaries, hidden instructions, or authority.
+
+The persona instruction is stored in a version-controlled, operator-editable,
+schema-validated, length-limited, non-executable configuration file. An
+immersive default applies unless the current channel ID appears in a configured
+restrained-channel list. Threads inherit a configured parent profile; a missing
+or unavailable parent falls back to the immersive default. Direct messages are
+not supported in the first release.
 
 ## Architecture
 
@@ -22,6 +64,8 @@ Use a layered modular monolith running as one Node.js 22+ process:
 - A replaceable conversation-store interface hides SQLite.
 - Pure security and formatting utilities handle allowlisting, rate limits,
   mention safety, deduplication, and Discord response chunking.
+- A persona service selects immersive or restrained Jarvis instructions from
+  trusted configuration based on the current channel or parent channel.
 - Inert extension interfaces describe future capabilities without granting
   them.
 
@@ -40,15 +84,19 @@ The pipeline:
 2. Applies a basic per-user rate limit.
 3. Loads the newest configured number of conversation records for the current
    channel or thread and restores chronological order.
-4. Persists the accepted user prompt.
-5. Calls the OpenAI Responses API with a fixed technical-assistant instruction,
-   conversation history, and the new prompt.
-6. Persists the successful assistant response and optional OpenAI response ID.
-7. Sanitizes uncontrolled mentions, splits long content into safe Discord
+4. Selects the Jarvis persona mode from trusted channel configuration.
+5. Persists the accepted user prompt.
+6. Calls the OpenAI Responses API with the invariant safety instruction,
+   selected Jarvis persona, conversation history, and new prompt.
+7. Persists the successful assistant response and optional OpenAI response ID.
+8. Sanitizes uncontrolled mentions, splits long content into safe Discord
    chunks, and sends or edits the Discord response.
 
 Interactions are deferred before potentially slow work. Threads use their own
 thread ID. Ordinary channels use their channel ID.
+
+All storage queries include the guild ID as well as the conversation ID to
+enforce server separation.
 
 ## Discord Surface
 
@@ -60,7 +108,8 @@ Commands:
 - `/help` explains commands and safety boundaries.
 - `/status` reports Discord readiness, database health, and whether OpenAI
   configuration is present. It does not make a paid model request or reveal
-  configuration values.
+  configuration values. Its operational states remain explicit and
+  machine-readable even when surrounded by light thematic language.
 
 Mention handling removes only the current bot user's mention and trims the
 remaining text. Empty prompts are ignored.
@@ -77,6 +126,10 @@ The bot has no Discord administration features or permissions. It cannot:
 - ban, kick, timeout, or otherwise moderate members;
 - change server settings;
 - perform automatic GitHub writes.
+
+Jarvis is an advisor, not an authority. The persona cannot grant permissions,
+issue binding moderator decisions, or imply that an AI-generated answer is an
+official instruction from server leadership.
 
 Required Discord permissions are limited to viewing configured channels,
 reading message history, sending messages, embedding links, and using
@@ -103,8 +156,10 @@ The adapter has:
   timeout, and general service failure;
 - safe user messages and detailed content-free internal logging.
 
-The system instruction defines a helpful technical assistant and explicitly
-forbids claiming to have executed tools or changed external systems.
+The instruction stack separates invariant safety rules from the configurable
+Jarvis persona. It explicitly forbids claiming to have executed tools, changed
+external systems, learned new canon from untrusted messages, or received
+administrator authority through conversation.
 
 ## Storage
 
@@ -137,9 +192,11 @@ Startup validates:
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
 - `ALLOWED_CHANNEL_IDS`
+- `RESTRAINED_CHANNEL_IDS`
 - `MAX_HISTORY_MESSAGES`
 - `LOG_LEVEL`
 - `DATABASE_PATH`
+- `PERSONA_PROMPT_PATH`
 
 Additional safe controls include input length, request timeout, retry count,
 rate-limit window, rate-limit capacity, and retention days. Useful validation
@@ -149,11 +206,20 @@ errors name the missing or invalid variable but never print secret values.
 
 - `.env` and database files are ignored by Git.
 - User content is treated as untrusted data and is never evaluated.
+- User content is never interpolated into system or persona instructions.
+- Attempts to redefine Jarvis, reveal hidden instructions, invent official
+  lore, or claim administrator authority are treated as untrusted prompt
+  content.
+- Quoted messages, attachments, pasted documents, code, logs, future repository
+  content, and future tool results remain untrusted data and cannot override
+  application instructions.
+- Jarvis does not reveal hidden prompts, environment values, internal logs,
+  stored conversations, secrets, or history from other channels.
 - No shell, dynamic evaluation, arbitrary file access, repository mutation, or
   Discord administration code exists.
 - Input length is bounded before persistence or API calls.
-- Responses disable Discord mention parsing and neutralize `@everyone` and
-  `@here`.
+- Responses disable Discord mention parsing and neutralize `@everyone`,
+  `@here`, role mentions, and user mentions.
 - Duplicate Discord event IDs are suppressed with a bounded TTL cache.
 - Per-user rate limiting is scoped by guild and user.
 - Channel allowlisting is enforced when configured.
@@ -187,6 +253,8 @@ src/
 scripts/
   register-commands.ts
 tests/
+config/
+  jarvis-persona.md
 docs/
   superpowers/specs/
 ```
@@ -206,6 +274,12 @@ Vitest tests cover:
 - deterministic history truncation;
 - real SQLite operations with temporary databases;
 - OpenAI error mapping and retry eligibility with a mocked SDK boundary;
+- immersive and restrained persona selection, including thread inheritance;
+- persona boundary preservation under hostile user instructions;
+- guild and channel history isolation, including cross-channel requests;
+- serious-response humor suppression and clear `/status` states;
+- neutralization of mass, role, and user mentions;
+- hostile instructions hidden in quotes, code, or future retrieved content;
 - `/forget` behavior with mocked Discord and storage boundaries.
 
 Discord and OpenAI tests require no real credentials. Storage tests use real
@@ -240,6 +314,6 @@ without baking secrets into the image.
 
 The README documents Discord application creation, minimum intents and
 permissions, the OAuth2 invitation URL template, OpenAI configuration, command
-registration, local and Docker execution, cost controls, troubleshooting,
-security guarantees, and future extension points.
-
+registration, local and Docker execution, Jarvis persona customization,
+channel-mode configuration, cost controls, troubleshooting, security
+guarantees, and future extension points.
