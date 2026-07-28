@@ -3,4 +3,5 @@ coverage/
 node_modules/
 data/
 .superpowers/
+.worktrees/
 package-lock.json
