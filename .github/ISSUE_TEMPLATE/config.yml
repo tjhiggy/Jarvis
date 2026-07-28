@@ -3,6 +3,9 @@ contact_links:
   - name: Support and usage questions
     url: https://github.com/tjhiggy/Jarvis/blob/main/SUPPORT.md
     about: Read the support guidance before opening a sanitized support request.
-  - name: Security vulnerability reports
-    url: https://github.com/tjhiggy/Jarvis/blob/main/SECURITY.md
-    about: Follow the private security-reporting process. Do not disclose vulnerabilities publicly.
+  - name: Security contact route
+    url: https://github.com/tjhiggy/Jarvis/issues/new?template=security_contact.yml&title=%5BSecurity%20contact%20request%5D%20
+    about: Request a secure vulnerability-reporting route without disclosing any vulnerability details.
+  - name: Conduct contact route
+    url: https://github.com/tjhiggy/Jarvis/issues/new?template=conduct_contact.yml&title=%5BConduct%20contact%20request%5D%20
+    about: Request a private conduct-reporting route without identifying people or describing the incident.

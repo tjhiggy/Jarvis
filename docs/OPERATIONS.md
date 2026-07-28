@@ -9,8 +9,17 @@ inspection of user message content.
 Before starting, select exactly one deployment path: native Windows or Docker.
 Verify the configured `.env` is available to that process, the configured
 database location is writable, and the selected AI provider is configured. For
-native startup, use `scripts/start-jarvis.ps1 -DryRun` to verify its fixed
-executable and entry-point assumptions.
+the supported native path, start `npm start` from the deployment directory in
+an owning console and keep that console available for `Ctrl+C`.
+
+The `scripts/start-jarvis.ps1` file is only a workstation-specific convenience
+helper. Its `-DryRun` output makes unverified claims; it does not validate paths
+or readiness. The helper also has an unquoted spaced-path risk,
+separator-sensitive duplicate detection, an unconditional dependency on a
+fixed local Ollama installation even for OpenAI configuration, and no
+graceful-stop control. Do not treat it as production-safe process management.
+See [Deployment](DEPLOYMENT.md#workstation-specific-convenience-helper) for the
+full limitations.
 
 After start, use `/status` in a server channel. It returns an ephemeral report
 of Discord configuration, SQLite health, selected AI provider and its
@@ -26,8 +35,10 @@ containerized Jarvis together: both can receive the same Discord events.
 ## Logs and incident evidence
 
 The application writes structured Pino logs to its host process output. The
-Windows startup script redirects Node and Ollama output to `%TEMP%` log files;
-Compose exposes container output through `docker compose logs jarvis`.
+supported manual native path leaves that output in its owning console. If the
+workstation-specific convenience helper is used, it redirects Node and Ollama
+output to `%TEMP%` log files. Compose exposes container output through
+`docker compose logs jarvis`.
 
 Collect only the timestamp, component, error class, error category, safe error
 code, version, and deployment mode needed for triage. The logger recursively
@@ -42,11 +53,11 @@ copies in an incident report.
 ## Provider health
 
 `/status` reports configuration, not a live AI inference check. For Ollama,
-the native start script tests the local tags endpoint before it launches Node.
-The Ollama adapter calls `/api/chat`, applies its configured timeout, and
-retries retryable failures up to `OLLAMA_MAX_RETRIES`. OpenAI calls use their
-own timeout and bounded retry setting. Authentication, validation, and quota
-failures are not retried into submission.
+verify its configured model through Ollama's supported local workflow before
+starting Jarvis. The Ollama adapter calls `/api/chat`, applies its configured
+timeout, and retries retryable failures up to `OLLAMA_MAX_RETRIES`. OpenAI calls
+use their own timeout and bounded retry setting. Authentication, validation, and
+quota failures are not retried into submission.
 
 If `TAVILY_API_KEY` is configured, web search uses a request timeout and an
 in-memory cache. Equivalent normalized queries are cached for

@@ -1,6 +1,10 @@
 # Development
 
-Jarvis targets Node.js 22 or newer and uses npm with the committed lockfile. Local development is credentialed only at runtime; tests use dependency injection and mocks, so they do not need a Discord connection, a provider key, or an Ollama process.
+Jarvis targets Node.js 22 or newer and uses npm with the committed lockfile.
+Install PowerShell 7 and make sure `pwsh` is on `PATH`; the documentation gate
+invokes it through `npm run docs:check`. Local development is credentialed only
+at runtime; tests use dependency injection and mocks, so they do not need a
+Discord connection, a provider key, or an Ollama process.
 
 ## Install and configure locally
 
@@ -63,9 +67,14 @@ npm test
 npm run lint
 npm run format:check
 npm run build
+npm run docs:check
 ```
 
-Use `npm run test:watch` while iterating. `npm run format` writes formatting to the repository, while `npm run format:check` only verifies it. `npm run lint` runs ESLint across the project, and `npm run build` type-checks and emits the configured TypeScript build.
+Use `npm run test:watch` while iterating. `npm run format` writes formatting to
+the repository, while `npm run format:check` only verifies it. `npm run lint`
+runs ESLint across the project, `npm run build` type-checks and emits the
+configured TypeScript build, and `npm run docs:check` validates tracked
+documentation and GitHub YAML through PowerShell 7.
 
 Tests avoid live services by injecting factories or clients. Examples include the application dependencies for environment loading, storage, AI, Discord, logging, timers, process signals, and elapsed time; provider adapters accept mock clients or `fetch`; and command registration accepts a mock REST client. Keep that boundary intact. A unit test that needs a real bot token is not an integration test, it is a credential leak wearing a fake mustache.
 

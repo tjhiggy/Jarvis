@@ -5,7 +5,8 @@ second, imaginary moderator powers never. It answers questions in Discord,
 keeps bounded conversation history per channel or thread, and can use local or
 hosted AI without pretending an interface is a superpower.
 
-Current release: `0.1.0` | Runtime: Node.js 22+ | License: proprietary
+Current release: `0.1.0` | Runtime: Node.js 22+ | License: proprietary, except
+the Code of Conduct under CC BY 4.0
 
 ## What ships
 
@@ -207,10 +208,15 @@ The current package and changelog release is `0.1.0`; the supported line is
 `0.1.x`. Release actions are maintainer-owned and documented in
 [Releases](docs/RELEASES.md) and the [Changelog](CHANGELOG.md).
 
-Copyright 2026 Jim Higgins. All rights reserved. This repository is proprietary
-software. No permission to copy, modify, distribute, sublicense, or use it is
-granted except by prior written authorization. Read the
-[Proprietary license](LICENSE.md) before assuming otherwise. Optimism is not a
+Copyright 2026 Jim Higgins. All rights reserved. Except for the adapted
+[Code of Conduct](CODE_OF_CONDUCT.md), which is licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), this repository is
+proprietary software. Platform-required viewing or forking rights do not grant
+a broader license to use, copy, modify, distribute, or sublicense it. External
+contributions are not accepted without a separate written contribution
+agreement, and submitting unsolicited code transfers no rights. Read the
+[Proprietary license](LICENSE.md) and
+[Contributing](CONTRIBUTING.md) before assuming otherwise. Optimism is not a
 license grant.
 
 ## Documentation map

@@ -1,0 +1,18 @@
+name: Security contact route request
+description: Ask for a secure vulnerability-reporting route without disclosing vulnerability details.
+title: '[Security contact request] '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a public routing request, not a vulnerability report. Do not
+        identify the affected component or version, describe the weakness or
+        impact, provide reproduction or exploit details, or include secrets,
+        private identifiers, message content, logs, screenshots, or attachments.
+  - type: checkboxes
+    id: detail-free-request
+    attributes:
+      label: Detail-free request
+      options:
+        - label: I am only requesting a secure reporting route and have included no vulnerability or sensitive details.
+          required: true

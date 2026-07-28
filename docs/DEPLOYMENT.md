@@ -29,42 +29,68 @@ only in the ignored `.env` file or an approved secret manager.
    configured model using Ollama's supported workflow. For OpenAI, set the
    project-scoped key and verify the configured model is available to that
    project.
-5. Start Jarvis with `npm start`, or use the supplied startup script when a
-   scheduled Windows start is required:
+5. Start Jarvis manually from the deployment directory in an owning console:
 
    ```powershell
-   .\scripts\start-jarvis.ps1
+   npm start
    ```
 
-The startup script is deliberately opinionated. It expects Node at
-`C:\Program Files\nodejs\node.exe`, Ollama at the current user's
+   Keep that console available and stop the process with `Ctrl+C`. This manual
+   native start and stop flow is the supported path.
+
+### Workstation-specific convenience helper
+
+`scripts/start-jarvis.ps1` is a workstation-specific convenience helper, not a
+supported service manager or a production-safe start and stop path. It expects
+Node at `C:\Program Files\nodejs\node.exe`, Ollama at the current user's
 `%LOCALAPPDATA%\Programs\Ollama\ollama.exe`, and a compiled
-`dist\src\index.js` below the repository. Its `-DryRun` switch reports those
-assumptions without starting processes:
+`dist\src\index.js` below the repository.
+
+Read and verify the helper before considering it for a particular workstation.
+Its current limitations are material:
+
+- It passes the entry-point argument to `Start-Process` without adding
+  command-line quotes. A repository path containing spaces can therefore be
+  split into the wrong Node arguments.
+- Its duplicate-process search requires literal `dist/src/index.js` text plus
+  the project path. Different slash separators or command-line representations
+  can bypass that separator-sensitive match.
+- `-DryRun` only prints configured paths and boolean claims. It does not test
+  those paths, duplicate detection, process identity, or Ollama readiness, so
+  its `PreventsDuplicateJarvis` and `WaitsForOllama` fields are unverified
+  claims rather than a readiness check.
+- It requires the fixed Ollama executable and local tags endpoint even when
+  `.env` selects `AI_PROVIDER=openai`.
+- It launches a detached Node process without retaining a process identifier or
+  providing a status or graceful-stop command.
+
+The helper's `-DryRun` output can be inspected as configuration data, but must
+not be treated as verification:
 
 ```powershell
 .\scripts\start-jarvis.ps1 -DryRun
 ```
 
-For a scheduled task, configure the task under the same Windows account that
-owns the local Ollama installation and can read the deployment's `.env` and
-write its database directory. Point the task action at PowerShell and this
-script. Do not configure a second task that launches `npm start`: the script
-already detects a matching `node.exe` command line and exits when one exists.
+Do not rely on this helper to prevent a second instance or to stop one cleanly.
+Use the manual native flow above unless an operator has separately reviewed,
+adapted, and validated a workstation-specific service-control solution.
 
-## Ollama readiness
+When used, the helper redirects output to these per-user temporary files:
 
-The script checks `http://127.0.0.1:11434/api/tags` before it starts Jarvis. It
-waits for readiness, starts `ollama serve` if the endpoint remains unavailable,
-then waits again before starting Node. It fails rather than launching Jarvis
-against an unavailable local provider. Native script output goes to these
-per-user temporary files:
-
-- `%TEMP%\jarvis-native.out.log` and `%TEMP%\jarvis-native.err.log`
-- `%TEMP%\jarvis-ollama.out.log` and `%TEMP%\jarvis-ollama.err.log`
+- `%TEMP%\jarvis-native.out.log` and `%TEMP%\jarvis-native.err.log`.
+- `%TEMP%\jarvis-ollama.out.log` and `%TEMP%\jarvis-ollama.err.log`.
 
 Inspect only operational metadata when handling those logs. Do not copy
 prompts, responses, identifiers, or credentials into tickets.
+
+## Provider readiness
+
+Before the supported manual start, prepare the selected provider independently.
+For Ollama, start it through Ollama's supported local workflow and verify the
+configured model in its local inventory. For OpenAI, verify the project key and
+model through the approved account workflow. Jarvis `/status` checks
+configuration after start; a non-sensitive `/ask` is the controlled
+end-to-end provider check.
 
 ## Optional Docker deployment
 
@@ -120,4 +146,6 @@ For native runs, send `Ctrl+C` in the owning console or otherwise deliver
 application then stops accepting new work, clears its retention timer, closes
 SQLite, and destroys the Discord client. Compose allows a 30-second stop grace
 period. Do not kill the process as the first move unless graceful shutdown has
-already failed and an authorized incident lead directs it.
+already failed and an authorized incident lead directs it. The
+workstation-specific helper has no graceful-stop control, which is another
+reason the owning-console flow is the supported native path.

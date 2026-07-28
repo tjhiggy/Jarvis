@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Comprehensive project documentation, policy guidance, GitHub intake forms, and the `docs:check` validation gate.
+
 ## [0.1.0] - 2026-07-28
 
 ### Added

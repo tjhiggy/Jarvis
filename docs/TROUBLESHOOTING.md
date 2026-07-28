@@ -8,12 +8,16 @@ copy or configuration change, stop the bot first and follow
 ## Bot is offline or exits at startup
 
 **Likely cause.** Required Discord configuration is empty, the selected provider
-is misconfigured, the persona or database path is unavailable, or the native
-script cannot find its fixed Node, Ollama, or compiled-entry paths.
+is misconfigured, the persona or database path is unavailable, or the compiled
+entry point is missing.
 
-**Safe diagnosis.** Run `scripts/start-jarvis.ps1 -DryRun` for native script
-assumptions. Check the startup error category and invalid configuration variable
-names without revealing values. Confirm `npm run build` completed.
+**Safe diagnosis.** Confirm `npm run build` completed, then use the supported
+manual `npm start` path in an owning console so startup failures remain visible.
+Check the startup error category and invalid configuration variable names
+without revealing values. Do not treat `scripts/start-jarvis.ps1 -DryRun` as
+verification; it only prints unverified configuration claims. Its other
+workstation-specific limitations are documented in
+[Deployment](DEPLOYMENT.md#workstation-specific-convenience-helper).
 
 **Resolution.** Correct the named configuration or path using the approved
 secret source, rebuild if needed, and restart one process. OpenAI requires a
@@ -69,10 +73,10 @@ adapters retry only bounded retryable failures.
 **Likely cause.** Ollama is not serving, the configured model was not pulled, or
 Docker is targeting the wrong host endpoint.
 
-**Safe diagnosis.** For native deployment, use the startup script's readiness
-check of `http://127.0.0.1:11434/api/tags` and verify the model against the
-local Ollama inventory using its supported operator workflow. For Docker Desktop
-with host Ollama, verify `OLLAMA_BASE_URL=http://host.docker.internal:11434`.
+**Safe diagnosis.** For native deployment, verify the configured endpoint and
+model against the local Ollama inventory using its supported operator workflow.
+For Docker Desktop with host Ollama, verify
+`OLLAMA_BASE_URL=http://host.docker.internal:11434`.
 
 **Resolution.** Start Ollama using its supported workflow, pull the configured
 model, correct the URL or model value, and restart Jarvis. Do not publish the
@@ -137,12 +141,12 @@ non-sensitive request.
 ## Duplicate processes or duplicate replies
 
 **Likely cause.** Native and Docker deployments are both connected, or more than
-one native process was launched outside the supplied script.
+one native process was launched.
 
 **Safe diagnosis.** Inspect process and container metadata for the compiled
-Jarvis entry point. The native script detects a matching `node.exe` command
-line in its own project path, but it cannot prevent every externally launched
-copy.
+Jarvis entry point. Do not rely on the workstation-specific helper for this
+check: its literal `dist/src/index.js` command-line match is separator-sensitive
+and can miss equivalent paths.
 
 **Resolution.** Gracefully stop all but the approved single instance, verify
 database health, and test with a non-sensitive prompt. Do not delete the

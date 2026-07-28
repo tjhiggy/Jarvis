@@ -14,6 +14,7 @@ Mark each item that applies. For unchecked items, explain why below.
 - [ ] Lint passes
 - [ ] Formatting passes
 - [ ] Build passes
+- [ ] Documentation validation passes with `npm run docs:check` using PowerShell 7 (`pwsh`)
 - [ ] Documentation is updated or not needed
 
 ## Safety and compatibility

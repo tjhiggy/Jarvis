@@ -1,19 +1,27 @@
 # Contributing
 
-Jarvis is proprietary software. Contributions are considered for this
-repository, but no contribution grants any license beyond the written terms
-provided by the repository owner.
+Jarvis is proprietary software. External code or documentation contributions
+are not accepted unless the repository owner and contributor first enter a
+separate written contribution agreement. Do not submit an unsolicited patch or
+pull request on the assumption that public visibility or the platform's fork
+button supplies that agreement. Submitting unsolicited code transfers no
+ownership or license rights to the repository owner, and grants the submitter
+no rights in Jarvis.
 
 ## Prerequisites
 
 - Node.js 22 or newer
 - npm
+- PowerShell 7, available as `pwsh`, for `npm run docs:check`
 - A local `.env` based on `.env.example` when running the bot
 
 ## Workflow
 
-1. Fork the repository if you do not have write access, or work from an
-   approved branch if you do.
+Only maintainers and contributors already covered by a separate written
+contribution agreement should use this workflow:
+
+1. Work from an approved branch or from a fork authorized by that written
+   agreement.
 2. Create a focused branch using the `codex/` prefix, such as
    `codex/improve-status-output`.
 3. Keep the change scoped, document any behavior change, and open a pull
@@ -32,6 +40,7 @@ npm test
 npm run lint
 npm run format:check
 npm run build
+npm run docs:check
 ```
 
 Add or update tests for behavior changes. Update user-facing documentation,

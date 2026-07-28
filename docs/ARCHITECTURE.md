@@ -40,7 +40,7 @@ flowchart TD
     K -->|"Ollama"| M["Ollama /api/chat"]
     L --> N["Persist assistant message"]
     M --> N
-    N --> O["Neutralize Discord mentions and split response into 1,900-character chunks"]
+    N --> O["Neutralize Discord mentions and split response into chunks within Discord limits"]
     O --> P["Safe Discord reply or deferred-reply edit"]
 ```
 

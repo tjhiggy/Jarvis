@@ -43,11 +43,22 @@ officially represents the project in public spaces.
 
 ## Enforcement
 
-Report unacceptable behavior to repository maintainers through private GitHub
-contact. Maintainers will review and investigate reports fairly, preserve
-confidentiality where possible, and may apply consequences ranging from a
-correction to a permanent ban from project spaces.
+Open the
+[conduct contact route request](https://github.com/tjhiggy/Jarvis/issues/new?template=conduct_contact.yml&title=%5BConduct%20contact%20request%5D%20)
+form so a maintainer can provide a private reporting route. The public request
+must contain no incident details. Do not identify anyone involved, describe the
+conduct, quote messages, provide dates or locations, attach evidence, or include
+private identifiers. Its only job is to request a private route. Do not use the
+security-vulnerability route for a conduct matter.
+
+After a private route is provided, report the matter through that route.
+Maintainers will review and investigate reports fairly, preserve confidentiality
+where possible, and may apply consequences ranging from a correction to a
+permanent ban from project spaces.
 
 ## Attribution
 
-This Code of Conduct is adapted from the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct.html).
+This Code of Conduct is adapted from the
+[Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct.html)
+and is licensed under the
+[Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/).

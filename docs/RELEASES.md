@@ -18,13 +18,16 @@ Do not invent release numbers or dates in advance.
 
 ## Validation gates
 
-Before tagging a release candidate, run the repository quality set:
+The release workstation needs Node.js 22 or newer, npm, and PowerShell 7
+available as `pwsh`. Before tagging a release candidate, run the repository
+quality set:
 
 ```powershell
 npm test
 npm run lint
 npm run format:check
 npm run build
+npm run docs:check
 git diff --check
 ```
 
