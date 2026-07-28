@@ -60,6 +60,38 @@ describe('ConversationService', () => {
     expect(fixture.ai.requests).toEqual([]);
   });
 
+  it('allows a thread through its allowlisted parent while preserving its thread conversation ID', async () => {
+    const fixture = await createFixture({
+      allowedChannelIds: new Set(['allowed-parent']),
+    });
+
+    await expect(
+      fixture.service.ask(
+        request({
+          channelId: 'allowed-thread',
+          conversationId: 'allowed-thread',
+          parentChannelId: 'allowed-parent',
+        }),
+      ),
+    ).resolves.toMatchObject({ status: 'success' });
+    await expect(
+      fixture.service.ask(
+        request({
+          eventId: 'event-unrelated-thread',
+          channelId: 'unrelated-thread',
+          conversationId: 'unrelated-thread',
+          parentChannelId: 'unrelated-parent',
+        }),
+      ),
+    ).resolves.toMatchObject({ status: 'disallowed' });
+
+    expect(fixture.ai.requests).toHaveLength(1);
+    expect(fixture.store.appended).toEqual([
+      expect.objectContaining({ conversationId: 'allowed-thread' }),
+      expect.objectContaining({ conversationId: 'allowed-thread' }),
+    ]);
+  });
+
   it('loads only the configured history for the exact guild and conversation', async () => {
     const fixture = await createFixture({ maxHistoryMessages: 2 });
     fixture.store.history = [

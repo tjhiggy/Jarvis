@@ -8,6 +8,7 @@ import {
   type AIService,
   type ConversationTurn,
 } from '../openai/openai-service.js';
+import { isAllowedChannel } from '../discord/access.js';
 import { EventDeduplicator } from '../security/event-deduplicator.js';
 import { RateLimiter } from '../security/rate-limiter.js';
 import type {
@@ -90,7 +91,13 @@ export class ConversationService {
       return { status: 'invalid_input', message: invalidInputMessage };
     }
 
-    if (!this.isChannelAllowed(normalized.channelId)) {
+    if (
+      !isAllowedChannel(
+        normalized.channelId,
+        normalized.parentChannelId,
+        this.options.allowedChannelIds,
+      )
+    ) {
       return { status: 'disallowed', message: disallowedMessage };
     }
 
@@ -213,13 +220,6 @@ export class ConversationService {
         ? {}
         : { parentChannelId }),
     };
-  }
-
-  private isChannelAllowed(channelId: string): boolean {
-    return (
-      this.options.allowedChannelIds.size === 0 ||
-      this.options.allowedChannelIds.has(channelId)
-    );
   }
 }
 

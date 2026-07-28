@@ -106,6 +106,28 @@ describe('handleCommand', () => {
     ]);
   });
 
+  it('safely edits a deferred /ask when the conversation service fails', async () => {
+    const fake = interaction({ commandName: 'ask' });
+    const internalDetail = 'token=discord-secret';
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        ask: async () => {
+          throw new Error(internalDetail);
+        },
+      }),
+    );
+
+    expect(fake.edits).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/could not be completed/i),
+        allowedMentions: safeMentions,
+      }),
+    ]);
+    expect(fake.edits[0]?.content).not.toContain(internalDetail);
+  });
+
   it('rejects an oversized /ask prompt before it reaches the conversation service', async () => {
     const fake = interaction({ commandName: 'ask', prompt: 'x'.repeat(6) });
     let requests = 0;
@@ -164,6 +186,28 @@ describe('handleCommand', () => {
         allowedMentions: safeMentions,
       }),
     ]);
+  });
+
+  it('safely edits a deferred /forget when storage fails', async () => {
+    const fake = interaction({ commandName: 'forget' });
+    const internalDetail = 'database=C:\\private';
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        clear: async () => {
+          throw new Error(internalDetail);
+        },
+      }),
+    );
+
+    expect(fake.edits).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/could not be completed/i),
+        allowedMentions: safeMentions,
+      }),
+    ]);
+    expect(fake.edits[0]?.content).not.toContain(internalDetail);
   });
 
   it('lists every supported command and no imaginary server controls in /help', async () => {

@@ -50,6 +50,8 @@ export interface CommandDependencies {
 const dmMessage = 'This command is available only in a server channel.';
 const invalidInputMessage = 'Please provide a valid request.';
 const disallowedMessage = 'This channel is not available for requests.';
+const operationalErrorMessage =
+  'The request could not be completed. Please try again later.';
 const unknownCommandMessage =
   'Unknown command. Use /help for available commands.';
 const helpMessage = [
@@ -116,15 +118,22 @@ const handleAsk = async (
   }
 
   await interaction.deferReply({ ephemeral: false });
-  const result = await dependencies.conversationService.ask({
-    eventId: interaction.id,
-    guildId,
-    conversationId: channelId,
-    channelId,
-    userId: interaction.user.id,
-    prompt,
-    ...(parentChannelId === undefined ? {} : { parentChannelId }),
-  });
+  let result: ConversationResult;
+  try {
+    result = await dependencies.conversationService.ask({
+      eventId: interaction.id,
+      guildId,
+      conversationId: channelId,
+      channelId,
+      userId: interaction.user.id,
+      prompt,
+      ...(parentChannelId === undefined ? {} : { parentChannelId }),
+    });
+  } catch {
+    await editDeferredReplySafely(interaction, operationalErrorMessage);
+    return;
+  }
+
   await editDeferredReplySafely(interaction, resultMessage(result));
 };
 
@@ -153,7 +162,14 @@ const handleForget = async (
   }
 
   await interaction.deferReply({ ephemeral: true });
-  const deleted = await dependencies.store.clear(guildId, channelId);
+  let deleted: number;
+  try {
+    deleted = await dependencies.store.clear(guildId, channelId);
+  } catch {
+    await editDeferredReplySafely(interaction, operationalErrorMessage);
+    return;
+  }
+
   await editDeferredReplySafely(
     interaction,
     `Cleared ${deleted} conversation ${deleted === 1 ? 'message' : 'messages'} in this channel.`,
