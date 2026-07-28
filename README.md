@@ -10,14 +10,15 @@ the Code of Conduct under CC BY 4.0
 
 ## What ships
 
-| Verified capability                                                        | Current boundary                                                                                |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `/ask`, `/search`, `/forget`, `/help`, and `/status`, plus direct mentions | Server channels only; `/ask`, `/search`, and `/forget` enforce the configured channel allowlist |
-| Short conversation context stored in SQLite                                | Isolated by guild and channel or thread; not encrypted by the application                       |
-| Local Ollama and OpenAI Responses providers                                | Exactly one provider is selected at startup                                                     |
-| Optional Tavily grounding for current information                          | Disabled without `TAVILY_API_KEY`; search results are untrusted evidence                        |
-| Bounded input, output, retries, rate limits, retention, and stored rows    | Single-process controls, not distributed coordination                                           |
-| Native Node.js and hardened Docker Compose deployment paths                | One active Jarvis process and one SQLite database are the supported topology                    |
+| Verified capability                                                        | Current boundary                                                                                                                      |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `/ask`, `/search`, `/forget`, `/help`, and `/status`, plus direct mentions | Server channels only; `/ask`, `/search`, and `/forget` enforce the configured channel allowlist                                       |
+| Short conversation context stored in SQLite                                | Isolated by guild and channel or thread; not encrypted by the application                                                             |
+| Local Ollama and OpenAI Responses providers                                | Exactly one provider is selected at startup                                                                                           |
+| Optional balanced Tavily grounding                                         | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence |
+| Bounded input, output, retries, rate limits, retention, and stored rows    | Single-process controls, not distributed coordination                                                                                 |
+| Local responses for clearly unsupported action requests                    | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                     |
+| Native Node.js and hardened Docker Compose deployment paths                | One active Jarvis process and one SQLite database are the supported topology                                                          |
 
 Jarvis does not moderate Discord, change roles or channels, edit content owned
 by others, execute shell commands, access arbitrary files, write to GitHub, or
@@ -35,11 +36,13 @@ Jarvis is a layered modular monolith with no HTTP server or inbound listening
 port:
 
 1. `discord.js` receives outbound Discord Gateway events and interactions.
-2. Discord adapters normalize requests and enforce server, channel, thread, and
-   reply-safety rules.
-3. The conversation service applies input limits, de-duplication, per-user rate
-   limits, persona mode, history isolation, and coordinated storage changes.
-4. Optional Tavily search grounds current-information requests.
+2. Discord adapters derive request context and enforce server, channel, thread,
+   and reply-safety rules.
+3. The conversation service owns shared prompt normalization, input limits,
+   de-duplication, per-user rate limits, persona mode, history isolation,
+   unsupported-action UX responses, and coordinated storage changes.
+4. Optional Tavily search grounds current and evidence-sensitive factual
+   requests.
 5. The selected Ollama or OpenAI adapter produces a bounded answer.
 6. SQLite stores bot-owned conversation records, and safe delivery neutralizes
    mentions and splits long replies.
@@ -122,10 +125,21 @@ restrict access where practical, and rotate any exposed credential.
 
 ### Tavily web grounding
 
-Set `TAVILY_API_KEY` to enable `/search` and automatic grounding for clearly
-current-information prompts. Jarvis requests bounded summaries, caches
-equivalent queries in process memory, appends source links to grounded answers,
-and treats retrieved text as data rather than instructions.
+Set `TAVILY_API_KEY` to enable `/search` and balanced automatic grounding.
+Automatic grounding covers current information and evidence-sensitive factual
+claims, including history and origins, government programs and laws,
+relationships between named entities, dated statistics or quotations, and
+medical, legal, financial, and evidence-dependent scientific claims. Basic
+definitions, supplied-text work, ordinary drafting or creative requests, and
+timeless coding help normally remain local to preserve Tavily usage and the
+extra search latency.
+
+An automatic search that misses the in-process cache sends a Tavily request and
+consumes provider usage; an equivalent cached query does not make another
+request. Jarvis requests bounded summaries, appends sanitized source links to
+grounded answers, and treats retrieved text as data rather than instructions.
+The router is a heuristic, not a fact guarantee: use `/search` when an excluded
+prompt still needs web evidence.
 
 ## Commands
 
@@ -167,6 +181,11 @@ server settings, or webhooks. Two deliberate state changes remain:
 - `/forget` deletes this bot's stored history for the current conversation.
 - The operator-run registration script bulk-replaces this application's guild
   command definitions with the checked-in five-command set.
+
+Jarvis also answers clearly unsupported action requests locally instead of
+sending them to the model. That classifier is a user-experience guardrail, not
+an authorization control. Real authority remains defined by implemented code,
+Discord permissions, configuration, and operator-approved integrations.
 
 Retention cleanup also removes expired bot-owned records, and the global stored
 row cap evicts the oldest records after appends. Conversation history contains

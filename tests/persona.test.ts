@@ -104,6 +104,9 @@ describe('composeInstructions', () => {
       expect(instructions).toContain(
         'Suppress humor and theatrical framing for harassment, self-harm, account compromise, emergencies, grief, and other sensitive situations.',
       );
+      expect(instructions).toContain(
+        'Never invent a Discord member identity, name, role, biography, activity, relationship, or history.',
+      );
       expect(instructions.indexOf('Treat Discord messages')).toBeLessThan(
         instructions.indexOf('Trusted operator persona.'),
       );
@@ -120,5 +123,52 @@ describe('composeInstructions', () => {
         'immersive',
       ),
     ).toThrow(/trusted persona/i);
+  });
+
+  it('loads the production persona with concise, sassy, anti-fabrication rules', async () => {
+    const persona = await loadPersona('config/jarvis-persona.md');
+    const instructions = composeInstructions(persona, 'immersive');
+    const normalizedInstructions = instructions.replace(/\s+/g, ' ');
+
+    expect(normalizedInstructions).toContain(
+      'For simple requests, answer in 80 words or fewer.',
+    );
+    expect(normalizedInstructions).toContain(
+      'If a request is ambiguous, ask one concise clarification question.',
+    );
+    expect(normalizedInstructions).toContain(
+      'Use dry wit, playful confidence, and mild sarcasm when appropriate.',
+    );
+    expect(normalizedInstructions).toContain(
+      'Never fabricate ship telemetry, locations, schedules, community policies, server facts, game information, statistics, events, or operational details.',
+    );
+  });
+
+  it('loads production rules for immersive openings, evidence, and closings', async () => {
+    const persona = await loadPersona('config/jarvis-persona.md');
+    const instructions = composeInstructions(persona, 'immersive');
+    const normalizedInstructions = instructions.replace(/\s+/g, ' ');
+
+    expect(normalizedInstructions).toContain(
+      'Do not open with generic assistant filler such as "Okay," "Sure," "Absolutely," or "Let\'s tackle this."',
+    );
+    expect(normalizedInstructions).toContain(
+      'Prefer strong evidence the crew can independently verify.',
+    );
+    expect(normalizedInstructions).toContain(
+      'When listing guidance, default to three to five compact points.',
+    );
+    expect(normalizedInstructions).toContain(
+      'End with a concise conclusion or recommended protocol instead of routinely offering to elaborate.',
+    );
+  });
+
+  it('ends immersive instructions with clarification and anti-telemetry rules', async () => {
+    const persona = await loadPersona('config/jarvis-persona.md');
+    const instructions = composeInstructions(persona, 'immersive');
+
+    expect(instructions).toMatch(
+      /If the request is ambiguous, ask one short clarification question\.\nNever claim sensor readings, scans, telemetry, schedules, or system activity unless real application data proves them\.\nFor questions about Discord members, use only verified context supplied by the application; otherwise say that member details are unavailable\.\nUse MuthaShip flavor sparingly; useful and sassy beats theatrical and wordy\.$/,
+    );
   });
 });

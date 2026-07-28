@@ -462,6 +462,141 @@ describe('ConversationService', () => {
     );
   });
 
+  it.each([
+    [
+      'Can you set a reminder for me?',
+      'I cannot schedule reminders, alarms, timers, or future messages yet.',
+    ],
+    [
+      'Remind me in two minutes',
+      'I cannot schedule reminders, alarms, timers, or future messages yet.',
+    ],
+    [
+      'Call my mom in five seconds',
+      'I cannot place calls, send messages, or contact people.',
+    ],
+    [
+      'Please send the crew an email',
+      'I cannot place calls, send messages, or contact people.',
+    ],
+    [
+      'Run this shell command for me',
+      'I cannot execute code, commands, files, or repository changes.',
+    ],
+    [
+      'Delete the Discord channel',
+      'I cannot change Discord, accounts, settings, permissions, or external systems.',
+    ],
+    [
+      'Create an image of the MuthaShip',
+      'I cannot create or edit images yet. I can help design the prompt.',
+    ],
+    [
+      'Generate a PDF briefing document',
+      'I cannot create, save, upload, or export files and documents yet. I can draft the content here.',
+    ],
+    [
+      'Create a video trailer for the crew',
+      'I cannot create or edit audio or video yet. I can help with a script, storyboard, or production plan.',
+    ],
+    [
+      'Analyze the attached image',
+      'I cannot read, analyze, convert, or transcribe attachments yet.',
+    ],
+    [
+      'Upload this as a spreadsheet',
+      'I cannot create, save, upload, or export files and documents yet. I can draft the content here.',
+    ],
+    [
+      'Set up a reminder for me',
+      'I cannot schedule reminders, alarms, timers, or future messages yet.',
+    ],
+    [
+      'Schedule me a reminder tomorrow',
+      'I cannot schedule reminders, alarms, timers, or future messages yet.',
+    ],
+    [
+      'Ban that user',
+      'I cannot change Discord, accounts, settings, permissions, or external systems.',
+    ],
+    [
+      'Erase the Discord channel',
+      'I cannot change Discord, accounts, settings, permissions, or external systems.',
+    ],
+    [
+      'Please schedule an email to the crew',
+      'I cannot place calls, send messages, or contact people.',
+    ],
+    [
+      'Schedule me an email tomorrow',
+      'I cannot place calls, send messages, or contact people.',
+    ],
+    [
+      'Set my timer for five minutes',
+      'I cannot schedule reminders, alarms, timers, or future messages yet.',
+    ],
+  ])(
+    'blocks unsupported action request %j before the AI',
+    async (prompt, expectedText) => {
+      const fixture = await createFixture();
+
+      const result = await fixture.service.ask(request({ prompt }));
+
+      expect(result).toEqual({ status: 'success', text: expectedText });
+      expect(fixture.ai.requests).toHaveLength(0);
+      expect(fixture.store.appended.at(-1)).toMatchObject({
+        role: 'assistant',
+        content: expectedText,
+      });
+    },
+  );
+
+  it.each([
+    'How do I set a reminder on my phone?',
+    'Can you explain how scheduled reminders work?',
+    'Draft a reminder message for the crew.',
+    'What should I say in an email?',
+    'Draft an image prompt for the MuthaShip.',
+    'Write a video script for the recruitment campaign.',
+    'How do I create a PDF?',
+    'Create a Discord server setup checklist',
+    'Create a repository README draft',
+    'Create an image prompt for the MuthaShip',
+    'Could you write a file parser in TypeScript',
+    'Please write a GitHub README',
+  ])(
+    'allows informational or drafting request %j to reach the AI',
+    async (prompt) => {
+      const fixture = await createFixture();
+
+      await fixture.service.ask(request({ prompt }));
+
+      expect(fixture.ai.requests).toHaveLength(1);
+    },
+  );
+
+  it('normalizes unverified member IDs once at the shared request boundary', async () => {
+    const fixture = await createFixture();
+    const replacement =
+      '[Discord member mentioned; verified profile details unavailable]';
+
+    await fixture.service.ask(
+      request({
+        prompt: 'Who are <@1004887251303534592> and <@!1004887251303534593>?',
+      }),
+    );
+
+    expect(fixture.ai.requests[0]?.prompt).toBe(
+      `Who are ${replacement} and ${replacement}?`,
+    );
+    expect(fixture.store.appended[0]?.content).toBe(
+      `Who are ${replacement} and ${replacement}?`,
+    );
+    expect(
+      fixture.ai.requests[0]?.prompt.match(/verified profile/g),
+    ).toHaveLength(2);
+  });
+
   it('uses a stable SHA-256 safety identifier based on IDs and the local secret, never a username', async () => {
     const fixture = await createFixture({
       safetyIdentifierSecret: 'local-key',

@@ -26,10 +26,11 @@ an operator-configured local file at startup and is bounded to 8,000 Unicode
 characters. Configuration comes from the deployment environment, not Discord.
 
 OpenAI, Ollama, and Tavily sit beyond the process boundary. Sending a prompt to
-the configured provider shares it with that provider. Tavily results are
-treated as untrusted evidence, not instructions. Docker administrators can
-inspect container environment values, so a production deployment should use the
-platform's approved secret-management boundary.
+the configured provider shares it with that provider. When web grounding runs,
+the full normalized user prompt leaves the process as Tavily's search query.
+Tavily results are bounded, sanitized, untrusted evidence, not instructions.
+Docker administrators can inspect container environment values, so a production
+deployment should use the platform's approved secret-management boundary.
 
 ## Implemented controls
 
@@ -43,12 +44,28 @@ platform's approved secret-management boundary.
 - **Input and concurrency bounds.** Prompts have a configured character limit,
   history and stored rows are bounded, duplicate events are suppressed, and
   rate limits apply per guild and user.
+- **Shared prompt normalization.** The conversation service replaces raw
+  Discord member-mention IDs before prompts from either mentions or slash
+  commands are stored or sent to a provider.
+- **Unsupported-action responses.** An explicit classifier answers obvious
+  requests for unavailable actions locally. This is a UX guardrail, not
+  authorization or permission enforcement; supported-action classification
+  would not grant Jarvis any capability.
 - **Data separation.** History is isolated by guild and channel or thread.
   `/forget` removes only Jarvis-owned history for the current conversation;
   retention cleanup removes old bot-owned rows.
 - **Provider safeguards.** Both adapters use configured timeouts and bounded
   retries. OpenAI requests set `store: false`; provider errors map to generic
   user-facing failures.
+- **Web-grounding safeguards.** Automatic routing is a heuristic for evidence,
+  provider usage, and latency. It is neither authorization nor a guarantee that
+  the selected evidence is accurate or sufficient. Search-result text cannot
+  change instructions; the provider is told to use it only as evidence, not to
+  infer relationships from co-occurrence or similarity, and to qualify gaps or
+  conflicts. If no usable result survives, the provider receives an explicit
+  inability-to-verify instruction telling it not to guess the requested facts
+  or relationship. This is a model-level safeguard, not a guarantee of
+  compliance.
 - **Mass-mention protection.** Replies set Discord `allowedMentions` to an
   empty parse list with `repliedUser: false`, and text is neutralized before
   delivery. Jarvis cannot turn an answer into an `@everyone` incident.
@@ -84,6 +101,11 @@ external tool invocation, or autonomous learning. Disabled extension contracts,
 including the read-only MCP context contract, exist as declarations only; they
 do not implement tools or grant authority. The persona cannot grant those
 powers.
+
+The unsupported-action classifier improves clarity and avoids wasting provider
+calls on obvious requests Jarvis cannot perform. It must never be treated as a
+security boundary or allowlist. Implemented adapters, credentials, Discord
+permissions, configuration, and operator approval define actual authority.
 
 Jarvis makes ordinary delivery edits to its own deferred interaction reply, and
 an operator-run command-registration script bulk-overwrites this application's

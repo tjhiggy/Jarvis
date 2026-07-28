@@ -10,6 +10,7 @@ import {
 } from '../openai/openai-service.js';
 import { isAllowedChannel } from '../discord/access.js';
 import { EventDeduplicator } from '../security/event-deduplicator.js';
+import { classifyUnsupportedAction } from '../security/unsupported-action-classifier.js';
 import { RateLimiter } from '../security/rate-limiter.js';
 import type {
   ConversationMessage,
@@ -19,6 +20,7 @@ import {
   projectOperationalError,
   type OperationalLogger,
 } from '../utils/logger.js';
+import { replaceUnverifiedUserMentions } from '../utils/mentions.js';
 
 export interface ConversationRequest {
   readonly eventId: string;
@@ -215,18 +217,24 @@ export class ConversationService {
         }),
       );
 
-      stage = 'ai';
-      const response = await this.options.ai.respond({
-        instructions,
-        history,
-        prompt: normalized.prompt,
-        ...(normalized.webSearch === true ? { webSearch: true } : {}),
-        safetyIdentifier: createSafetyIdentifier(
-          this.options.safetyIdentifierSecret,
-          normalized.guildId,
-          normalized.userId,
-        ),
-      });
+      const localResponse = classifyUnsupportedAction(normalized.prompt);
+      const response =
+        localResponse === undefined
+          ? await (async () => {
+              stage = 'ai';
+              return this.options.ai.respond({
+                instructions,
+                history,
+                prompt: normalized.prompt,
+                ...(normalized.webSearch === true ? { webSearch: true } : {}),
+                safetyIdentifier: createSafetyIdentifier(
+                  this.options.safetyIdentifierSecret,
+                  normalized.guildId,
+                  normalized.userId,
+                ),
+              });
+            })()
+          : { text: localResponse };
 
       const assistantAppend = await lease.runIfCurrent(async () => {
         stage = 'storage_assistant_append';
@@ -347,7 +355,7 @@ export class ConversationService {
     const conversationId = request.conversationId.trim();
     const channelId = request.channelId.trim();
     const userId = request.userId.trim();
-    const prompt = request.prompt.trim();
+    const prompt = replaceUnverifiedUserMentions(request.prompt.trim());
     const parentChannelId = request.parentChannelId?.trim();
 
     if (

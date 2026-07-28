@@ -9,6 +9,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Comprehensive project documentation, policy guidance, GitHub intake forms, and the `docs:check` validation gate.
+- Local UX responses for clearly unsupported action requests, without treating classification as authorization.
+
+### Changed
+
+- Centralized Discord member-mention normalization in the conversation service so mention and slash-command requests share the same boundary.
+- Reworked the Jarvis persona for a sharper, more concise MuthaShip voice with stronger anti-fabrication rules and an explicit verified-member-data boundary.
+- Expanded automatic Tavily grounding from freshness-only prompts to a balanced policy for current and evidence-sensitive factual claims, while keeping basic definitions and ordinary drafting local.
+- Grounded answers now prohibit relationship claims based only on co-occurrence or similarity and direct the model to admit when usable evidence cannot verify the requested facts.
 
 ## [0.1.0] - 2026-07-28
 
