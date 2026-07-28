@@ -141,6 +141,88 @@ function Get-CommandArgumentTokens {
   }
 }
 
+function Get-QuotedArgumentSpans {
+  param(
+    [Parameter(Mandatory)]
+    [AllowEmptyString()]
+    [string]$Text
+  )
+
+  $spans = @()
+  $quote = [char]0
+  $quoteStart = -1
+
+  for ($index = 0; $index -lt $Text.Length; $index += 1) {
+    $character = $Text[$index]
+    if ($quote -eq [char]0) {
+      if ($character -in @([char]34, [char]39)) {
+        $quote = $character
+        $quoteStart = $index
+      }
+      continue
+    }
+
+    if ($character -ne $quote) {
+      continue
+    }
+
+    if (
+      $quote -eq [char]39 -and
+      $index + 1 -lt $Text.Length -and
+      $Text[$index + 1] -eq [char]39
+    ) {
+      $index += 1
+      continue
+    }
+
+    $escapeCount = 0
+    for ($escapeIndex = $index - 1; $escapeIndex -ge 0; $escapeIndex -= 1) {
+      if ($Text[$escapeIndex] -notin @([char]92, [char]96)) {
+        break
+      }
+      $escapeCount += 1
+    }
+    if ($escapeCount % 2 -eq 1) {
+      continue
+    }
+
+    $spans += [pscustomobject]@{
+      Start = $quoteStart
+      Length = $index - $quoteStart + 1
+    }
+    $quote = [char]0
+    $quoteStart = -1
+  }
+
+  if ($quote -ne [char]0) {
+    $spans += [pscustomobject]@{
+      Start = $quoteStart
+      Length = $Text.Length - $quoteStart
+    }
+  }
+
+  return $spans
+}
+
+function Test-IsInsideSpan {
+  param(
+    [Parameter(Mandatory)]
+    [int]$Index,
+
+    [Parameter(Mandatory)]
+    [AllowEmptyCollection()]
+    [object[]]$Spans
+  )
+
+  foreach ($span in $Spans) {
+    if ($Index -ge $span.Start -and $Index -lt $span.Start + $span.Length) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
 function Remove-DetectorPatternArguments {
   param(
     [Parameter(Mandatory)]
@@ -149,7 +231,13 @@ function Remove-DetectorPatternArguments {
   )
 
   $maskSpans = @()
-  $rgCommands = [regex]::Matches($Line, '(?i)(?<![A-Z0-9_-])rg(?=\s)')
+  $quotedSpans = @(Get-QuotedArgumentSpans -Text $Line)
+  $rgCommands = @(
+    [regex]::Matches($Line, '(?i)(?<![A-Z0-9_-])rg(?=\s)') |
+      Where-Object {
+        -not (Test-IsInsideSpan -Index $_.Index -Spans $quotedSpans)
+      }
+  )
   foreach ($rgCommand in $rgCommands) {
     $argumentStart = $rgCommand.Index + $rgCommand.Length
     $tokens = @(
@@ -263,9 +351,14 @@ function Remove-DetectorPatternArguments {
     }
   }
 
-  $selectStringCommands = [regex]::Matches(
-    $Line,
-    '(?i)(?<![A-Z0-9_-])Select-String(?=\s)'
+  $selectStringCommands = @(
+    [regex]::Matches(
+      $Line,
+      '(?i)(?<![A-Z0-9_-])Select-String(?=\s)'
+    ) |
+      Where-Object {
+        -not (Test-IsInsideSpan -Index $_.Index -Spans $quotedSpans)
+      }
   )
   foreach ($selectStringCommand in $selectStringCommands) {
     $argumentStart = $selectStringCommand.Index + $selectStringCommand.Length
@@ -292,13 +385,41 @@ function Remove-DetectorPatternArguments {
     }
   }
 
-  $maskedLine = $Line
-  $uniqueSpans = @(
+  $sortedSpans = @(
     $maskSpans |
       Sort-Object -Property Start, Length -Unique |
-      Sort-Object -Property Start -Descending
+      Sort-Object -Property Start, Length
   )
-  foreach ($span in $uniqueSpans) {
+  $mergedSpans = @()
+  foreach ($span in $sortedSpans) {
+    if ($span.Length -le 0) {
+      continue
+    }
+
+    if ($mergedSpans.Count -eq 0) {
+      $mergedSpans += [pscustomobject]@{
+        Start = $span.Start
+        Length = $span.Length
+      }
+      continue
+    }
+
+    $lastSpan = $mergedSpans[$mergedSpans.Count - 1]
+    $lastEnd = $lastSpan.Start + $lastSpan.Length
+    $spanEnd = $span.Start + $span.Length
+    if ($span.Start -le $lastEnd) {
+      $lastSpan.Length = [Math]::Max($lastEnd, $spanEnd) - $lastSpan.Start
+      continue
+    }
+
+    $mergedSpans += [pscustomobject]@{
+      Start = $span.Start
+      Length = $span.Length
+    }
+  }
+
+  $maskedLine = $Line
+  foreach ($span in @($mergedSpans | Sort-Object -Property Start -Descending)) {
     $maskedLine = $maskedLine.Remove($span.Start, $span.Length)
   }
 
