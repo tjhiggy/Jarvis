@@ -1,9 +1,47 @@
 import { describe, expect, it } from 'vitest';
 import {
   requiresCurrentInformation,
+  requiresWebGrounding,
   TavilySearchService,
   WebGroundedAIService,
 } from '../src/search/web-search.js';
+
+describe('requiresWebGrounding', () => {
+  it.each([
+    'Tell us about Kraft American Singles and its relation to government cheese.',
+    'What is the history of the USDA commodity cheese program?',
+    'What is the relationship between OpenAI and Microsoft?',
+    'What percentage of Americans used SNAP in 2025?',
+    'Who said "The future is already here" and when?',
+    'Is this medication safe during pregnancy?',
+    'What law governs this contract?',
+    'Is this investment federally insured?',
+    'Does creatine improve strength according to research?',
+    "What's the latest ARC Raiders update?",
+  ])('requires web grounding for %s', (prompt) => {
+    expect(requiresWebGrounding(prompt)).toBe(true);
+  });
+
+  it.each([
+    'What is RAM?',
+    'Write a MuthaShip short story.',
+    'Rewrite this announcement: Game night starts at eight.',
+    'Draft a repository README.',
+    'How do I reverse an array in TypeScript?',
+    'Summarize this supplied text: The engine is offline.',
+    'Create a Discord server setup checklist.',
+  ])('does not require web grounding for %s', (prompt) => {
+    expect(requiresWebGrounding(prompt)).toBe(false);
+  });
+
+  it('does not let a creative prefix suppress an embedded current-facts request', () => {
+    expect(
+      requiresWebGrounding(
+        "Write a short story explaining what's in the latest ARC Raiders update.",
+      ),
+    ).toBe(true);
+  });
+});
 
 describe('TavilySearchService', () => {
   it('performs a bounded basic search without requesting generated or raw content', async () => {
@@ -135,6 +173,30 @@ describe('WebGroundedAIService', () => {
     );
   });
 
+  it('automatically searches evidence-sensitive questions', async () => {
+    const searches: string[] = [];
+    const service = new WebGroundedAIService({
+      ai: { respond: async () => ({ text: 'Grounded answer.' }) },
+      search: {
+        search: async (prompt) => {
+          searches.push(prompt);
+          return { results: [] };
+        },
+      },
+    });
+    const prompt =
+      'Tell us about Kraft American Singles and its relation to government cheese.';
+
+    await service.respond({
+      instructions: 'You are Jarvis.',
+      history: [],
+      prompt,
+      safetyIdentifier: 'crew-1',
+    });
+
+    expect(searches).toEqual([prompt]);
+  });
+
   it('does not mistake editing instructions for current-information requests', () => {
     expect(
       requiresCurrentInformation('Please update this Discord announcement.'),
@@ -190,7 +252,7 @@ describe('WebGroundedAIService', () => {
     const response = await service.respond({
       instructions: 'You are Jarvis.',
       history: [],
-      prompt: 'latest report',
+      prompt: 'What is RAM?',
       safetyIdentifier: 'crew-1',
       webSearch: true,
     });

@@ -45,6 +45,39 @@ interface CacheEntry {
 const maxCacheEntries = 200;
 const maxSourceContentChars = 1_200;
 const maxSourceTitleChars = 200;
+const explicitFreshnessSignal =
+  /\b(latest|today|tonight|currently|recent|recently|newest|news|this (?:week|month|year)|next (?:event|game|match|release))\b/i;
+const currentQuestionSignal =
+  /\b(?:what|when|where|who|how|is|are|has|have|did|does)\b.{0,40}\bcurrent\b/i;
+const releaseInformationSignal =
+  /\b(?:patch|game update|release date|released|patch notes)\b.{0,60}\b(?:game|version|available|live|out|date|notes)\b/i;
+const historyOrOriginSignal =
+  /\b(?:history|historical|origin|origins|originated|founded|established|began|started)\b/i;
+const governmentLawOrPublicProgramSignal =
+  /\b(?:government|federal(?:ly)?|state law|law|laws|legal|legislation|regulation|regulations|regulatory|usda|snap|medicaid|medicare|social security|public (?:benefit|program|assistance))\b/i;
+const namedEntityRelationshipSignal =
+  /\b(?:relationship|relation|connection|partnership|affiliation|ownership|ties?)\s+(?:between|to|with)\b/i;
+const datedStatisticPriceRankingOrQuotationSignal =
+  /(?:\b(?:percentage|percent|rate|share|statistic|statistics|price|cost|ranking|ranked)\b.{0,80}\b(?:19|20)\d{2}\b)|(?:\b(?:19|20)\d{2}\b.{0,80}\b(?:percentage|percent|rate|share|statistic|statistics|price|cost|ranking|ranked)\b)|(?:\bwho said\b.{0,160}(?:["“”']|\bquote\b)|(?:["“”'][^"“”']{3,160}["“”']).{0,80}\b(?:who said|when)\b)/i;
+const medicalClaimSignal =
+  /\b(?:medication|medicine|drug|dosage|dose|treatment|symptom|diagnosis|side effect|pregnan(?:t|cy)|breastfeed(?:ing)?)\b.{0,80}\b(?:safe|unsafe|risk|effective|interact|during|cause|treat|prevent|should|can|does|is)\b|\b(?:safe|unsafe|risk|effective|interact|during|cause|treat|prevent|should|can|does|is)\b.{0,80}\b(?:medication|medicine|drug|dosage|dose|treatment|symptom|diagnosis|side effect|pregnan(?:t|cy)|breastfeed(?:ing)?)\b/i;
+const legalClaimSignal =
+  /\b(?:what|which)\s+(?:law|regulation)\b|\b(?:law|regulation)\s+(?:applies|governs|requires|allows|prohibits)\b|\b(?:legal|illegal|lawful|liable|liability)\b/i;
+const financialClaimSignal =
+  /\b(?:investment|account|deposit|loan|mortgage|security|fund)\b.{0,80}\b(?:insured|guaranteed|safe|risk|return|protected)\b|\b(?:insured|guaranteed|safe|risk|return|protected)\b.{0,80}\b(?:investment|account|deposit|loan|mortgage|security|fund)\b/i;
+const evidenceDependentScientificClaimSignal =
+  /\b(?:according to|based on)\s+(?:the\s+)?(?:research|studies|evidence)\b|\b(?:research|studies|evidence|science)\s+(?:shows?|suggests?|supports?|says?|on|for|against)\b/i;
+
+const suppliedTextExclusion =
+  /^(?:please\s+)?(?:summarize|rewrite|edit|proofread|polish|translate)\s+(?:this|the following|these supplied)\b/i;
+const draftingExclusion =
+  /^(?:please\s+)?(?:write|draft|rewrite|edit|proofread|polish|compose|create|brainstorm)\b/i;
+const creativeExclusion =
+  /^(?:please\s+)?(?:write|create|brainstorm)\b.{0,120}\b(?:story|poem|song|fiction|scene|character|idea)\b/i;
+const basicDefinitionExclusion =
+  /^(?:please\s+)?(?:what|who)\s+(?:is|are)\s+[^?]+\??$/i;
+const timelessCodeExclusion =
+  /^(?:please\s+)?(?:how (?:do|can|would) i|show me how to|write|create|implement)\b.{0,160}\b(?:array|typescript|javascript|python|function|method|code|regex|algorithm|data structure)\b/i;
 
 export class TavilySearchService implements WebSearchService {
   private readonly fetch: typeof globalThis.fetch;
@@ -132,10 +165,7 @@ export class WebGroundedAIService implements AIService {
   }
 
   async respond(request: AIRequest): Promise<AIResponse> {
-    if (
-      request.webSearch !== true &&
-      !requiresCurrentInformation(request.prompt)
-    ) {
+    if (request.webSearch !== true && !requiresWebGrounding(request.prompt)) {
       return this.options.ai.respond(request);
     }
 
@@ -175,17 +205,47 @@ export class WebGroundedAIService implements AIService {
 }
 
 export const requiresCurrentInformation = (prompt: string): boolean => {
-  const freshnessSignal =
-    /\b(latest|today|tonight|currently|recent|recently|newest|news|this (?:week|month|year)|next (?:event|game|match|release))\b/i;
-  const currentQuestion =
-    /\b(?:what|when|where|who|how|is|are|has|have|did|does)\b.{0,40}\bcurrent\b/i;
-  const releaseQuestion =
-    /\b(?:patch|game update|release date|released|patch notes)\b.{0,60}\b(?:game|version|available|live|out|date|notes)\b/i;
   return (
-    freshnessSignal.test(prompt) ||
-    currentQuestion.test(prompt) ||
-    releaseQuestion.test(prompt)
+    explicitFreshnessSignal.test(prompt) ||
+    currentQuestionSignal.test(prompt) ||
+    releaseInformationSignal.test(prompt)
   );
+};
+
+export const requiresWebGrounding = (prompt: string): boolean => {
+  const normalizedPrompt = prompt.trim().replace(/\s+/g, ' ');
+  if (normalizedPrompt === '' || suppliedTextExclusion.test(normalizedPrompt)) {
+    return false;
+  }
+
+  const groundingSignals = [
+    explicitFreshnessSignal,
+    currentQuestionSignal,
+    releaseInformationSignal,
+    historyOrOriginSignal,
+    governmentLawOrPublicProgramSignal,
+    namedEntityRelationshipSignal,
+    datedStatisticPriceRankingOrQuotationSignal,
+    medicalClaimSignal,
+    legalClaimSignal,
+    financialClaimSignal,
+    evidenceDependentScientificClaimSignal,
+  ];
+  if (groundingSignals.some((signal) => signal.test(normalizedPrompt))) {
+    return true;
+  }
+
+  const exclusions = [
+    draftingExclusion,
+    creativeExclusion,
+    basicDefinitionExclusion,
+    timelessCodeExclusion,
+  ];
+  if (exclusions.some((exclusion) => exclusion.test(normalizedPrompt))) {
+    return false;
+  }
+
+  return false;
 };
 
 function buildGroundedPrompt(
