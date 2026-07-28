@@ -155,7 +155,8 @@ function Get-QuotedArgumentSpans {
   for ($index = 0; $index -lt $Text.Length; $index += 1) {
     $character = $Text[$index]
     if ($quote -eq [char]0) {
-      if ($character -in @([char]34, [char]39)) {
+      $isAtTokenBoundary = $index -eq 0 -or [char]::IsWhiteSpace($Text[$index - 1])
+      if ($isAtTokenBoundary -and $character -in @([char]34, [char]39)) {
         $quote = $character
         $quoteStart = $index
       }
