@@ -4,6 +4,9 @@ type LogLevel =
   'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent';
 
 export interface AppConfig {
+  readonly ai: Readonly<{
+    provider: 'openai' | 'ollama';
+  }>;
   readonly discord: Readonly<{
     token: string;
     clientId: string;
@@ -14,6 +17,18 @@ export interface AppConfig {
     model: string;
     timeoutMs: number;
     maxRetries: number;
+  }>;
+  readonly ollama: Readonly<{
+    baseUrl: string;
+    model: string;
+    timeoutMs: number;
+    maxRetries: number;
+  }>;
+  readonly webSearch: Readonly<{
+    apiKey: string;
+    timeoutMs: number;
+    cacheTtlMs: number;
+    maxResults: number;
   }>;
   readonly storage: Readonly<{
     databasePath: string;
@@ -77,12 +92,24 @@ const channelIds = z.preprocess(
   z.array(z.string().min(1)).default([]),
 );
 
-const environmentSchema = z.object({
+const baseEnvironmentSchema = z.object({
   DISCORD_TOKEN: requiredString,
   DISCORD_CLIENT_ID: requiredString,
   DISCORD_GUILD_ID: requiredString,
-  OPENAI_API_KEY: requiredString,
+  AI_PROVIDER: z.enum(['openai', 'ollama']).default('openai'),
+  OPENAI_API_KEY: z.string().trim().default(''),
   OPENAI_MODEL: optionalString('gpt-5.6-luna'),
+  OLLAMA_BASE_URL: z
+    .url()
+    .refine((value) => ['http:', 'https:'].includes(new URL(value).protocol))
+    .default('http://127.0.0.1:11434'),
+  OLLAMA_MODEL: optionalString('gemma3:4b'),
+  OLLAMA_TIMEOUT_MS: integer(120000, 1),
+  OLLAMA_MAX_RETRIES: integer(1, 0, 10),
+  TAVILY_API_KEY: z.string().trim().default(''),
+  WEB_SEARCH_TIMEOUT_MS: integer(10000, 1),
+  WEB_SEARCH_CACHE_TTL_MS: integer(3600000, 1),
+  WEB_SEARCH_MAX_RESULTS: integer(5, 1, 5),
   MAX_HISTORY_MESSAGES: integer(20, 1),
   MAX_STORED_MESSAGES: integer(10000, 1),
   LOG_LEVEL: z
@@ -100,7 +127,19 @@ const environmentSchema = z.object({
   RESTRAINED_CHANNEL_IDS: channelIds,
 });
 
-const discordRegistrationSchema = environmentSchema.pick({
+const environmentSchema = baseEnvironmentSchema.superRefine(
+  (value, context) => {
+    if (value.AI_PROVIDER === 'openai' && value.OPENAI_API_KEY === '') {
+      context.addIssue({
+        code: 'custom',
+        path: ['OPENAI_API_KEY'],
+        message: 'OPENAI_API_KEY is required when AI_PROVIDER=openai.',
+      });
+    }
+  },
+);
+
+const discordRegistrationSchema = baseEnvironmentSchema.pick({
   DISCORD_TOKEN: true,
   DISCORD_CLIENT_ID: true,
   DISCORD_GUILD_ID: true,
@@ -131,6 +170,7 @@ const readonlySet = (values: string[]): ReadonlySet<string> => {
 export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
   const parsed = parseEnvironment(environmentSchema, env);
   return Object.freeze({
+    ai: Object.freeze({ provider: parsed.AI_PROVIDER }),
     discord: Object.freeze({
       token: parsed.DISCORD_TOKEN,
       clientId: parsed.DISCORD_CLIENT_ID,
@@ -141,6 +181,18 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
       model: parsed.OPENAI_MODEL,
       timeoutMs: parsed.OPENAI_TIMEOUT_MS,
       maxRetries: parsed.OPENAI_MAX_RETRIES,
+    }),
+    ollama: Object.freeze({
+      baseUrl: parsed.OLLAMA_BASE_URL.replace(/\/+$/, ''),
+      model: parsed.OLLAMA_MODEL,
+      timeoutMs: parsed.OLLAMA_TIMEOUT_MS,
+      maxRetries: parsed.OLLAMA_MAX_RETRIES,
+    }),
+    webSearch: Object.freeze({
+      apiKey: parsed.TAVILY_API_KEY,
+      timeoutMs: parsed.WEB_SEARCH_TIMEOUT_MS,
+      cacheTtlMs: parsed.WEB_SEARCH_CACHE_TTL_MS,
+      maxResults: parsed.WEB_SEARCH_MAX_RESULTS,
     }),
     storage: Object.freeze({
       databasePath: parsed.DATABASE_PATH,

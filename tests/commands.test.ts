@@ -11,11 +11,12 @@ import { isAllowedChannel } from '../src/discord/access.js';
 const safeMentions = { parse: [], repliedUser: false };
 
 describe('command definitions', () => {
-  it('publishes only the four supported commands with the configured prompt limit', () => {
+  it('publishes the supported commands with configured question limits', () => {
     const definitions = createCommandDefinitions(123);
 
     expect(definitions.map((definition) => definition.name)).toEqual([
       'ask',
+      'search',
       'forget',
       'help',
       'status',
@@ -29,6 +30,10 @@ describe('command definitions', () => {
           max_length: 123,
         },
       ],
+    });
+    expect(definitions[1]).toMatchObject({
+      name: 'search',
+      options: [{ name: 'query', required: true, max_length: 123 }],
     });
   });
 
@@ -108,6 +113,58 @@ describe('handleCommand', () => {
         channelId: 'channel-1',
         userId: 'user-1',
         prompt: 'Where is the reactor manual?',
+      }),
+    ]);
+  });
+
+  it('forces current web grounding for /search', async () => {
+    const fake = interaction({
+      commandName: 'search',
+      prompt: 'ARC Raiders update',
+    });
+    const requests: unknown[] = [];
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        ask: async (request) => {
+          requests.push(request);
+          return { status: 'success', text: 'Grounded answer.' };
+        },
+      }),
+    );
+
+    expect(requests).toEqual([
+      expect.objectContaining({
+        prompt: 'ARC Raiders update',
+        webSearch: true,
+      }),
+    ]);
+    expect(fake.edits).toEqual([
+      expect.objectContaining({ content: 'Grounded answer.' }),
+    ]);
+  });
+
+  it('rejects /search safely when no web-search key is configured', async () => {
+    const fake = interaction({ commandName: 'search' });
+    let requests = 0;
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        tavilyApiKey: '',
+        ask: async () => {
+          requests += 1;
+          return { status: 'success', text: 'This must not run.' };
+        },
+      }),
+    );
+
+    expect(requests).toBe(0);
+    expect(fake.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/web search.*not configured/i),
+        ephemeral: true,
       }),
     ]);
   });
@@ -268,6 +325,7 @@ describe('handleCommand', () => {
     ]);
     const content = fake.replies[0]?.content ?? '';
     expect(content).toContain('/forget');
+    expect(content).toContain('/search');
     expect(content).toContain('/help');
     expect(content).toContain('/status');
     expect(content).not.toMatch(/moderate|ban|kick|role/i);
@@ -304,7 +362,7 @@ describe('handleCommand', () => {
     },
   );
 
-  it('reports configured Discord and OpenAI plus database health without a model request', async () => {
+  it('reports the configured AI provider plus database health without a model request', async () => {
     const fake = interaction({ commandName: 'status' });
     let databaseChecks = 0;
 
@@ -322,7 +380,7 @@ describe('handleCommand', () => {
     expect(fake.replies).toEqual([
       expect.objectContaining({
         content: expect.stringMatching(
-          /Discord: configured[\s\S]*Database: healthy[\s\S]*OpenAI: configured/i,
+          /Discord: configured[\s\S]*Database: healthy[\s\S]*AI provider: Ollama[\s\S]*AI configuration: configured[\s\S]*Web search: configured/i,
         ),
         ephemeral: true,
         allowedMentions: safeMentions,
@@ -383,7 +441,12 @@ function interaction(
         isThread: () => overrides.isThread ?? false,
       },
       user: { id: 'user-1' },
-      options: { getString: (name) => (name === 'prompt' ? prompt : null) },
+      options: {
+        getString: (name) =>
+          name === (commandName === 'search' ? 'query' : 'prompt')
+            ? prompt
+            : null,
+      },
       deferReply: async (payload) => {
         deferred.push(payload);
       },
@@ -407,6 +470,7 @@ function dependencies(
     ask: CommandDependencies['conversationService']['ask'];
     clear: CommandDependencies['conversationService']['clear'];
     healthCheck: CommandDependencies['store']['healthCheck'];
+    tavilyApiKey: string;
   }> = {},
 ): CommandDependencies {
   return {
@@ -417,6 +481,12 @@ function dependencies(
         guildId: 'guild-1',
       },
       openai: { apiKey: 'openai-key' },
+      ai: { provider: 'ollama' },
+      ollama: {
+        baseUrl: 'http://127.0.0.1:11434',
+        model: 'qwen3:8b',
+      },
+      webSearch: { apiKey: overrides.tavilyApiKey ?? 'tvly-secret' },
       security: {
         allowedChannelIds: overrides.allowedChannelIds ?? new Set<string>(),
         maxInputChars: overrides.maxInputChars ?? 100,

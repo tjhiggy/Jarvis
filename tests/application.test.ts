@@ -5,6 +5,7 @@ import { loadPersona, type TrustedPersona } from '../src/config/persona.js';
 import { createApplication, reportStartupFailure } from '../src/index.js';
 
 const config: AppConfig = {
+  ai: { provider: 'openai' },
   discord: {
     token: 'discord-token',
     clientId: 'client-id',
@@ -15,6 +16,18 @@ const config: AppConfig = {
     model: 'test-model',
     timeoutMs: 1_000,
     maxRetries: 0,
+  },
+  ollama: {
+    baseUrl: 'http://127.0.0.1:11434',
+    model: 'qwen3:8b',
+    timeoutMs: 120_000,
+    maxRetries: 1,
+  },
+  webSearch: {
+    apiKey: '',
+    timeoutMs: 10_000,
+    cacheTtlMs: 3_600_000,
+    maxResults: 5,
   },
   storage: {
     databasePath: ':memory:',

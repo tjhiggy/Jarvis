@@ -162,6 +162,9 @@ describe('ConversationService', () => {
 
     expect(result.message).not.toContain(internalDetail);
     expect(result.message).not.toContain('super-secret');
+    expect(result.message).toBe(
+      'The MuthaShip is conducting required galactic maintenance on all non-Alien life-form systems. JARVIS will resume operations when the maintenance cycle is complete. Please try your request again later.',
+    );
     expect(fixture.store.appended).toHaveLength(1);
     expect(fixture.store.appended[0]).toMatchObject({ role: 'user' });
   });
@@ -446,10 +449,10 @@ describe('ConversationService', () => {
           userId: 'user-1',
           elapsedMs: 37,
           outcome: 'ai_error',
-          stage: 'openai',
+          stage: 'ai',
           errorClass: 'OpenAIServiceError',
           errorCode: 'quota',
-          errorCategory: 'openai',
+          errorCategory: 'ai',
         },
         message: 'Conversation request failed.',
       },

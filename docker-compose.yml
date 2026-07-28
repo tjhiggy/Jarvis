@@ -16,6 +16,8 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    extra_hosts:
+      - host.docker.internal:host-gateway
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
     volumes:

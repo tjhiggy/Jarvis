@@ -46,6 +46,63 @@ describe('loadConfig', () => {
     );
   });
 
+  it('allows Ollama without an OpenAI API key and normalizes its URL', () => {
+    const config = loadConfig({
+      DISCORD_TOKEN: 'discord-token',
+      DISCORD_CLIENT_ID: '123',
+      DISCORD_GUILD_ID: '456',
+      AI_PROVIDER: 'ollama',
+      OLLAMA_BASE_URL: 'http://host.docker.internal:11434/',
+      OLLAMA_MODEL: 'qwen3:8b',
+    });
+
+    expect(config.ai.provider).toBe('ollama');
+    expect(config.ollama).toEqual({
+      baseUrl: 'http://host.docker.internal:11434',
+      model: 'qwen3:8b',
+      timeoutMs: 120_000,
+      maxRetries: 1,
+    });
+    expect(config.openai.apiKey).toBe('');
+    expect(config.webSearch).toEqual({
+      apiKey: '',
+      timeoutMs: 10_000,
+      cacheTtlMs: 3_600_000,
+      maxResults: 5,
+    });
+  });
+
+  it('loads bounded Tavily web-search settings without exposing the key', () => {
+    const config = loadConfig({
+      ...validEnv,
+      TAVILY_API_KEY: 'tvly-secret',
+      WEB_SEARCH_TIMEOUT_MS: '7000',
+      WEB_SEARCH_CACHE_TTL_MS: '1800000',
+      WEB_SEARCH_MAX_RESULTS: '3',
+    });
+
+    expect(config.webSearch).toEqual({
+      apiKey: 'tvly-secret',
+      timeoutMs: 7_000,
+      cacheTtlMs: 1_800_000,
+      maxResults: 3,
+    });
+    expect(() =>
+      loadConfig({ ...validEnv, WEB_SEARCH_MAX_RESULTS: '6' }),
+    ).toThrow(/WEB_SEARCH_MAX_RESULTS/);
+  });
+
+  it('still requires an API key when OpenAI is selected', () => {
+    expect(() =>
+      loadConfig({
+        DISCORD_TOKEN: 'discord-token',
+        DISCORD_CLIENT_ID: '123',
+        DISCORD_GUILD_ID: '456',
+        AI_PROVIDER: 'openai',
+      }),
+    ).toThrow(/OPENAI_API_KEY/);
+  });
+
   it('keeps channel policy immutable through public and Set prototype paths', () => {
     const config = loadConfig({ ...validEnv, ALLOWED_CHANNEL_IDS: '1' });
     const channelIds = config.security.allowedChannelIds;

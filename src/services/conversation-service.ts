@@ -28,6 +28,7 @@ export interface ConversationRequest {
   readonly parentChannelId?: string;
   readonly userId: string;
   readonly prompt: string;
+  readonly webSearch?: boolean;
   readonly isBot?: boolean;
   /** Present on some Discord events, but deliberately never forwarded to AI. */
   readonly username?: string;
@@ -84,6 +85,7 @@ interface NormalizedRequest {
   readonly parentChannelId?: string;
   readonly userId: string;
   readonly prompt: string;
+  readonly webSearch?: boolean;
 }
 
 const invalidInputMessage = 'Please provide a valid request.';
@@ -91,7 +93,7 @@ const disallowedMessage = 'This channel is not available for requests.';
 const duplicateMessage = 'That request has already been handled.';
 const rateLimitedMessage = 'Too many requests. Please try again shortly.';
 const serviceErrorMessage =
-  'The AI service is unavailable. Please try again later.';
+  'The MuthaShip is conducting required galactic maintenance on all non-Alien life-form systems. JARVIS will resume operations when the maintenance cycle is complete. Please try your request again later.';
 const forgottenMessage =
   'This request was cancelled because the conversation was cleared.';
 const maxActiveConversationStates = 10_000;
@@ -110,7 +112,7 @@ type ConversationStage =
   | 'coordination'
   | 'storage_read'
   | 'storage_user_append'
-  | 'openai'
+  | 'ai'
   | 'storage_assistant_append';
 
 export class ConversationService {
@@ -213,11 +215,12 @@ export class ConversationService {
         }),
       );
 
-      stage = 'openai';
+      stage = 'ai';
       const response = await this.options.ai.respond({
         instructions,
         history,
         prompt: normalized.prompt,
+        ...(normalized.webSearch === true ? { webSearch: true } : {}),
         safetyIdentifier: createSafetyIdentifier(
           this.options.safetyIdentifierSecret,
           normalized.guildId,
@@ -366,6 +369,7 @@ export class ConversationService {
       channelId,
       userId,
       prompt,
+      ...(request.webSearch === true ? { webSearch: true } : {}),
       ...(parentChannelId === undefined || parentChannelId === ''
         ? {}
         : { parentChannelId }),
@@ -521,8 +525,8 @@ function elapsedMilliseconds(startedAt: number, finishedAt: number): number {
 }
 
 function errorCategory(stage: ConversationStage): string {
-  if (stage === 'openai') {
-    return 'openai';
+  if (stage === 'ai') {
+    return 'ai';
   }
   return stage.startsWith('storage') ? 'storage' : 'coordination';
 }

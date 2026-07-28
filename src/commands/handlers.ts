@@ -31,6 +31,9 @@ export interface CommandDependencies {
   readonly config: Readonly<{
     discord: Readonly<{ token: string; clientId: string; guildId: string }>;
     openai: Readonly<{ apiKey: string }>;
+    ai: Readonly<{ provider: 'openai' | 'ollama' }>;
+    ollama: Readonly<{ baseUrl: string; model: string }>;
+    webSearch: Readonly<{ apiKey: string }>;
     security: Readonly<{
       allowedChannelIds: ReadonlySet<string>;
       maxInputChars: number;
@@ -45,6 +48,7 @@ export interface CommandDependencies {
       readonly parentChannelId?: string;
       readonly userId: string;
       readonly prompt: string;
+      readonly webSearch?: boolean;
     }): Promise<ConversationResult>;
     clear(request: {
       readonly eventId: string;
@@ -62,10 +66,13 @@ const invalidInputMessage = 'Please provide a valid request.';
 const disallowedMessage = 'This channel is not available for requests.';
 const operationalErrorMessage =
   'The request could not be completed. Please try again later.';
+const webSearchNotConfiguredMessage =
+  'Web search is not configured on the MuthaShip.';
 const unknownCommandMessage =
   'Unknown command. Use /help for available commands.';
 const helpMessage = [
   '/ask prompt:<question> asks Jarvis a question.',
+  '/search query:<question> searches current web sources before Jarvis answers.',
   '/forget clears Jarvis history in this channel or thread.',
   '/help lists the available commands.',
   '/status reports safe service configuration and database health.',
@@ -78,7 +85,10 @@ export const handleCommand = async (
 ): Promise<void> => {
   switch (interaction.commandName) {
     case 'ask':
-      await handleAsk(interaction, dependencies);
+      await handleAsk(interaction, dependencies, false);
+      return;
+    case 'search':
+      await handleAsk(interaction, dependencies, true);
       return;
     case 'forget':
       await handleForget(interaction, dependencies);
@@ -113,6 +123,7 @@ const rejectDirectMessage = async (
 const handleAsk = async (
   interaction: CommandInteraction,
   dependencies: CommandDependencies,
+  forceWebSearch: boolean,
 ): Promise<void> => {
   const guildId = interaction.guildId?.trim();
   if (guildId === undefined || guildId === '') {
@@ -134,7 +145,14 @@ const handleAsk = async (
     return;
   }
 
-  const prompt = interaction.options.getString('prompt')?.trim();
+  if (forceWebSearch && dependencies.config.webSearch.apiKey.trim() === '') {
+    await replySafely(interaction, webSearchNotConfiguredMessage, true);
+    return;
+  }
+
+  const prompt = interaction.options
+    .getString(forceWebSearch ? 'query' : 'prompt')
+    ?.trim();
   if (
     prompt === undefined ||
     prompt === '' ||
@@ -154,6 +172,7 @@ const handleAsk = async (
       channelId,
       userId: interaction.user.id,
       prompt,
+      ...(forceWebSearch ? { webSearch: true } : {}),
       ...(parentChannelId === undefined ? {} : { parentChannelId }),
     });
   } catch {
@@ -221,14 +240,25 @@ const handleStatus = async (
     dependencies.config.discord.clientId,
     dependencies.config.discord.guildId,
   ].every((value) => value.trim() !== '');
-  const openAIConfigured = dependencies.config.openai.apiKey.trim() !== '';
+  const provider = dependencies.config.ai.provider;
+  const aiConfigured =
+    provider === 'openai'
+      ? dependencies.config.openai.apiKey.trim() !== ''
+      : dependencies.config.ollama.baseUrl.trim() !== '' &&
+        dependencies.config.ollama.model.trim() !== '';
 
   await replySafely(
     interaction,
     [
       `Discord: ${discordConfigured ? 'configured' : 'not configured'}`,
       `Database: ${databaseHealthy ? 'healthy' : 'unhealthy'}`,
-      `OpenAI: ${openAIConfigured ? 'configured' : 'not configured'}`,
+      `AI provider: ${provider === 'ollama' ? 'Ollama' : 'OpenAI'}`,
+      `AI configuration: ${aiConfigured ? 'configured' : 'not configured'}`,
+      `Web search: ${
+        dependencies.config.webSearch.apiKey.trim() !== ''
+          ? 'configured'
+          : 'not configured'
+      }`,
     ].join('\n'),
     true,
   );

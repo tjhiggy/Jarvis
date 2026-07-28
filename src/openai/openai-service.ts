@@ -20,6 +20,7 @@ export interface AIRequest {
   readonly history: readonly ConversationTurn[];
   readonly prompt: string;
   readonly safetyIdentifier: string;
+  readonly webSearch?: boolean;
 }
 
 export interface AIResponse {

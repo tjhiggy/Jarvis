@@ -152,12 +152,69 @@ In restrained technical channels it favors direct delivery:
 
 Threads inherit the restrained mode of a listed parent channel.
 
-## 8. Set the OpenAI API key
+## 8. Choose the AI provider
+
+Jarvis supports local Ollama and the OpenAI Responses API. Ollama is the
+default in `.env.example`, requires no API credits, and keeps prompts on the
+machine running the model.
+
+Install Ollama, pull a model, and configure local development:
+
+```powershell
+ollama pull gemma3:4b
+```
+
+```dotenv
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=gemma3:4b
+OLLAMA_TIMEOUT_MS=120000
+OLLAMA_MAX_RETRIES=1
+```
+
+When Jarvis runs in Docker Desktop and Ollama runs on the Windows host, use:
+
+```dotenv
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+```
+
+Do not expose Ollama's port to the public internet. Local inference has no
+per-message API bill, but it uses local memory, disk, GPU/CPU time, and
+electricity. The first answer after a model has unloaded can be slower.
+
+### Optional live web search
+
+Add a Tavily API key to let Jarvis answer questions that require current
+information:
+
+```dotenv
+TAVILY_API_KEY=tvly-your-key
+WEB_SEARCH_TIMEOUT_MS=10000
+WEB_SEARCH_CACHE_TTL_MS=3600000
+WEB_SEARCH_MAX_RESULTS=5
+```
+
+Jarvis automatically searches for clearly time-sensitive requests containing
+terms such as `latest`, `today`, `current`, `news`, `update`, or `patch`.
+Members can force a current search with:
+
+```text
+/search query:latest ARC Raiders update
+```
+
+Searches use Tavily's one-credit basic mode, request at most five summarized
+results, never request raw page content, and cache equivalent queries for one
+hour by default. Jarvis appends source links to grounded answers. Search-result
+text is treated as untrusted evidence and cannot authorize actions or override
+Jarvis's safety instructions.
+
+To use OpenAI instead:
 
 Create a dedicated project and project-scoped secret in the
 [OpenAI API platform](https://platform.openai.com/), then set:
 
 ```dotenv
+AI_PROVIDER=openai
 OPENAI_API_KEY=your_project_api_key
 OPENAI_MODEL=gpt-5.6-luna
 ```
@@ -223,12 +280,38 @@ npm start
 ```
 
 Mention the bot with a nonempty prompt or use `/ask`. `/help` lists commands,
-`/status` checks Discord, database, and OpenAI configuration without making a
-paid model request, and `/forget` deletes bot-owned history only for the current
-guild channel or thread.
+`/status` checks Discord, database, and the selected AI provider configuration
+without making a model request, and `/forget` deletes bot-owned history only
+for the current guild channel or thread.
 
 Stop with `Ctrl+C` so Jarvis can stop accepting work, close SQLite, and
 disconnect cleanly.
+
+### Low-memory Windows hosts
+
+On a 16 GB Windows machine, run Jarvis directly with `npm start` instead of
+keeping Docker Desktop's WSL VM resident. Ollama and the native Node.js process
+can communicate through `http://127.0.0.1:11434` without Docker's additional
+memory overhead.
+
+If Docker is still used occasionally, a conservative `%USERPROFILE%\.wslconfig`
+can keep WSL from swallowing the workstation:
+
+```ini
+[wsl2]
+memory=3GB
+processors=4
+swap=1GB
+vmIdleTimeout=60000
+
+[experimental]
+autoMemoryReclaim=gradual
+sparseVhd=true
+```
+
+Restart WSL or Docker Desktop after changing that file. Do not run both the
+Dockerized and native Jarvis processes at once, unless duplicate Discord
+responses sound like a feature to you.
 
 ## 11. Run with Docker
 

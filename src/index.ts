@@ -17,6 +17,11 @@ import {
   OpenAIResponsesService,
   type AIService,
 } from './openai/openai-service.js';
+import { OllamaChatService } from './ollama/ollama-service.js';
+import {
+  TavilySearchService,
+  WebGroundedAIService,
+} from './search/web-search.js';
 import { EventDeduplicator } from './security/event-deduplicator.js';
 import { RateLimiter } from './security/rate-limiter.js';
 import { ConversationService } from './services/conversation-service.js';
@@ -77,18 +82,43 @@ const loadEnvironmentOnce = (): void => {
   }
 };
 
-const createDefaultAIService = (config: AppConfig): AIService =>
-  new OpenAIResponsesService({
-    client: new OpenAI({
-      apiKey: config.openai.apiKey,
-      timeout: config.openai.timeoutMs,
+const createDefaultAIService = (config: AppConfig): AIService => {
+  let ai: AIService;
+  if (config.ai.provider === 'ollama') {
+    ai = new OllamaChatService({
+      baseUrl: config.ollama.baseUrl,
+      model: config.ollama.model,
+      timeoutMs: config.ollama.timeoutMs,
+      maxRetries: config.ollama.maxRetries,
+      maxOutputTokens: 1_000,
+    });
+  } else {
+    ai = new OpenAIResponsesService({
+      client: new OpenAI({
+        apiKey: config.openai.apiKey,
+        timeout: config.openai.timeoutMs,
+        maxRetries: config.openai.maxRetries,
+      }),
+      model: config.openai.model,
+      timeoutMs: config.openai.timeoutMs,
       maxRetries: config.openai.maxRetries,
+      maxOutputTokens: 1_000,
+    });
+  }
+
+  if (config.webSearch.apiKey === '') {
+    return ai;
+  }
+  return new WebGroundedAIService({
+    ai,
+    search: new TavilySearchService({
+      apiKey: config.webSearch.apiKey,
+      timeoutMs: config.webSearch.timeoutMs,
+      cacheTtlMs: config.webSearch.cacheTtlMs,
+      maxResults: config.webSearch.maxResults,
     }),
-    model: config.openai.model,
-    timeoutMs: config.openai.timeoutMs,
-    maxRetries: config.openai.maxRetries,
-    maxOutputTokens: 1_000,
   });
+};
 
 const createDefaultDiscordClient = (): RuntimeDiscordClient =>
   new Client({
@@ -196,7 +226,10 @@ export const createApplication = async (
       restrainedChannelIds: config.persona.restrainedChannelIds,
       maxInputChars: config.security.maxInputChars,
       maxHistoryMessages: config.storage.maxHistoryMessages,
-      safetyIdentifierSecret: config.openai.apiKey,
+      safetyIdentifierSecret:
+        config.openai.apiKey.trim() === ''
+          ? config.discord.token
+          : config.openai.apiKey,
       logger,
       elapsedNow,
     });

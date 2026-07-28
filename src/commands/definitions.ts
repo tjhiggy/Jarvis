@@ -1,6 +1,6 @@
 export interface CommandOptionDefinition {
   readonly type: 3;
-  readonly name: 'prompt';
+  readonly name: 'prompt' | 'query';
   readonly description: string;
   readonly required: true;
   readonly max_length: number;
@@ -8,7 +8,7 @@ export interface CommandOptionDefinition {
 
 export interface CommandDefinition {
   readonly type: 1;
-  readonly name: 'ask' | 'forget' | 'help' | 'status';
+  readonly name: 'ask' | 'search' | 'forget' | 'help' | 'status';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -34,6 +34,20 @@ export const createCommandDefinitions = (
           type: 3,
           name: 'prompt',
           description: 'The question to ask.',
+          required: true,
+          max_length: Math.min(maxInputChars, discordStringOptionMaxLength),
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'search',
+      description: 'Search current web sources and ask Jarvis.',
+      options: [
+        {
+          type: 3,
+          name: 'query',
+          description: 'The current information to search for.',
           required: true,
           max_length: Math.min(maxInputChars, discordStringOptionMaxLength),
         },

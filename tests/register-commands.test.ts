@@ -44,6 +44,6 @@ describe('registerCommands', () => {
           ? definition.name
           : undefined,
       ),
-    ).toEqual(['ask', 'forget', 'help', 'status']);
+    ).toEqual(['ask', 'search', 'forget', 'help', 'status']);
   });
 });
