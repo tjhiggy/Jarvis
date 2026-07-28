@@ -68,6 +68,22 @@ describe('requiresWebGrounding', () => {
       ),
     ).toBe(true);
   });
+
+  it.each([
+    'Draft a memo explaining the relationship between OpenAI and Microsoft.',
+    'Write a story explaining the relationship between OpenAI and Microsoft.',
+  ])(
+    'does not let drafting or creative framing suppress a named-entity relationship request: %s',
+    (prompt) => {
+      expect(requiresWebGrounding(prompt)).toBe(true);
+    },
+  );
+
+  it('grounds version-specific technical help instead of treating it as timeless code', () => {
+    expect(
+      requiresWebGrounding('How do I write TypeScript 6.0 decorators?'),
+    ).toBe(true);
+  });
 });
 
 describe('TavilySearchService', () => {

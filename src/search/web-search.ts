@@ -51,6 +51,8 @@ const currentQuestionSignal =
   /\b(?:what|when|where|who|how|is|are|has|have|did|does)\b.{0,40}\bcurrent\b/i;
 const releaseInformationSignal =
   /\b(?:patch|game update|release date|released|patch notes)\b.{0,60}\b(?:game|version|available|live|out|date|notes)\b/i;
+const versionSpecificTechnicalSignal =
+  /\b(?:node(?:\.js)?|typescript|javascript|python|react|discord\.js)\s+(?:v(?:ersion)?\s*)?\d+(?:\.\d+){0,2}\b/i;
 const historyOrOriginSignal =
   /\b(?:history|origins?|origin stor(?:y|ies)|historical (?:context|background|development))\s+of\b|\b(?:originated|founded|established|began|started)\b/i;
 const governmentLawOrPublicProgramSignal =
@@ -294,7 +296,8 @@ export const requiresWebGrounding = (prompt: string): boolean => {
 
   if (
     explicitFreshnessSignal.test(routingPrompt) ||
-    releaseInformationSignal.test(routingPrompt)
+    releaseInformationSignal.test(routingPrompt) ||
+    versionSpecificTechnicalSignal.test(routingPrompt)
   ) {
     return true;
   }
@@ -307,7 +310,8 @@ export const requiresWebGrounding = (prompt: string): boolean => {
     currentQuestionSignal.test(routingPrompt) ||
     medicalClaimSignal.test(routingPrompt) ||
     legalClaimSignal.test(routingPrompt) ||
-    financialClaimSignal.test(routingPrompt)
+    financialClaimSignal.test(routingPrompt) ||
+    hasNamedEntityRelationship(routingPrompt)
   ) {
     return true;
   }
@@ -320,10 +324,7 @@ export const requiresWebGrounding = (prompt: string): boolean => {
     return false;
   }
 
-  if (
-    historyOrOriginSignal.test(routingPrompt) ||
-    hasNamedEntityRelationship(routingPrompt)
-  ) {
+  if (historyOrOriginSignal.test(routingPrompt)) {
     return true;
   }
 
