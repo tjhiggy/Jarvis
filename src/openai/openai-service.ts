@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { APIConnectionTimeoutError, APIUserAbortError } from 'openai';
 import { OpenAIServiceError } from './openai-errors.js';
 
 export interface ConversationTurn {
@@ -40,7 +41,7 @@ export interface OpenAIResponsesClient {
   readonly responses: Readonly<{
     create(
       request: ResponsesRequest,
-      options: Readonly<{ signal: AbortSignal }>,
+      options: Readonly<{ signal: AbortSignal; maxRetries: 0 }>,
     ): Promise<ResponsesResult>;
   }>;
 }
@@ -66,6 +67,9 @@ const systemTimer: Timer = {
   clearTimeout: (handle) => clearTimeout(handle as NodeJS.Timeout),
 };
 
+const delay = (delayMs: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, delayMs));
+
 export class OpenAIResponsesService implements AIService {
   private readonly timer: Timer;
   private readonly sleep: (delayMs: number) => Promise<void>;
@@ -73,7 +77,7 @@ export class OpenAIResponsesService implements AIService {
 
   constructor(private readonly options: OpenAIResponsesServiceOptions) {
     this.timer = options.timer ?? systemTimer;
-    this.sleep = options.sleep ?? (async () => undefined);
+    this.sleep = options.sleep ?? delay;
     this.jitter = options.jitter ?? Math.random;
   }
 
@@ -113,7 +117,7 @@ export class OpenAIResponsesService implements AIService {
             .update(request.safetyIdentifier)
             .digest('hex'),
         },
-        { signal: controller.signal },
+        { signal: controller.signal, maxRetries: 0 },
       );
 
       if (response.output_text === null || response.output_text.trim() === '') {
@@ -121,6 +125,16 @@ export class OpenAIResponsesService implements AIService {
       }
 
       return { text: response.output_text, responseId: response.id };
+    } catch (error) {
+      if (
+        controller.signal.aborted ||
+        error instanceof APIUserAbortError ||
+        error instanceof APIConnectionTimeoutError
+      ) {
+        throw new OpenAIServiceError('timeout', { cause: error });
+      }
+
+      throw error;
     } finally {
       this.timer.clearTimeout(timeout);
     }

@@ -1,16 +1,19 @@
 import { createHash } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { APIConnectionTimeoutError, APIUserAbortError } from 'openai';
+import { describe, expect, it, vi } from 'vitest';
 import { OpenAIServiceError } from '../src/openai/openai-errors.js';
 import { OpenAIResponsesService } from '../src/openai/openai-service.js';
 
 describe('OpenAIResponsesService', () => {
   it('sends an ordered private Responses request and returns the response text', async () => {
     const requests: unknown[] = [];
+    const requestOptions: unknown[] = [];
     const service = new OpenAIResponsesService({
       client: {
         responses: {
-          create: async (request) => {
+          create: async (request, options) => {
             requests.push(request);
+            requestOptions.push(options);
             return { id: 'resp_123', output_text: 'At your service.' };
           },
         },
@@ -48,6 +51,9 @@ describe('OpenAIResponsesService', () => {
           .update('guild-7:user-9')
           .digest('hex'),
       },
+    ]);
+    expect(requestOptions).toEqual([
+      { signal: expect.any(AbortSignal), maxRetries: 0 },
     ]);
   });
 
@@ -147,6 +153,45 @@ describe('OpenAIResponsesService', () => {
     });
     expect(attempts).toBe(2);
     expect(delays).toEqual([100]);
+  });
+
+  it('waits for the default exponential delay before retrying', async () => {
+    vi.useFakeTimers();
+    let attempts = 0;
+    const service = new OpenAIResponsesService({
+      client: {
+        responses: {
+          create: async () => {
+            attempts += 1;
+            if (attempts === 1) {
+              throw { status: 500, code: 'server_error' };
+            }
+
+            return { id: 'resp_delayed', output_text: 'Eventually.' };
+          },
+        },
+      },
+      model: 'gpt-test',
+      timeoutMs: 1_000,
+      maxRetries: 1,
+      maxOutputTokens: 321,
+      jitter: () => 0,
+    });
+
+    try {
+      const response = service.respond(request());
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(attempts).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(response).resolves.toEqual({
+        text: 'Eventually.',
+        responseId: 'resp_delayed',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each([
@@ -283,6 +328,102 @@ describe('OpenAIResponsesService', () => {
       code: 'timeout',
     } satisfies Partial<OpenAIServiceError>);
     expect(cleared).toEqual(['request-timeout']);
+  });
+
+  it('maps an APIUserAbortError-like rejection after its own abort to timeout without retrying', async () => {
+    let timeoutCallback: (() => void) | undefined;
+    let attempts = 0;
+    const delays: number[] = [];
+    const service = new OpenAIResponsesService({
+      client: {
+        responses: {
+          create: async (_request, { signal }) => {
+            attempts += 1;
+            timeoutCallback?.();
+            expect(signal.aborted).toBe(true);
+            throw Object.assign(new Error('Request was aborted.'), {
+              name: 'APIUserAbortError',
+            });
+          },
+        },
+      },
+      model: 'gpt-test',
+      timeoutMs: 500,
+      maxRetries: 3,
+      maxOutputTokens: 321,
+      sleep: async (delayMs) => {
+        delays.push(delayMs);
+      },
+      timer: {
+        setTimeout: (callback) => {
+          timeoutCallback = callback;
+          return 'request-timeout';
+        },
+        clearTimeout: () => undefined,
+      },
+    });
+
+    await expect(service.respond(request())).rejects.toMatchObject({
+      code: 'timeout',
+    } satisfies Partial<OpenAIServiceError>);
+    expect(attempts).toBe(1);
+    expect(delays).toEqual([]);
+  });
+
+  it('maps an SDK connection-timeout error to timeout without retrying', async () => {
+    let attempts = 0;
+    const delays: number[] = [];
+    const service = new OpenAIResponsesService({
+      client: {
+        responses: {
+          create: async () => {
+            attempts += 1;
+            throw new APIConnectionTimeoutError();
+          },
+        },
+      },
+      model: 'gpt-test',
+      timeoutMs: 500,
+      maxRetries: 3,
+      maxOutputTokens: 321,
+      sleep: async (delayMs) => {
+        delays.push(delayMs);
+      },
+    });
+
+    await expect(service.respond(request())).rejects.toMatchObject({
+      code: 'timeout',
+    } satisfies Partial<OpenAIServiceError>);
+    expect(attempts).toBe(1);
+    expect(delays).toEqual([]);
+  });
+
+  it('maps an SDK user-abort error to timeout without retrying', async () => {
+    let attempts = 0;
+    const delays: number[] = [];
+    const service = new OpenAIResponsesService({
+      client: {
+        responses: {
+          create: async () => {
+            attempts += 1;
+            throw new APIUserAbortError();
+          },
+        },
+      },
+      model: 'gpt-test',
+      timeoutMs: 500,
+      maxRetries: 3,
+      maxOutputTokens: 321,
+      sleep: async (delayMs) => {
+        delays.push(delayMs);
+      },
+    });
+
+    await expect(service.respond(request())).rejects.toMatchObject({
+      code: 'timeout',
+    } satisfies Partial<OpenAIServiceError>);
+    expect(attempts).toBe(1);
+    expect(delays).toEqual([]);
   });
 
   it('clears the individual timer created for each retry attempt', async () => {
