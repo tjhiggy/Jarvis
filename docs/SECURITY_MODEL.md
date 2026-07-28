@@ -52,10 +52,11 @@ platform's approved secret-management boundary.
 - **Mass-mention protection.** Replies set Discord `allowedMentions` to an
   empty parse list with `repliedUser: false`, and text is neutralized before
   delivery. Jarvis cannot turn an answer into an `@everyone` incident.
-- **Credential redaction.** Structured logs redact token, API-key, and
-  authorization-shaped fields, including nested headers. Error projection keeps
-  safe class/category/code metadata rather than error messages, stacks, content,
-  or secret values.
+- **Credential redaction.** Structured logs recursively redact values under
+  keys named `token`, `apiKey`, or `authorization` (case-insensitive), including
+  those keys in nested headers. This is not a general secret detector for
+  differently named fields. Error projection keeps safe class/category/code
+  metadata rather than error messages, stacks, content, or secret values.
 - **Database safety.** SQLite uses parameterized statements, WAL mode,
   foreign-key enforcement, and a five-second busy timeout.
 

@@ -64,8 +64,8 @@ Global registration is not implemented as a runtime toggle. It is a future, manu
 | `/ask prompt:<text>`   | Sends a bounded prompt to the selected provider with history from the current channel or thread.         |
 | `/search query:<text>` | Requires `TAVILY_API_KEY`; grounds the question with current Tavily results before the provider answers. |
 | `/forget`              | Deletes Jarvis's stored history for the current guild channel or thread and responds ephemerally.        |
-| `/help`                | Lists the available commands and safety boundary in a server channel.                                    |
-| `/status`              | Reports safe configuration and SQLite health information without making a model request.                 |
+| `/help`                | Lists the available commands and safety boundary in an ephemeral server-channel response.                |
+| `/status`              | Reports safe configuration and SQLite health information ephemerally without making a model request.     |
 
 `/ask`, `/search`, and `/forget` enforce the channel allowlist. All commands are server-only; direct messages receive a safe unavailable response. Direct mentions require a non-empty prompt after the bot mention.
 

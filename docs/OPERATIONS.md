@@ -30,12 +30,14 @@ Windows startup script redirects Node and Ollama output to `%TEMP%` log files;
 Compose exposes container output through `docker compose logs jarvis`.
 
 Collect only the timestamp, component, error class, error category, safe error
-code, version, and deployment mode needed for triage. The logger redacts
-credential-shaped fields such as token, API key, and authorization values, and
-projects errors without their message, stack, content, or secrets. That is a
-control, not a license to paste raw output everywhere. Do not include prompts,
-assistant responses, Discord identifiers, `.env` data, or database copies in
-an incident report.
+code, version, and deployment mode needed for triage. The logger recursively
+redacts values under keys named `token`, `apiKey`, or `authorization`
+(case-insensitive), including those keys in nested headers, and projects errors
+without their message, stack, content, or secrets. It is not a general secret
+detector, so differently named fields remain the caller's responsibility. That
+is a control, not a license to paste raw output everywhere. Do not include
+prompts, assistant responses, Discord identifiers, `.env` data, or database
+copies in an incident report.
 
 ## Provider health
 
