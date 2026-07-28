@@ -3,6 +3,12 @@ import { resolve } from 'node:path';
 
 export type PersonaMode = 'immersive' | 'restrained';
 
+declare const trustedPersonaBrand: unique symbol;
+
+export type TrustedPersona = Readonly<{
+  [trustedPersonaBrand]: true;
+}>;
+
 export interface PersonaModeInput {
   readonly channelId: string;
   readonly parentChannelId?: string;
@@ -10,6 +16,7 @@ export interface PersonaModeInput {
 }
 
 const MAX_PERSONA_CHARS = 8_000;
+const trustedPersonaContent = new WeakMap<TrustedPersona, string>();
 
 const invariantSafetyInstructions = [
   'Jarvis is an advisory AI, never a server authority or moderator.',
@@ -40,6 +47,12 @@ const validateMaximumLength = (maxChars: number): number => {
   return Math.min(maxChars, MAX_PERSONA_CHARS);
 };
 
+const toTrustedPersona = (content: string): TrustedPersona => {
+  const persona = Object.freeze({}) as TrustedPersona;
+  trustedPersonaContent.set(persona, content);
+  return persona;
+};
+
 export const resolvePersonaMode = ({
   channelId,
   parentChannelId,
@@ -62,7 +75,7 @@ export const resolvePersonaMode = ({
 export const loadPersona = async (
   configuredPath: string,
   maxChars = MAX_PERSONA_CHARS,
-): Promise<string> => {
+): Promise<TrustedPersona> => {
   const maximumLength = validateMaximumLength(maxChars);
 
   if (configuredPath.trim() === '') {
@@ -74,27 +87,29 @@ export const loadPersona = async (
     throw new Error('Persona file must not be empty.');
   }
 
-  if (content.length > maximumLength) {
+  if (Array.from(content).length > maximumLength) {
     throw new Error(
       `Persona file exceeds the ${maximumLength.toLocaleString('en-US')} characters limit.`,
     );
   }
 
-  return content;
+  return toTrustedPersona(content);
 };
 
 export const composeInstructions = (
-  persona: string,
+  persona: TrustedPersona,
   mode: PersonaMode,
 ): string => {
-  const trustedPersona = persona.trim();
-  if (trustedPersona === '') {
-    throw new Error('Persona content must not be empty.');
+  const content = trustedPersonaContent.get(persona);
+  if (content === undefined) {
+    throw new Error(
+      'Instructions require a trusted persona loaded from operator configuration.',
+    );
   }
 
   return [
     invariantSafetyInstructions,
-    trustedPersona,
+    content,
     modeInstructions[mode],
   ].join('\n\n');
 };
