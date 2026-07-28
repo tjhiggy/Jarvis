@@ -23,6 +23,13 @@ describe('requiresWebGrounding', () => {
     'Is aspirin safe?',
     'Is my money FDIC insured?',
     'Does creatine improve strength?',
+    'What is the origin story of Unix?',
+    'Explain the historical context of the dot-com bubble.',
+    "What is OpenAI's relationship with Microsoft?",
+    "Explain Apple's connection to OpenAI.",
+    'Write a story explaining what is current in AI regulation.',
+    'Draft a memo explaining what law governs this contract.',
+    'What is the safest dose of aspirin?',
   ])('requires web grounding for %s', (prompt) => {
     expect(requiresWebGrounding(prompt)).toBe(true);
   });
@@ -41,6 +48,7 @@ describe('requiresWebGrounding', () => {
     'How do I access the current element in a TypeScript array?',
     'What is government?',
     'What is the relationship between RAM and storage?',
+    "Summarize this supplied text: The engine is offline. What's the latest ARC Raiders update?",
   ])('does not require web grounding for %s', (prompt) => {
     expect(requiresWebGrounding(prompt)).toBe(false);
   });

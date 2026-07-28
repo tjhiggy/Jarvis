@@ -52,15 +52,17 @@ const currentQuestionSignal =
 const releaseInformationSignal =
   /\b(?:patch|game update|release date|released|patch notes)\b.{0,60}\b(?:game|version|available|live|out|date|notes)\b/i;
 const historyOrOriginSignal =
-  /\b(?:history|origins?)\s+of\b|\b(?:originated|founded|established|began|started)\b/i;
+  /\b(?:history|origins?|origin stor(?:y|ies)|historical (?:context|background|development))\s+of\b|\b(?:originated|founded|established|began|started)\b/i;
 const governmentLawOrPublicProgramSignal =
   /\b(?:government|federal(?:ly)?|state law|law|laws|legal|legislation|regulation|regulations|regulatory|usda|snap|medicaid|medicare|social security|public (?:benefit|program|assistance))\b/i;
 const namedEntityRelationshipSignal =
   /\b(?:relationship|relation|connection|partnership|affiliation|ownership|ties?)\s+between\s+(.{1,60}?)\s+and\s+(.{1,60}?)(?:[?.!,]|$)/i;
+const possessiveNamedEntityRelationshipSignal =
+  /\b([A-Z][\p{L}\p{N}&.-]*(?:\s+[A-Z][\p{L}\p{N}&.-]*){0,3})['’]s\s+(?:relationship|relation|connection|partnership|affiliation|ownership|ties?)\s+(?:with|to)\s+([A-Z][\p{L}\p{N}&.-]*(?:\s+[A-Z][\p{L}\p{N}&.-]*){0,3})(?:[?.!,]|$)/u;
 const datedStatisticPriceRankingOrQuotationSignal =
   /(?:\b(?:percentage|percent|rate|share|statistic|statistics|price|cost|ranking|ranked)\b.{0,80}\b(?:19|20)\d{2}\b)|(?:\b(?:19|20)\d{2}\b.{0,80}\b(?:percentage|percent|rate|share|statistic|statistics|price|cost|ranking|ranked)\b)|(?:\bwho said\b.{0,160}(?:["“”']|\bquote\b)|(?:["“”'][^"“”']{3,160}["“”']).{0,80}\b(?:who said|when)\b)/i;
 const medicalClaimSignal =
-  /\b(?:medication|medicine|drug|aspirin|ibuprofen|acetaminophen|dosage|dose|treatment|symptom|diagnosis|side effect|pregnan(?:t|cy)|breastfeed(?:ing)?)\b.{0,80}\b(?:safe|unsafe|risk|effective|interact|during|cause|treat|prevent|should|can|does|is)\b|\b(?:safe|unsafe|risk|effective|interact|during|cause|treat|prevent|should|can|does|is)\b.{0,80}\b(?:medication|medicine|drug|aspirin|ibuprofen|acetaminophen|dosage|dose|treatment|symptom|diagnosis|side effect|pregnan(?:t|cy)|breastfeed(?:ing)?)\b/i;
+  /\b(?:medication|medicine|drug|aspirin|ibuprofen|acetaminophen|dosage|dose|treatment|symptom|diagnosis|side effect|pregnan(?:t|cy)|breastfeed(?:ing)?)\b.{0,80}\b(?:safe|safest|unsafe|risk|effective|interact|during|cause|treat|prevent|should|can|does|is)\b|\b(?:safe|safest|unsafe|risk|effective|interact|during|cause|treat|prevent|should|can|does|is)\b.{0,80}\b(?:medication|medicine|drug|aspirin|ibuprofen|acetaminophen|dosage|dose|treatment|symptom|diagnosis|side effect|pregnan(?:t|cy)|breastfeed(?:ing)?)\b/i;
 const legalClaimSignal =
   /\b(?:what|which)\s+(?:law|regulation)\b|\b(?:law|regulation)\s+(?:applies|governs|requires|allows|prohibits)\b|\b(?:legal|illegal|lawful|liable|liability)\b/i;
 const financialClaimSignal =
@@ -71,7 +73,7 @@ const evidenceDependentScientificClaimSignal =
 const suppliedTextExclusion =
   /^(?:please\s+)?(?:summarize|rewrite|edit|proofread|polish|translate)\s+(?:this|the following|these supplied)\b/i;
 const additionalRequestClauseSignal =
-  /(?:[.!?;]\s+)(?:also(?:,\s*|\s+))?((?:what(?:'s| is)|who|when|where|how|is|are|does|do|can|could|would|will|explain|tell|find|research|look up)\b.*)$/i;
+  /(?:[.!?;]\s+)(?:also|additionally|separately|then)(?:,\s*|\s+)((?:what(?:'s| is)|who|when|where|how|is|are|does|do|can|could|would|will|explain|tell|find|research|look up)\b.*)$/i;
 const draftingExclusion =
   /^(?:please\s+)?(?:write|draft|rewrite|edit|proofread|polish|compose|create|brainstorm)\b/i;
 const creativeExclusion =
@@ -231,12 +233,17 @@ function looksLikeNamedEntity(value: string): boolean {
 }
 
 function hasNamedEntityRelationship(prompt: string): boolean {
-  const match = namedEntityRelationshipSignal.exec(prompt);
-  return (
-    match !== null &&
-    looksLikeNamedEntity(match[1] ?? '') &&
-    looksLikeNamedEntity(match[2] ?? '')
-  );
+  return [
+    namedEntityRelationshipSignal,
+    possessiveNamedEntityRelationshipSignal,
+  ].some((signal) => {
+    const match = signal.exec(prompt);
+    return (
+      match !== null &&
+      looksLikeNamedEntity(match[1] ?? '') &&
+      looksLikeNamedEntity(match[2] ?? '')
+    );
+  });
 }
 
 export const requiresWebGrounding = (prompt: string): boolean => {
@@ -261,19 +268,28 @@ export const requiresWebGrounding = (prompt: string): boolean => {
     return true;
   }
 
-  const wholeRequestExclusions = [
-    draftingExclusion,
-    creativeExclusion,
-    timelessCodeExclusion,
-  ];
-  if (
-    wholeRequestExclusions.some((exclusion) => exclusion.test(routingPrompt))
-  ) {
+  if (timelessCodeExclusion.test(routingPrompt)) {
     return false;
   }
 
   if (
     currentQuestionSignal.test(routingPrompt) ||
+    medicalClaimSignal.test(routingPrompt) ||
+    legalClaimSignal.test(routingPrompt) ||
+    financialClaimSignal.test(routingPrompt)
+  ) {
+    return true;
+  }
+
+  if (
+    [draftingExclusion, creativeExclusion].some((exclusion) =>
+      exclusion.test(routingPrompt),
+    )
+  ) {
+    return false;
+  }
+
+  if (
     historyOrOriginSignal.test(routingPrompt) ||
     hasNamedEntityRelationship(routingPrompt)
   ) {
@@ -287,9 +303,6 @@ export const requiresWebGrounding = (prompt: string): boolean => {
   return [
     governmentLawOrPublicProgramSignal,
     datedStatisticPriceRankingOrQuotationSignal,
-    medicalClaimSignal,
-    legalClaimSignal,
-    financialClaimSignal,
     evidenceDependentScientificClaimSignal,
   ].some((signal) => signal.test(routingPrompt));
 };
