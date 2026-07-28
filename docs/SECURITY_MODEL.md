@@ -76,11 +76,13 @@ current setting.
 
 ## Prohibited capabilities and administration policy
 
-This release has no contract or code path for arbitrary shell or code execution,
-arbitrary file access, Discord server administration, deleting or editing other
-members' content, GitHub writes, external tool invocation, or autonomous
-learning. The persona cannot grant those powers. Future extension interfaces are
-deliberately inert and disabled.
+This release has no enabled capability or implemented execution path for
+arbitrary shell or code execution, arbitrary file access, Discord server
+administration, deleting or editing other members' content, GitHub writes,
+external tool invocation, or autonomous learning. Disabled extension contracts,
+including the read-only MCP context contract, exist as declarations only; they
+do not implement tools or grant authority. The persona cannot grant those
+powers.
 
 Jarvis makes ordinary delivery edits to its own deferred interaction reply, and
 an operator-run command-registration script bulk-overwrites this application's
