@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "docs:check": "pwsh -NoProfile -File scripts/validate-docs.ps1",
     "register-commands": "tsx scripts/register-commands.ts"
   },
   "dependencies": {

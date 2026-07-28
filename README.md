@@ -1,468 +1,239 @@
 # Jarvis Discord Bot
 
 Jarvis is The Muthaship's answer-only advisory AI: useful first, shipboard wit
-second, imaginary moderator powers never. It responds to `/ask` and direct
-mentions, keeps short conversation history per Discord channel or thread, and
-uses the OpenAI Responses API.
+second, imaginary moderator powers never. It answers questions in Discord,
+keeps bounded conversation history per channel or thread, and can use local or
+hosted AI without pretending an interface is a superpower.
 
-## 1. Architecture
+Current release: `0.1.0` | Runtime: Node.js 22+ | License: proprietary
 
-Jarvis is a layered modular monolith running as one Node.js 22 process:
+## What ships
 
-1. `discord.js` receives guild messages and application-command interactions
-   over Discord's outbound Gateway connection.
-2. Discord adapters normalize mentions and `/ask` requests.
-3. The conversation service enforces channel access, input limits, per-user
-   rate limits, duplicate suppression, persona mode, and isolated history.
-4. The OpenAI adapter calls the Responses API with bounded retries, a timeout,
-   and a 1,000-token output ceiling.
-5. SQLite stores bot-owned conversation records by guild and channel or thread.
-6. Safe delivery neutralizes Discord mentions and splits long responses.
+| Verified capability                                                        | Current boundary                                                                                |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `/ask`, `/search`, `/forget`, `/help`, and `/status`, plus direct mentions | Server channels only; `/ask`, `/search`, and `/forget` enforce the configured channel allowlist |
+| Short conversation context stored in SQLite                                | Isolated by guild and channel or thread; not encrypted by the application                       |
+| Local Ollama and OpenAI Responses providers                                | Exactly one provider is selected at startup                                                     |
+| Optional Tavily grounding for current information                          | Disabled without `TAVILY_API_KEY`; search results are untrusted evidence                        |
+| Bounded input, output, retries, rate limits, retention, and stored rows    | Single-process controls, not distributed coordination                                           |
+| Native Node.js and hardened Docker Compose deployment paths                | One active Jarvis process and one SQLite database are the supported topology                    |
 
-There is no web server and no inbound port to expose. The default deployment is
-one process with one SQLite database. Store and extension interfaces leave room
-for PostgreSQL, workers, and read-only integrations later without pretending
-those features already exist.
+Jarvis does not moderate Discord, change roles or channels, edit content owned
+by others, execute shell commands, access arbitrary files, write to GitHub, or
+grant itself tools. The contracts in `src/extensions/contracts.ts` are inert
+design seams. Calling them "integrations" would be marketing with a fake
+mustache.
 
-## 2. Prerequisites
+See [Architecture](docs/ARCHITECTURE.md) for the source-backed component and
+trust-boundary detail, and [Roadmap](docs/ROADMAP.md) for the sharp line between
+shipped and proposed work.
+
+## Architecture at a glance
+
+Jarvis is a layered modular monolith with no HTTP server or inbound listening
+port:
+
+1. `discord.js` receives outbound Discord Gateway events and interactions.
+2. Discord adapters normalize requests and enforce server, channel, thread, and
+   reply-safety rules.
+3. The conversation service applies input limits, de-duplication, per-user rate
+   limits, persona mode, history isolation, and coordinated storage changes.
+4. Optional Tavily search grounds current-information requests.
+5. The selected Ollama or OpenAI adapter produces a bounded answer.
+6. SQLite stores bot-owned conversation records, and safe delivery neutralizes
+   mentions and splits long replies.
+
+The copied `.env.example` is Ollama-first. Ollama runs locally and needs no API
+credits. OpenAI is an optional hosted provider, and Tavily is an optional web
+grounding service. Provider choice changes where prompts are processed, not
+what authority Jarvis has.
+
+## First local run
+
+### Prerequisites
 
 - Node.js 22 or newer and npm.
-- A Discord account that can create an application and install it in the target
-  server. Installing normally requires **Manage Server** in that server.
-- An OpenAI API project with billing configured and a project-scoped API key.
-- Docker Engine with Docker Compose v2 if using the container deployment.
-- A server you are authorized to configure. Production is a lousy place to
-  discover that "I thought I had permission" is not a permission model.
+- Ollama installed locally for the default provider.
+- A Discord application installed in a server you are authorized to configure.
+- The nonprivileged `Guilds` and `GuildMessages` intents, plus only View
+  Channel, Read Message History, Send Messages, and Send Messages in Threads
+  where needed.
 
-Clone the repository, then create the local environment file:
+Create the application, bot identity, least-privilege installation, and
+development guild using [Discord setup](docs/DISCORD_SETUP.md). Do not grant
+Administrator. It is not a shortcut; it is a security incident wearing a
+checkbox.
 
-```powershell
-Copy-Item .env.example .env
-```
-
-The committed `.env.example` contains blank placeholders and safe defaults.
-Put real credentials only in the ignored `.env` file or a production secret
-manager.
-
-## 3. Create the Discord application
-
-1. Open the [Discord Developer Portal](https://discord.com/developers/applications)
-   and select **New Application**.
-2. Give it a name such as `Jarvis`, accept Discord's terms, and create it.
-3. On **General Information**, record the **Application ID**. This is
-   `DISCORD_CLIENT_ID`.
-4. Configure the installation for a server, not a user-only installation.
-
-The application is the container for the bot identity, credentials, OAuth
-settings, and commands. Creating it does not install anything into a server.
-
-## 4. Create and configure the bot user
-
-Open the application's **Bot** page and create or add the bot user if Discord
-has not already provisioned it.
-
-Do not enable any privileged intents. The code requests only the nonprivileged
-Guilds and Guild Messages intents. Discord includes message content when a
-message directly mentions the application, which is the only message path
-Jarvis handles. It does not need Message Content, Presence, or Server Members.
-
-Choose whether the bot may be installed publicly based on your operation. A
-private bot is the safer default for a single-server deployment.
-
-## 5. Grant minimum Discord permissions
-
-In the Developer Portal's installation defaults or OAuth2 URL Generator, select
-the `bot` and `applications.commands` scopes. Calculate the bot permission
-integer there from the minimum permissions needed in Jarvis channels:
-
-- **View Channels**
-- **Send Messages**
-- **Read Message History**
-- **Embed Links**, optional if you want rich link previews
-- **Send Messages in Threads**, only when Jarvis will operate in threads
-
-Members also need **Use Application Commands** where they will invoke slash
-commands. Channel and role overrides can narrow access further.
-
-Do not grant **Administrator**, Manage Channels, Manage Roles, Manage Messages,
-moderation permissions, or webhook permissions. Administrator is not a
-shortcut. It is a surrender note disguised as a checkbox.
-
-After the portal calculates the minimum permission integer, substitute only the
-two placeholders in this invitation template:
-
-```text
-https://discord.com/oauth2/authorize?client_id=YOUR_DISCORD_CLIENT_ID&scope=bot%20applications.commands&permissions=REPLACE_WITH_CALCULATED_MINIMUM_PERMISSION_INTEGER
-```
-
-Open the completed URL, select the server, review the requested permissions,
-and authorize the installation. Never paste a fabricated client ID or a broad
-precomputed administrator value into documentation.
-
-## 6. Set the Discord token
-
-On the Developer Portal's **Bot** page, reset or reveal the bot token and put it
-in `.env`:
-
-```dotenv
-DISCORD_TOKEN=your_bot_token
-```
-
-The bot token is a password. It is not the Application ID, public key, OAuth
-client secret, or OpenAI key. Never commit it, paste it into chat, bake it into
-an image, or place it in this README. If it is exposed, reset it immediately in
-the portal and replace the deployed value.
-
-## 7. Set client, guild, and channel IDs
-
-Set the application and target server identifiers:
-
-```dotenv
-DISCORD_CLIENT_ID=your_application_id
-DISCORD_GUILD_ID=your_server_id
-```
-
-The client ID is the **Application ID** on the application's General
-Information page. To copy server and channel IDs, enable **Developer Mode** in
-Discord under User Settings, Advanced. Then right-click the server or channel
-and choose **Copy ID**.
-
-Map channels with comma-separated IDs:
-
-```dotenv
-ALLOWED_CHANNEL_IDS=YOUR_IMMERSIVE_CHANNEL_ID,YOUR_TECHNICAL_CHANNEL_ID
-RESTRAINED_CHANNEL_IDS=YOUR_TECHNICAL_CHANNEL_ID
-```
-
-`ALLOWED_CHANNEL_IDS` is the access boundary. An empty value allows every
-server channel where the bot role has the required permissions, so an explicit
-production allowlist is strongly recommended. A listed parent channel also
-allows its threads.
-
-`RESTRAINED_CHANNEL_IDS` changes tone, not access. Jarvis is immersive by
-default:
-
-> Crew brief: the cache is stale. Purge it, restart the worker, and the ship
-> should stop screaming into the void.
-
-In restrained technical channels it favors direct delivery:
-
-> Diagnosis: the cache is stale. Clear it, restart the worker, and verify the
-> next request.
-
-Threads inherit the restrained mode of a listed parent channel.
-
-## 8. Choose the AI provider
-
-Jarvis supports local Ollama and the OpenAI Responses API. Ollama is the
-default in `.env.example`, requires no API credits, and keeps prompts on the
-machine running the model.
-
-Install Ollama, pull a model, and configure local development:
+Pull the default local model:
 
 ```powershell
 ollama pull gemma3:4b
 ```
 
-```dotenv
-AI_PROVIDER=ollama
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=gemma3:4b
-OLLAMA_TIMEOUT_MS=120000
-OLLAMA_MAX_RETRIES=1
-```
+Then use this four-command local quick start:
 
-When Jarvis runs in Docker Desktop and Ollama runs on the Windows host, use:
+1. Install exactly the locked dependencies.
+
+   ```powershell
+   npm ci
+   ```
+
+2. Create the ignored local environment file.
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+   Before continuing, set `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, and
+   `DISCORD_GUILD_ID` in `.env`. Keep real values out of commits, tickets,
+   screenshots, and chat. The default `AI_PROVIDER=ollama` does not require an
+   OpenAI key.
+
+3. Register the five guild-scoped commands in the configured development
+   server.
+
+   ```powershell
+   npm run register-commands
+   ```
+
+4. Start the development watcher.
+
+   ```powershell
+   npm run dev
+   ```
+
+Mention the bot with a nonempty prompt or use `/ask`. Stop with `Ctrl+C` so the
+process closes SQLite and disconnects cleanly. For the compiled path, run
+`npm run build` followed by `npm start`.
+
+Every setting, default, and validation rule is in
+[Configuration](docs/CONFIGURATION.md). If startup sulks, use
+[Troubleshooting](docs/TROUBLESHOOTING.md) instead of randomly rotating knobs.
+
+## Optional providers
+
+### OpenAI
+
+Set `AI_PROVIDER=openai`, provide `OPENAI_API_KEY` through the ignored `.env`
+file or an approved secret manager, and choose an available `OPENAI_MODEL`.
+OpenAI API usage is billed separately from ChatGPT. Keep keys project-scoped,
+restrict access where practical, and rotate any exposed credential.
+
+### Tavily web grounding
+
+Set `TAVILY_API_KEY` to enable `/search` and automatic grounding for clearly
+current-information prompts. Jarvis requests bounded summaries, caches
+equivalent queries in process memory, appends source links to grounded answers,
+and treats retrieved text as data rather than instructions.
+
+## Commands
+
+| Command                    | What it does                                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/ask prompt:<question>`   | Sends a bounded question, persona instructions, and recent channel or thread history to the selected AI provider.                           |
+| `/search query:<question>` | Requires Tavily and forces current web grounding before the selected AI provider answers.                                                   |
+| `/forget`                  | Deletes Jarvis-owned conversation history for the current guild channel or thread.                                                          |
+| `/help`                    | Lists the available commands and safety boundary.                                                                                           |
+| `/status`                  | Reports Discord configuration, SQLite health, selected provider configuration, and web-search configuration without making a model request. |
+
+All commands are server-only. `/ask`, `/search`, and `/forget` enforce
+`ALLOWED_CHANNEL_IDS`; an allowlisted parent channel also permits its threads.
+Each thread still keeps separate history.
+
+## Docker
+
+Register commands from the host, then follow
+[Deployment](docs/DEPLOYMENT.md) for the hardened Compose workflow. The
+container exposes no inbound port, runs as a non-root user with a read-only root
+filesystem, and persists SQLite data in the `jarvis-data` named volume.
+
+If Jarvis runs in Docker Desktop while Ollama runs on the host, set:
 
 ```dotenv
 OLLAMA_BASE_URL=http://host.docker.internal:11434
 ```
 
-Do not expose Ollama's port to the public internet. Local inference has no
-per-message API bill, but it uses local memory, disk, GPU/CPU time, and
-electricity. The first answer after a model has unloaded can be slower.
+Native Jarvis uses `http://127.0.0.1:11434`. Do not publish Ollama to the
+internet, and do not run native and containerized Jarvis at the same time
+unless duplicate replies are somehow your product strategy.
 
-### Optional live web search
+## Security and data
 
-Add a Tavily API key to let Jarvis answer questions that require current
-information:
+The current release has an explicit no-server-mutation boundary. Jarvis cannot
+modify pre-existing Discord content, roles, channels, permissions, members,
+server settings, or webhooks. Two deliberate state changes remain:
 
-```dotenv
-TAVILY_API_KEY=tvly-your-key
-WEB_SEARCH_TIMEOUT_MS=10000
-WEB_SEARCH_CACHE_TTL_MS=3600000
-WEB_SEARCH_MAX_RESULTS=5
-```
+- `/forget` deletes this bot's stored history for the current conversation.
+- The operator-run registration script bulk-replaces this application's guild
+  command definitions with the checked-in five-command set.
 
-Jarvis automatically searches for clearly time-sensitive requests containing
-terms such as `latest`, `today`, `current`, `news`, `update`, or `patch`.
-Members can force a current search with:
+Retention cleanup also removes expired bot-owned records, and the global stored
+row cap evicts the oldest records after appends. Conversation history contains
+prompts and successful responses in local SQLite, so protect the host, volume,
+and backups. Logs are structured and content-free by design. Never attach
+`.env`, databases, private identifiers, message contents, or unredacted logs to
+an issue.
 
-```text
-/search query:latest ARC Raiders update
-```
+Read the [Security model](docs/SECURITY_MODEL.md) for controls and residual
+risks, the [Security policy](SECURITY.md) for private reporting, and
+[Operations](docs/OPERATIONS.md) for backup, restore, retention, and incident
+handling.
 
-Searches use Tavily's one-credit basic mode, request at most five summarized
-results, never request raw page content, and cache equivalent queries for one
-hour by default. Jarvis appends source links to grounded answers. Search-result
-text is treated as untrusted evidence and cannot authorize actions or override
-Jarvis's safety instructions.
+## Development and validation
 
-To use OpenAI instead:
-
-Create a dedicated project and project-scoped secret in the
-[OpenAI API platform](https://platform.openai.com/), then set:
-
-```dotenv
-AI_PROVIDER=openai
-OPENAI_API_KEY=your_project_api_key
-OPENAI_MODEL=gpt-5.6-luna
-```
-
-Use a distinct key per environment. Keep it server-side, restrict its project
-permissions and model access where practical, and rotate it after any suspected
-exposure. The OpenAI API is billed separately from ChatGPT subscriptions.
-
-`OPENAI_MODEL` is operator-controlled. Confirm that the configured model exists
-for the project before startup. Model names, availability, and pricing change,
-because apparently even constants now have a release cadence.
-
-## 9. Register guild commands
-
-Install dependencies and register the four guild-scoped commands:
+The standard quality gate is:
 
 ```powershell
-npm ci
-npm run register-commands
-```
-
-This creates or updates `/ask`, `/forget`, `/help`, and `/status` only in
-`DISCORD_GUILD_ID`. Guild registration is deliberate because it updates quickly
-and keeps development isolated. Run the command again after changing command
-definitions. Discord's guild route is a bulk overwrite: command types omitted
-from the submitted four-command set are removed from this application's guild
-command set. It does not affect commands owned by other applications.
-
-Global registration is a later, explicit deployment choice. To enable it,
-review the code and deliberately change the route in
-`scripts/register-commands.ts` from:
-
-```ts
-Routes.applicationGuildCommands(config.clientId, config.guildId);
-```
-
-to:
-
-```ts
-Routes.applicationCommands(config.clientId);
-```
-
-Then test and register once. Global commands reach every server that installed
-the application and may propagate more slowly than guild commands. Do not
-silently register both scopes or automate the change without operator approval.
-
-## 10. Run locally
-
-For development with automatic reload:
-
-```powershell
-npm ci
-npm run register-commands
-npm run dev
-```
-
-For a compiled local production run:
-
-```powershell
-npm ci
+npm test
+npm run lint
+npm run format:check
 npm run build
-npm start
+npm run docs:check
 ```
 
-Mention the bot with a nonempty prompt or use `/ask`. `/help` lists commands,
-`/status` checks Discord, database, and the selected AI provider configuration
-without making a model request, and `/forget` deletes bot-owned history only
-for the current guild channel or thread.
+`docs:check` deterministically inspects tracked Markdown and YAML, rejects
+unfinished markers and likely credentials, resolves repository links, and
+cross-checks environment keys and package commands against their documentation.
+It deliberately does not read `.env`, databases, logs, `node_modules`, `dist`,
+or `data`.
 
-Stop with `Ctrl+C` so Jarvis can stop accepting work, close SQLite, and
-disconnect cleanly.
+Use [Development](docs/DEVELOPMENT.md) for repository layout, watch commands,
+test boundaries, and change expectations. See [Contributing](CONTRIBUTING.md)
+before opening a change.
 
-### Low-memory Windows hosts
+## Release and license
 
-On a 16 GB Windows machine, run Jarvis directly with `npm start` instead of
-keeping Docker Desktop's WSL VM resident. Ollama and the native Node.js process
-can communicate through `http://127.0.0.1:11434` without Docker's additional
-memory overhead.
+The current package and changelog release is `0.1.0`; the supported line is
+`0.1.x`. Release actions are maintainer-owned and documented in
+[Releases](docs/RELEASES.md) and the [Changelog](CHANGELOG.md).
 
-If Docker is still used occasionally, a conservative `%USERPROFILE%\.wslconfig`
-can keep WSL from swallowing the workstation:
+Copyright 2026 Jim Higgins. All rights reserved. This repository is proprietary
+software. No permission to copy, modify, distribute, sublicense, or use it is
+granted except by prior written authorization. Read the
+[Proprietary license](LICENSE.md) before assuming otherwise. Optimism is not a
+license grant.
 
-```ini
-[wsl2]
-memory=3GB
-processors=4
-swap=1GB
-vmIdleTimeout=60000
+## Documentation map
 
-[experimental]
-autoMemoryReclaim=gradual
-sparseVhd=true
-```
+| Guide                                        | Purpose                                                                                    |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [Architecture](docs/ARCHITECTURE.md)         | Components, request flow, storage identity, trust boundaries, and extension seams          |
+| [Configuration](docs/CONFIGURATION.md)       | Every environment key, default, validation rule, and safe operating note                   |
+| [Discord setup](docs/DISCORD_SETUP.md)       | Application creation, intents, minimum permissions, installation, and command registration |
+| [Development](docs/DEVELOPMENT.md)           | Local workflows, repository map, scripts, testing, and change boundaries                   |
+| [Deployment](docs/DEPLOYMENT.md)             | Native Windows and Docker deployment, updates, backup, restore, and rollback               |
+| [Operations](docs/OPERATIONS.md)             | Health, logs, provider checks, retention, recovery, and outage handling                    |
+| [Troubleshooting](docs/TROUBLESHOOTING.md)   | Safe diagnosis and recovery by symptom                                                     |
+| [Security model](docs/SECURITY_MODEL.md)     | Assets, threats, controls, residual risk, and no-mutation guarantees                       |
+| [Extension guide](docs/extensions/README.md) | Disabled contracts and requirements for any future integration                             |
+| [Roadmap](docs/ROADMAP.md)                   | Shipped, planned, later, and explicitly out-of-scope work                                  |
+| [Releases](docs/RELEASES.md)                 | Versioning, validation gates, publication authority, and rollback                          |
 
-Restart WSL or Docker Desktop after changing that file. Do not run both the
-Dockerized and native Jarvis processes at once, unless duplicate Discord
-responses sound like a feature to you.
+Repository policies and project records:
 
-## 11. Run with Docker
-
-Register commands from the host once, then build and start:
-
-```powershell
-npm ci
-npm run register-commands
-docker compose up --detach --build
-docker compose logs --follow jarvis
-```
-
-The multi-stage image builds native SQLite dependencies and runs them on the
-same Node 22 Debian libc. The final process is UID/GID `10001` (`jarvis`), has
-all Linux capabilities dropped, and receives no inbound ports.
-
-Compose mounts the `jarvis-data` named volume at `/app/data`, the only persistent
-writable path. The root filesystem is read-only and `/tmp` is a small,
-non-executable tmpfs. `docker compose down` removes the container but preserves
-history. `docker compose down --volumes` permanently deletes the named volume,
-so do not add `--volumes` merely because a tutorial was feeling adventurous.
-
-Update with:
-
-```powershell
-git pull
-docker compose build --pull
-docker compose up --detach
-```
-
-Back up the named volume using an operator-approved Docker volume procedure
-before risky upgrades.
-
-## 12. Security and data retention
-
-Jarvis has an explicit **no-server-mutation guarantee** in this release. It has
-no code or requested permission to edit or delete pre-existing Discord content
-owned by others, change channels, roles, permissions, members, server settings,
-or webhooks. It cannot write GitHub repositories, execute shell commands,
-access arbitrary files, or invoke external tools. The persona is advisory and
-cannot grant itself authority.
-
-That guarantee covers runtime mutation of server state and third-party
-resources. Jarvis still edits its own deferred interaction reply as ordinary
-response delivery. The operator-run registration script also bulk-overwrites
-this application's command definitions in the configured guild, as documented
-above. Neither behavior grants general server administration.
-
-The only destructive operations are:
-
-- `/forget`, which deletes this bot's SQLite history for the current guild
-  channel or thread.
-- Retention cleanup, which removes bot-owned records older than
-  `HISTORY_RETENTION_DAYS` at startup and approximately daily.
-
-History includes prompts and successful assistant responses. It is isolated by
-guild and conversation, stored in the local SQLite volume, and is not encrypted
-by the application. Protect the host, volume, and backups accordingly.
-`MAX_HISTORY_MESSAGES` limits context sent to OpenAI but does not itself delete
-newer database rows. `MAX_STORED_MESSAGES` caps total retained rows and evicts
-the oldest records after each append so rate-compliant traffic cannot grow the
-database without an application bound.
-
-Additional controls include input bounds, explicit channel allowlisting,
-per-guild/user rate limits, duplicate-event suppression, parameterized SQL,
-neutralized Discord mentions, secret-free structured logs, and trusted persona
-instructions separated from untrusted user content.
-
-The repository ignores `.env`, database files, logs, build output, and local
-data. Compose passes `.env` at runtime rather than baking it into the image.
-Docker administrators can inspect container environment variables, so use your
-platform's secret manager for a serious production deployment.
-
-## 13. Troubleshooting
-
-**Commands are missing.** Confirm the app was installed with
-`applications.commands`, verify `DISCORD_CLIENT_ID` and `DISCORD_GUILD_ID`, and
-rerun `npm run register-commands`. Guild commands update quickly. If you chose
-global registration, wait for propagation and make sure a stale guild-scoped
-copy is not masking your result.
-
-**The bot is offline or exits immediately.** Run `npm run build`, then inspect
-the terminal or `docker compose logs jarvis`. Verify all four required
-environment values are nonempty. Reset a rejected Discord token rather than
-reusing it harder.
-
-**Mentions are ignored.** Confirm the message directly mentions the bot; do not
-enable the privileged Message Content intent. Check the channel ID allowlist and
-the bot's View Channel, Read Message History, and Send Messages permissions. For
-threads, check Send Messages in Threads and the parent channel mapping.
-
-**Slash commands respond "not available."** `/ask` and `/forget` enforce
-`ALLOWED_CHANNEL_IDS`; `/help` and `/status` are safe but server-only
-diagnostics. Check the current channel ID or its parent ID when the current
-channel is actually a thread.
-
-**OpenAI requests fail.** Use `/status`, inspect content-free logs, and verify
-the project key, billing/quota, model access, rate limits, and configured model
-name. Authentication and quota errors are not fixed by retries.
-
-**SQLite reports read-only or permission errors.** In Docker, keep
-`DATABASE_PATH=/app/data/discord-bot.db` and use the named volume. For a bind
-mount, grant UID/GID `10001` write access to that directory. Do not make the
-whole container writable to rescue one misowned folder.
-
-**Compose says `.env` is missing.** Copy `.env.example` to `.env`, fill the four
-required values, and rerun the command. The file is intentionally not committed.
-
-**Native dependency installation fails locally.** Confirm Node.js 22, remove no
-lockfile, and run `npm ci` on the target platform. Docker includes a Debian
-build toolchain so `better-sqlite3` can compile if a prebuilt binary is
-unavailable.
-
-## 14. Cost controls
-
-- Create a dedicated OpenAI project and key for Jarvis. Configure project
-  budgets, multiple alert thresholds, allowed models, and model rate limits.
-  OpenAI project budgets are monitoring alerts, not guaranteed hard spending
-  caps.
-- Monitor the OpenAI usage dashboard and investigate unexpected changes.
-- Choose `OPENAI_MODEL` against current quality, latency, and
-  [API pricing](https://openai.com/api/pricing/) rather than copying an old cost
-  estimate.
-- Keep `ALLOWED_CHANNEL_IDS` narrow and Discord permissions narrower.
-- Tune `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_MS`, `MAX_INPUT_CHARS`, and
-  `MAX_HISTORY_MESSAGES`. Set `MAX_STORED_MESSAGES` for the volume available to
-  SQLite. Smaller inputs and histories generally reduce token use.
-- The code caps model output at 1,000 tokens per request. Changing that cap
-  requires a reviewed code change in `src/index.ts`.
-- Keep bounded timeouts and retries. Do not turn transient failure handling into
-  an unmetered slot machine. `OPENAI_MAX_RETRIES` accepts 0 through 10; larger
-  values are rejected at startup.
-- Use `/status` for health checks because it does not call the model.
-
-## 15. Extension points
-
-`src/extensions/contracts.ts` defines disabled-by-default contracts for
-read-only GitHub queries, MCP context, repository context, pull-request
-summaries, scheduled recaps, gaming scores, image descriptions, and future
-administrator authorization. These are interfaces, not working integrations,
-credentials, schedules, or tools.
-
-The recommended first extension is a read-only GitHub provider with an explicit
-repository allowlist and a token that has no write scopes. Any extension should
-start with operator approval, least-privilege credentials, strict input/output
-boundaries, tests, content-free logs, and explicit cost limits. Keep retrieved
-content untrusted and separate from Jarvis's system instructions.
-
-Customize the checked-in `config/jarvis-persona.md` for operator-approved lore
-and voice. Keep it under the validated length limit, never put secrets in it,
-and remember that a stylish prompt is not an access-control system.
-
-The no-server-mutation guarantee remains in force until reviewed code and
-permissions deliberately change it. Adding an interface does not grant a power.
+- [Proprietary license](LICENSE.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Support](SUPPORT.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
