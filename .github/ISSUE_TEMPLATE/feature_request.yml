@@ -1,0 +1,53 @@
+name: Feature request
+description: Propose a safe, well-defined improvement to Jarvis.
+title: '[Feature]: '
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the outcome, not a blank check for risky access. Do not include
+        secrets, private identifiers, private message contents, or unredacted logs.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or maintainer problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-outcome
+    attributes:
+      label: Proposed outcome
+      description: Describe the useful result and how success could be recognized.
+    validations:
+      required: true
+  - type: textarea
+    id: user-experience
+    attributes:
+      label: User experience
+      description: Explain the expected flow, including important edge cases.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches or workarounds did you consider?
+    validations:
+      required: true
+  - type: textarea
+    id: security-data-impact
+    attributes:
+      label: Security and data impact
+      description: Identify permissions, data handling, privacy, or abuse considerations.
+    validations:
+      required: true
+  - type: checkboxes
+    id: permission-safety
+    attributes:
+      label: Permission safety
+      options:
+        - label: This request does not assume destructive Discord or GitHub permissions.
+          required: true

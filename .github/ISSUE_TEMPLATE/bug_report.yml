@@ -1,0 +1,77 @@
+name: Bug report
+description: Report a reproducible problem without sensitive data.
+title: '[Bug]: '
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Jarvis. Do not include credentials, tokens,
+        private identifiers, message contents, database files, or unredacted logs.
+        For suspected vulnerabilities, use the private process in SECURITY.md.
+  - type: textarea
+    id: sanitized-summary
+    attributes:
+      label: Sanitized summary
+      description: Describe the problem without sensitive details.
+      placeholder: What happened, in safe and general terms?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Reproduction steps
+      description: List safe, minimal steps that consistently show the problem.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What did you expect Jarvis to do?
+    validations:
+      required: true
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual behavior
+      description: What did Jarvis do instead? Keep logs and output sanitized.
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime-mode
+    attributes:
+      label: Runtime mode
+      description: How are you running Jarvis?
+      options:
+        - Native Node.js
+        - Docker
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: operating-system
+    attributes:
+      label: Operating system
+      placeholder: e.g. Windows 11, Ubuntu 24.04, macOS 15
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      placeholder: e.g. 22.0.0
+    validations:
+      required: true
+  - type: checkboxes
+    id: sanitization
+    attributes:
+      label: Sensitive-data check
+      options:
+        - label: I removed secrets, private identifiers, and private message contents.
+          required: true

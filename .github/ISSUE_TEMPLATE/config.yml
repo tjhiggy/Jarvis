@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support and usage questions
+    url: https://github.com/tjhiggy/Jarvis/blob/main/SUPPORT.md
+    about: Read the support guidance before opening a sanitized support request.
+  - name: Security vulnerability reports
+    url: https://github.com/tjhiggy/Jarvis/blob/main/SECURITY.md
+    about: Follow the private security-reporting process. Do not disclose vulnerabilities publicly.
