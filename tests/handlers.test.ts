@@ -140,6 +140,24 @@ describe('Discord event routing', () => {
     ).toBe(true);
   });
 
+  it('leaves unverified member IDs for the conversation service normalization boundary', async () => {
+    const prompts: string[] = [];
+    const { message: fake } = message({
+      content: '<@bot-1> who is <@1004887251303534592>?',
+    });
+
+    await createDiscordHandlers(
+      dependencies({
+        ask: async (request) => {
+          prompts.push(request.prompt);
+          return { status: 'success', text: 'No verified member details.' };
+        },
+      }),
+    ).onMessageCreate(fake);
+
+    expect(prompts).toEqual(['who is <@1004887251303534592>?']);
+  });
+
   it('rejects a thread mention without Send Messages in Threads before doing work', async () => {
     const fake = message({
       channelId: 'thread-7',

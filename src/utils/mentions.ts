@@ -11,6 +11,12 @@ export const removeBotMention = (
   return content.replace(mentionPattern, '').trim();
 };
 
+export const replaceUnverifiedUserMentions = (content: string): string =>
+  content.replace(
+    /<@!?\d+>/g,
+    '[Discord member mentioned; verified profile details unavailable]',
+  );
+
 export const neutralizeDiscordMentions = (content: string): string =>
   content
     .replace(/@(?=everyone\b|here\b)/gi, '@\u200b')

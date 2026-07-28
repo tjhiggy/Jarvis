@@ -117,6 +117,26 @@ describe('handleCommand', () => {
     ]);
   });
 
+  it('leaves slash-command member IDs for the conversation service normalization boundary', async () => {
+    const fake = interaction({
+      commandName: 'ask',
+      prompt: 'Who is <@1004887251303534592>?',
+    });
+    const prompts: string[] = [];
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        ask: async (request) => {
+          prompts.push(request.prompt);
+          return { status: 'success', text: 'No verified member details.' };
+        },
+      }),
+    );
+
+    expect(prompts).toEqual(['Who is <@1004887251303534592>?']);
+  });
+
   it('forces current web grounding for /search', async () => {
     const fake = interaction({
       commandName: 'search',
