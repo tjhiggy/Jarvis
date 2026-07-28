@@ -78,6 +78,8 @@ const draftingExclusion =
   /^(?:please\s+)?(?:write|draft|rewrite|edit|proofread|polish|compose|create|brainstorm)\b/i;
 const creativeExclusion =
   /^(?:please\s+)?(?:write|create|brainstorm)\b.{0,120}\b(?:story|poem|song|fiction|scene|character|idea)\b/i;
+const explicitFictionWholeRequestExclusion =
+  /^(?:please\s+)?(?:write|draft|create|compose|brainstorm)\b.{0,200}\b(?:fictional|imaginary|made-up|make-believe)\b/i;
 const basicDefinitionExclusion =
   /^(?:please\s+)?(?:what|who)\s+(?:is|are)\s+[^?]+\??$/i;
 const timelessCodeExclusion =
@@ -259,6 +261,10 @@ export const requiresWebGrounding = (prompt: string): boolean => {
       return false;
     }
     routingPrompt = additionalRequest;
+  }
+
+  if (explicitFictionWholeRequestExclusion.test(routingPrompt)) {
+    return false;
   }
 
   if (

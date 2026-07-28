@@ -49,6 +49,10 @@ describe('requiresWebGrounding', () => {
     'What is government?',
     'What is the relationship between RAM and storage?',
     "Summarize this supplied text: The engine is offline. What's the latest ARC Raiders update?",
+    'Write a fictional story in which aspirin is safe.',
+    'Write a fictional story about a safe investment.',
+    'Draft a fictional memo about what law governs Mars.',
+    'Write a fictional story about what is current in magic.',
   ])('does not require web grounding for %s', (prompt) => {
     expect(requiresWebGrounding(prompt)).toBe(false);
   });
