@@ -72,6 +72,8 @@ const evidenceDependentScientificClaimSignal =
 
 const suppliedTextExclusion =
   /^(?:please\s+)?(?:summarize|rewrite|edit|proofread|polish|translate)\s+(?:this|the following|these supplied)\b/i;
+const quotedSuppliedTextPayloadSignal =
+  /^(?:please\s+)?(?:summarize|rewrite|edit|proofread|polish|translate)\s+(?:this|the following|these supplied)\b[^:]{0,80}:\s*(?:"[^"]*"|“[^”]*”)(.*)$/i;
 const additionalRequestClauseSignal =
   /(?:[.!?;,]\s+)(?:also|additionally|separately|then)(?:,\s*|\s+)((?:what(?:'s| is)|who|when|where|how|is|are|does|do|can|could|would|will|explain|tell|find|research|look up)\b.*)$/i;
 const draftingExclusion =
@@ -80,6 +82,8 @@ const creativeExclusion =
   /^(?:please\s+)?(?:write|create|brainstorm)\b.{0,120}\b(?:story|poem|song|fiction|scene|character|idea)\b/i;
 const explicitFictionWholeRequestExclusion =
   /^(?:please\s+)?(?:write|draft|create|compose|brainstorm)\b.{0,200}\b(?:fictional|imaginary|made-up|make-believe)\b/i;
+const explicitFictionClauseExclusion =
+  /\b(?:fictional|imaginary|made-up|make-believe)\b/i;
 const basicDefinitionExclusion =
   /^(?:please\s+)?(?:what|who)\s+(?:is|are)\s+[^?]+\??$/i;
 const timelessCodeExclusion =
@@ -222,6 +226,13 @@ function extractAdditionalRequestClause(prompt: string): string | undefined {
   return additionalRequestClauseSignal.exec(prompt)?.[1];
 }
 
+function extractAdditionalSuppliedTextRequestClause(
+  prompt: string,
+): string | undefined {
+  const quotedPayload = quotedSuppliedTextPayloadSignal.exec(prompt);
+  return extractAdditionalRequestClause(quotedPayload?.[1] ?? prompt);
+}
+
 function looksLikeNamedEntity(value: string): boolean {
   return value
     .trim()
@@ -256,7 +267,8 @@ export const requiresWebGrounding = (prompt: string): boolean => {
 
   let routingPrompt = normalizedPrompt;
   if (suppliedTextExclusion.test(normalizedPrompt)) {
-    const additionalRequest = extractAdditionalRequestClause(normalizedPrompt);
+    const additionalRequest =
+      extractAdditionalSuppliedTextRequestClause(normalizedPrompt);
     if (additionalRequest === undefined) {
       return false;
     }
@@ -265,7 +277,10 @@ export const requiresWebGrounding = (prompt: string): boolean => {
 
   if (explicitFictionWholeRequestExclusion.test(routingPrompt)) {
     const additionalRequest = extractAdditionalRequestClause(routingPrompt);
-    if (additionalRequest === undefined) {
+    if (
+      additionalRequest === undefined ||
+      explicitFictionClauseExclusion.test(additionalRequest)
+    ) {
       return false;
     }
     routingPrompt = additionalRequest;

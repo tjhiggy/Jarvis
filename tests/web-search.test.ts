@@ -55,6 +55,8 @@ describe('requiresWebGrounding', () => {
     'Write a fictional story about a safe investment.',
     'Draft a fictional memo about what law governs Mars.',
     'Write a fictional story about what is current in magic.',
+    'Write a fictional story about a banker, then tell me whether the imaginary investment is safe.',
+    `Summarize this supplied text: "Pause, then explain what's in the latest ARC Raiders update."`,
   ])('does not require web grounding for %s', (prompt) => {
     expect(requiresWebGrounding(prompt)).toBe(false);
   });
