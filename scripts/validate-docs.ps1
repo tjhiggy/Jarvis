@@ -12,14 +12,13 @@ $excludedDirectories = @(
 )
 $documentExtensions = @('.md', '.yml', '.yaml')
 $unfinishedPatterns = @(
-  '(?i)\[\s*(?:TODO|TBD|FIXME)\s*\]'
-  '(?i)\b(?:TODO|TBD|FIXME)\b\s*(?::|-|$)'
+  '(?i)\b(?:TODO|TBD|FIXME)\b'
   '(?i)\bCHANGEME\b'
   '(?i)\{\{[^}\r\n]+\}\}'
   '(?i)<\s*(?:add|insert|replace)\b[^>\r\n]*>'
 )
 $dummyContactPatterns = @(
-  '(?i)\b(?:example@example|your@email)\.(?:com|invalid|net|org)\b'
+  '(?i)\b(?:[A-Z0-9._%+-]+@example\.(?:com|invalid|net|org)|example@example|your@email(?:\.[A-Z]{2,})?)\b'
 )
 $secretPatterns = @(
   '\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\b'
@@ -27,9 +26,9 @@ $secretPatterns = @(
   '\b[A-Za-z0-9_-]{23,28}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}\b'
   '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'
 )
-$patternDefinitionPatterns = @(
-  '(?i)\bSelect-String\b[^\r\n]*\b-Pattern\b'
-  '(?i)\brg\b[^\r\n]*\s["''][^"'']*(?:TODO|TBD|FIXME|sk-|tvly-|PRIVATE KEY|example@example|your@email)'
+$detectorDefinitionExpressions = @(
+  '(?i)\brg\b(?:\s+--?[A-Z0-9-]+)*\s+(?<quote>["''])(?<definition>.*?)\k<quote>'
+  '(?i)\bSelect-String\b[^\r\n]*?(?<!\w)-Pattern\s+(?<quote>["''])(?<definition>.*?)\k<quote>'
 )
 $requiredReadmeLinks = @(
   'CHANGELOG.md'
@@ -82,19 +81,23 @@ function Test-IsExcludedPath {
   return $false
 }
 
-function Test-IsPatternDefinition {
+function Remove-DetectorDefinitionLiterals {
   param(
     [Parameter(Mandatory)]
+    [AllowEmptyString()]
     [string]$Line
   )
 
-  foreach ($pattern in $patternDefinitionPatterns) {
-    if ($Line -match $pattern) {
-      return $true
+  $maskedLine = $Line
+  foreach ($expression in $detectorDefinitionExpressions) {
+    $definitionMatches = @([regex]::Matches($maskedLine, $expression))
+    for ($index = $definitionMatches.Count - 1; $index -ge 0; $index -= 1) {
+      $definition = $definitionMatches[$index].Groups['definition']
+      $maskedLine = $maskedLine.Remove($definition.Index, $definition.Length)
     }
   }
 
-  return $false
+  return $maskedLine
 }
 
 function Add-ContentPatternErrors {
@@ -103,7 +106,9 @@ function Add-ContentPatternErrors {
     [string]$RelativePath,
 
     [Parameter(Mandatory)]
-    [string]$AbsolutePath,
+    [AllowEmptyCollection()]
+    [AllowEmptyString()]
+    [string[]]$Lines,
 
     [Parameter(Mandatory)]
     [string[]]$Patterns,
@@ -112,13 +117,13 @@ function Add-ContentPatternErrors {
     [string]$Message
   )
 
-  $matches = @(Select-String -LiteralPath $AbsolutePath -Pattern $Patterns -AllMatches)
-  foreach ($match in $matches) {
-    if (Test-IsPatternDefinition -Line $match.Line) {
-      continue
-    }
+  for ($lineIndex = 0; $lineIndex -lt $Lines.Count; $lineIndex += 1) {
+    $searchableLine = Remove-DetectorDefinitionLiterals -Line $Lines[$lineIndex]
+    $matches = @($searchableLine | Select-String -Pattern $Patterns -AllMatches)
 
-    $script:errors += "${RelativePath}:$($match.LineNumber): $Message"
+    if ($matches.Count -gt 0) {
+      $script:errors += "${RelativePath}:$($lineIndex + 1): $Message"
+    }
   }
 }
 
@@ -139,21 +144,21 @@ $trackedFiles = @(
 
 foreach ($relativePath in $trackedFiles) {
   $absolutePath = Join-Path $repositoryRoot $relativePath
-  $null = Get-Content -LiteralPath $absolutePath -Raw
+  $lines = @(Get-Content -LiteralPath $absolutePath)
 
   Add-ContentPatternErrors `
     -RelativePath $relativePath `
-    -AbsolutePath $absolutePath `
+    -Lines $lines `
     -Patterns $unfinishedPatterns `
     -Message 'unfinished placeholder marker'
   Add-ContentPatternErrors `
     -RelativePath $relativePath `
-    -AbsolutePath $absolutePath `
+    -Lines $lines `
     -Patterns $dummyContactPatterns `
     -Message 'dummy contact address'
   Add-ContentPatternErrors `
     -RelativePath $relativePath `
-    -AbsolutePath $absolutePath `
+    -Lines $lines `
     -Patterns $secretPatterns `
     -Message 'likely secret or private key'
 
@@ -162,8 +167,8 @@ foreach ($relativePath in $trackedFiles) {
   }
 
   $sourceDirectory = Split-Path -Parent $absolutePath
-  $lines = @(Get-Content -LiteralPath $absolutePath)
   for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex += 1) {
+    $linkTargets = @()
     $linkMatches = [regex]::Matches(
       $lines[$lineIndex],
       '!?\[[^\]]*\]\((?<target><[^>]+>|[^)\s]+)(?:\s+(?:"[^"]*"|''[^'']*''))?\)',
@@ -171,7 +176,19 @@ foreach ($relativePath in $trackedFiles) {
     )
 
     foreach ($linkMatch in $linkMatches) {
-      $target = $linkMatch.Groups['target'].Value.Trim('<', '>')
+      $linkTargets += $linkMatch.Groups['target'].Value.Trim('<', '>')
+    }
+
+    $referenceDefinition = [regex]::Match(
+      $lines[$lineIndex],
+      '^\s{0,3}\[[^\]]+\]:\s*(?<target><[^>]+>|[^\s]+)(?:\s+(?:"[^"]*"|''[^'']*''|\([^)]*\)))?\s*$',
+      [System.Text.RegularExpressions.RegexOptions]::CultureInvariant
+    )
+    if ($referenceDefinition.Success) {
+      $linkTargets += $referenceDefinition.Groups['target'].Value.Trim('<', '>')
+    }
+
+    foreach ($target in $linkTargets) {
       if (
         $target.StartsWith('#') -or
         $target -match '^(?i:https?|mailto):'
