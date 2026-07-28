@@ -24,14 +24,7 @@ const splitText = (content: string, limit: number): string[] => {
     const candidate = takeWithinLimit(remaining, limit);
 
     if (candidate.length === 0) {
-      const character = Array.from(remaining)[0];
-      if (character === undefined) {
-        break;
-      }
-
-      chunks.push(character);
-      remaining = remaining.slice(character.length);
-      continue;
+      throw new RangeError('Discord response chunk limit is too small for content.');
     }
 
     if (candidate.length === remaining.length) {
@@ -40,7 +33,7 @@ const splitText = (content: string, limit: number): string[] => {
     }
 
     const separator = ['\n\n', '\n', ' '].find((value) =>
-      candidate.lastIndexOf(value) > 0,
+      candidate.lastIndexOf(value) >= 0,
     );
 
     if (separator === undefined) {
@@ -49,34 +42,55 @@ const splitText = (content: string, limit: number): string[] => {
       continue;
     }
 
-    const splitIndex = candidate.lastIndexOf(separator);
+    const splitIndex = candidate.lastIndexOf(separator) + separator.length;
     chunks.push(candidate.slice(0, splitIndex));
-    remaining = remaining.slice(splitIndex + separator.length);
+    remaining = remaining.slice(splitIndex);
   }
 
-  return chunks.filter((chunk) => chunk.length > 0);
+  return chunks;
 };
 
 const splitFencedBlock = (
-  language: string,
+  openingFence: string,
   body: string,
+  closingFence: string | undefined,
   limit: number,
 ): string[] => {
-  const openingFence = `\`\`\`${language}\n`;
-  const closingFence = '\n```';
-  const payloadLimit = limit - openingFence.length - closingFence.length;
-
-  if (body.length === 0 && payloadLimit >= 0) {
-    return [`${openingFence}${closingFence}`];
-  }
-
-  if (payloadLimit < 1) {
-    return splitText(`${openingFence}${body}${closingFence}`, limit);
-  }
-
-  return splitText(body, payloadLimit).map(
-    (chunk) => `${openingFence}${chunk}${closingFence}`,
+  const syntheticClosingFence = '\n```';
+  const maximumClosingLength = Math.max(
+    syntheticClosingFence.length,
+    closingFence?.length ?? 0,
   );
+  const payloadLimit = limit - openingFence.length - maximumClosingLength;
+  const original = `${openingFence}${body}${closingFence ?? ''}`;
+
+  if (payloadLimit < 0) {
+    return splitText(original, limit);
+  }
+
+  if (body.length === 0) {
+    const closing = closingFence ?? syntheticClosingFence;
+    return [`${openingFence}${closing}`];
+  }
+
+  let bodyChunks: string[];
+  try {
+    bodyChunks = splitText(body, payloadLimit);
+  } catch (error) {
+    if (error instanceof RangeError) {
+      return splitText(original, limit);
+    }
+    throw error;
+  }
+
+  return bodyChunks.map((chunk, index) => {
+    const isLastChunk = index === bodyChunks.length - 1;
+    const closing = isLastChunk && closingFence !== undefined
+      ? closingFence
+      : syntheticClosingFence;
+
+    return `${openingFence}${chunk}${closing}`;
+  });
 };
 
 export const chunkDiscordResponse = (
@@ -88,14 +102,38 @@ export const chunkDiscordResponse = (
   }
 
   const chunks: string[] = [];
-  const fencedBlockPattern = /```([^\r\n`]*)\r?\n([\s\S]*?)\r?\n```/g;
+  const openingFencePattern = /```([^\r\n`]*)\r?\n/g;
   let cursor = 0;
 
-  for (const match of content.matchAll(fencedBlockPattern)) {
-    const matchStart = match.index ?? 0;
-    chunks.push(...splitText(content.slice(cursor, matchStart), limit));
-    chunks.push(...splitFencedBlock(match[1] ?? '', match[2] ?? '', limit));
-    cursor = matchStart + match[0].length;
+  for (const openingMatch of content.matchAll(openingFencePattern)) {
+    const openingIndex = openingMatch.index ?? 0;
+    if (openingIndex < cursor) {
+      continue;
+    }
+
+    chunks.push(...splitText(content.slice(cursor, openingIndex), limit));
+
+    const openingFence = openingMatch[0];
+    const bodyStart = openingIndex + openingFence.length;
+    const closingFencePattern = /\r?\n```(?=\r?\n|$)/g;
+    closingFencePattern.lastIndex = bodyStart;
+    const closingMatch = closingFencePattern.exec(content);
+
+    if (closingMatch === null) {
+      chunks.push(...splitFencedBlock(openingFence, content.slice(bodyStart), undefined, limit));
+      return chunks;
+    }
+
+    const closingIndex = closingMatch.index;
+    chunks.push(
+      ...splitFencedBlock(
+        openingFence,
+        content.slice(bodyStart, closingIndex),
+        closingMatch[0],
+        limit,
+      ),
+    );
+    cursor = closingIndex + closingMatch[0].length;
   }
 
   chunks.push(...splitText(content.slice(cursor), limit));
