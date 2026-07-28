@@ -16,14 +16,13 @@ import {
 import {
   OpenAIResponsesService,
   type AIService,
-  type OpenAIResponsesClient,
 } from './openai/openai-service.js';
 import { EventDeduplicator } from './security/event-deduplicator.js';
 import { RateLimiter } from './security/rate-limiter.js';
 import { ConversationService } from './services/conversation-service.js';
 import type { ConversationStore } from './storage/conversation-store.js';
 import { SQLiteConversationStore } from './storage/sqlite-conversation-store.js';
-import { createLogger } from './utils/logger.js';
+import { createLogger, projectOperationalError } from './utils/logger.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -59,6 +58,7 @@ export interface ApplicationDependencies {
     handler: () => void | Promise<void>,
   ) => void;
   readonly setExitCode?: (code: number) => void;
+  readonly elapsedNow?: () => number;
 }
 
 export interface Application {
@@ -83,7 +83,7 @@ const createDefaultAIService = (config: AppConfig): AIService =>
       apiKey: config.openai.apiKey,
       timeout: config.openai.timeoutMs,
       maxRetries: config.openai.maxRetries,
-    }) as unknown as OpenAIResponsesClient,
+    }),
     model: config.openai.model,
     timeoutMs: config.openai.timeoutMs,
     maxRetries: config.openai.maxRetries,
@@ -129,6 +129,8 @@ export const createApplication = async (
     ((code) => {
       process.exitCode = code;
     });
+  const elapsedNow = dependencies.elapsedNow ?? (() => performance.now());
+  const startupStartedAt = elapsedNow();
 
   let logger: Logger | undefined;
   let store: ConversationStore | undefined;
@@ -195,6 +197,8 @@ export const createApplication = async (
       maxInputChars: config.security.maxInputChars,
       maxHistoryMessages: config.storage.maxHistoryMessages,
       safetyIdentifierSecret: config.openai.apiKey,
+      logger,
+      elapsedNow,
     });
     const cleanup = async (): Promise<void> => {
       try {
@@ -260,13 +264,31 @@ export const createApplication = async (
     registerSignal('SIGINT', shutdown);
     registerSignal('SIGTERM', shutdown);
     acceptingWork = true;
+    logger.info(
+      {
+        elapsedMs: elapsedMilliseconds(startupStartedAt, elapsedNow()),
+      },
+      'Application startup completed.',
+    );
 
     return { shutdown };
   } catch (error) {
+    logger?.error(
+      {
+        elapsedMs: elapsedMilliseconds(startupStartedAt, elapsedNow()),
+        ...projectOperationalError(error, 'startup'),
+      },
+      'Application startup failed.',
+    );
     await shutdown();
     setExitCode(1);
     throw error;
   }
+};
+
+const elapsedMilliseconds = (startedAt: number, finishedAt: number): number => {
+  const elapsed = finishedAt - startedAt;
+  return Number.isFinite(elapsed) ? Math.max(0, Math.round(elapsed)) : 0;
 };
 
 export const main = async (): Promise<void> => {

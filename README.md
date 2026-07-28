@@ -61,9 +61,10 @@ settings, and commands. Creating it does not install anything into a server.
 Open the application's **Bot** page and create or add the bot user if Discord
 has not already provisioned it.
 
-Enable only the privileged **Message Content Intent**. Jarvis needs it to read
-the text following an `@Jarvis` mention. The code also requests the nonprivileged
-Guilds and Guild Messages intents. It does not need Presence or Server Members.
+Do not enable any privileged intents. The code requests only the nonprivileged
+Guilds and Guild Messages intents. Discord includes message content when a
+message directly mentions the application, which is the only message path
+Jarvis handles. It does not need Message Content, Presence, or Server Members.
 
 Choose whether the bot may be installed publicly based on your operation. A
 private bot is the safer default for a single-server deployment.
@@ -77,7 +78,7 @@ integer there from the minimum permissions needed in Jarvis channels:
 - **View Channels**
 - **Send Messages**
 - **Read Message History**
-- **Embed Links**
+- **Embed Links**, optional if you want rich link previews
 - **Send Messages in Threads**, only when Jarvis will operate in threads
 
 Members also need **Use Application Commands** where they will invoke slash
@@ -181,23 +182,22 @@ npm run register-commands
 This creates or updates `/ask`, `/forget`, `/help`, and `/status` only in
 `DISCORD_GUILD_ID`. Guild registration is deliberate because it updates quickly
 and keeps development isolated. Run the command again after changing command
-definitions.
+definitions. Discord's guild route is a bulk overwrite: command types omitted
+from the submitted four-command set are removed from this application's guild
+command set. It does not affect commands owned by other applications.
 
 Global registration is a later, explicit deployment choice. To enable it,
 review the code and deliberately change the route in
 `scripts/register-commands.ts` from:
 
 ```ts
-Routes.applicationGuildCommands(
-  config.discord.clientId,
-  config.discord.guildId,
-);
+Routes.applicationGuildCommands(config.clientId, config.guildId);
 ```
 
 to:
 
 ```ts
-Routes.applicationCommands(config.discord.clientId);
+Routes.applicationCommands(config.clientId);
 ```
 
 Then test and register once. Global commands reach every server that installed
@@ -265,11 +265,17 @@ before risky upgrades.
 ## 12. Security and data retention
 
 Jarvis has an explicit **no-server-mutation guarantee** in this release. It has
-no code or requested permission to edit or delete Discord messages, change
-channels, roles, permissions, members, server settings, or webhooks. It cannot
-write GitHub repositories, execute shell commands, access arbitrary files, or
-invoke external tools. The persona is advisory and cannot grant itself
-authority.
+no code or requested permission to edit or delete pre-existing Discord content
+owned by others, change channels, roles, permissions, members, server settings,
+or webhooks. It cannot write GitHub repositories, execute shell commands,
+access arbitrary files, or invoke external tools. The persona is advisory and
+cannot grant itself authority.
+
+That guarantee covers runtime mutation of server state and third-party
+resources. Jarvis still edits its own deferred interaction reply as ordinary
+response delivery. The operator-run registration script also bulk-overwrites
+this application's command definitions in the configured guild, as documented
+above. Neither behavior grants general server administration.
 
 The only destructive operations are:
 
@@ -309,14 +315,15 @@ the terminal or `docker compose logs jarvis`. Verify all four required
 environment values are nonempty. Reset a rejected Discord token rather than
 reusing it harder.
 
-**Mentions are ignored.** Enable Message Content Intent on the Bot page. Check
-the channel ID allowlist and the bot's View Channel, Read Message History, and
-Send Messages permissions. For threads, check Send Messages in Threads and the
-parent channel mapping.
+**Mentions are ignored.** Confirm the message directly mentions the bot; do not
+enable the privileged Message Content intent. Check the channel ID allowlist and
+the bot's View Channel, Read Message History, and Send Messages permissions. For
+threads, check Send Messages in Threads and the parent channel mapping.
 
 **Slash commands respond "not available."** `/ask` and `/forget` enforce
-`ALLOWED_CHANNEL_IDS`; `/help` and `/status` remain safe diagnostics. Check the
-current channel ID or its parent thread ID.
+`ALLOWED_CHANNEL_IDS`; `/help` and `/status` are safe but server-only
+diagnostics. Check the current channel ID or its parent ID when the current
+channel is actually a thread.
 
 **OpenAI requests fail.** Use `/status`, inspect content-free logs, and verify
 the project key, billing/quota, model access, rate limits, and configured model
@@ -352,7 +359,8 @@ unavailable.
 - The code caps model output at 1,000 tokens per request. Changing that cap
   requires a reviewed code change in `src/index.ts`.
 - Keep bounded timeouts and retries. Do not turn transient failure handling into
-  an unmetered slot machine.
+  an unmetered slot machine. `OPENAI_MAX_RETRIES` accepts 0 through 10; larger
+  values are rejected at startup.
 - Use `/status` for health checks because it does not call the model.
 
 ## 15. Extension points

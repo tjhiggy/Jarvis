@@ -104,7 +104,8 @@ Commands:
 
 - `/ask prompt:<question>` asks a question.
 - `/forget` clears bot-owned conversation history for the current channel or
-  thread.
+  thread. A successful clear invalidates in-flight work that began earlier, so
+  stale user or assistant records cannot repopulate the deleted history.
 - `/help` explains commands and safety boundaries.
 - `/status` reports Discord readiness, database health, and whether OpenAI
   configuration is present. It does not make a paid model request or reveal
@@ -121,20 +122,27 @@ documented as a deliberate later choice and is never performed automatically.
 
 The bot has no Discord administration features or permissions. It cannot:
 
-- delete or edit Discord messages;
+- delete or edit pre-existing Discord content owned by others;
 - create, delete, or modify channels, roles, permissions, or webhooks;
 - ban, kick, timeout, or otherwise moderate members;
 - change server settings;
 - perform automatic GitHub writes.
+
+Normal response delivery may create a reply or edit the bot's own deferred
+interaction reply. The operator-triggered registration script may bulk-overwrite
+this application's command set in the configured guild. Neither is general
+server administration.
 
 Jarvis is an advisor, not an authority. The persona cannot grant permissions,
 issue binding moderator decisions, or imply that an AI-generated answer is an
 official instruction from server leadership.
 
 Required Discord permissions are limited to viewing configured channels,
-reading message history, sending messages, embedding links, and using
-application commands. Gateway intents are limited to guilds, guild messages,
-and message content because mention handling requires message text.
+reading message history, sending messages, and using application commands.
+Embedding links is optional for rich previews. Gateway intents are limited to
+guilds and guild messages. No privileged Message Content intent is requested:
+Discord supplies content for messages that directly mention the application,
+and all other message traffic is ignored.
 
 The only destructive behavior is deletion of bot-owned SQLite history through
 `/forget` and retention cleanup. Neither operation touches Discord content or
@@ -153,7 +161,10 @@ The adapter has:
   transient network errors, and eligible 5xx failures;
 - no retry for authentication, quota, validation, or safety rejection;
 - typed internal errors for authentication, quota, rate limiting, safety,
-  timeout, and general service failure;
+  timeout, validation, output-limit, and general service failure;
+- explicit terminal-state handling: only a completed Response with nonempty text
+  is successful; failed and incomplete Responses retain their official error or
+  incomplete reason for safe classification and bounded retry decisions;
 - safe user messages and detailed content-free internal logging.
 
 The instruction stack separates invariant safety rules from the configurable
@@ -201,6 +212,7 @@ Startup validates:
 Additional safe controls include input length, request timeout, retry count,
 rate-limit window, rate-limit capacity, and retention days. Useful validation
 errors name the missing or invalid variable but never print secret values.
+OpenAI retry configuration is capped at 10.
 
 ## Security Controls
 
@@ -311,6 +323,12 @@ Local development uses `tsx`; production runs compiled JavaScript. A
 guild-scoped registration script provides fast command iteration. Docker
 Compose mounts a persistent data volume and reads local environment values
 without baking secrets into the image.
+
+The registration entry point is exported and injectable for testing, validates
+only Discord registration values plus the command input bound, and performs one
+operator-triggered bulk overwrite of this application's guild command set.
+Omitted command types are removed. Runtime application artifacts in the image
+remain root-owned; only `/app/data` is owned by the unprivileged Jarvis user.
 
 The README documents Discord application creation, minimum intents and
 permissions, the OAuth2 invitation URL template, OpenAI configuration, command

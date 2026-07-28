@@ -214,6 +214,251 @@ describe('ConversationService', () => {
     await expect(first).resolves.toMatchObject({ status: 'success' });
   });
 
+  it('prevents a successful clear from being repopulated by an in-flight answer', async () => {
+    const fixture = await createFixture();
+    const responseGate = deferred<void>();
+    const aiStarted = deferred<void>();
+    fixture.ai.responseGate = responseGate.promise;
+    fixture.ai.onRequest = aiStarted.resolve;
+
+    const staleAsk = fixture.service.ask(request());
+    await aiStarted.promise;
+    expect(fixture.store.appended).toHaveLength(1);
+
+    await expect(
+      fixture.service.clear({
+        eventId: 'forget-1',
+        guildId: 'guild-1',
+        conversationId: 'conversation-1',
+        channelId: 'channel-1',
+        userId: 'user-1',
+      }),
+    ).resolves.toBe(1);
+    expect(fixture.store.appended).toEqual([]);
+
+    responseGate.resolve();
+    await expect(staleAsk).resolves.toMatchObject({ status: 'forgotten' });
+    expect(fixture.store.appended).toEqual([]);
+  });
+
+  it('allows a new request after clear while keeping the pre-clear request stale', async () => {
+    const fixture = await createFixture();
+    const responseGate = deferred<void>();
+    const aiStarted = deferred<void>();
+    fixture.ai.responseGate = responseGate.promise;
+    fixture.ai.onRequest = aiStarted.resolve;
+
+    const staleAsk = fixture.service.ask(request());
+    await aiStarted.promise;
+    await fixture.service.clear({
+      eventId: 'forget-1',
+      guildId: 'guild-1',
+      conversationId: 'conversation-1',
+      channelId: 'channel-1',
+      userId: 'user-1',
+    });
+    responseGate.resolve();
+    await expect(staleAsk).resolves.toMatchObject({ status: 'forgotten' });
+
+    fixture.ai.responseGate = undefined;
+    fixture.ai.onRequest = undefined;
+    await expect(
+      fixture.service.ask(
+        request({
+          eventId: 'event-after-clear',
+          prompt: 'Begin a new history.',
+        }),
+      ),
+    ).resolves.toMatchObject({ status: 'success' });
+
+    expect(fixture.store.appended).toEqual([
+      expect.objectContaining({
+        role: 'user',
+        content: 'Begin a new history.',
+      }),
+      expect.objectContaining({ role: 'assistant' }),
+    ]);
+  });
+
+  it('prevents an ask started during clear from appending a user record afterward', async () => {
+    const fixture = await createFixture();
+    const clearGate = deferred<void>();
+    const clearStarted = deferred<void>();
+    fixture.store.clearGate = clearGate.promise;
+    fixture.store.onClear = clearStarted.resolve;
+
+    const clearing = fixture.service.clear({
+      eventId: 'forget-1',
+      guildId: 'guild-1',
+      conversationId: 'conversation-1',
+      channelId: 'channel-1',
+      userId: 'user-1',
+    });
+    await clearStarted.promise;
+    const staleAsk = fixture.service.ask(
+      request({ eventId: 'event-during-clear' }),
+    );
+
+    clearGate.resolve();
+    await expect(clearing).resolves.toBe(0);
+    await expect(staleAsk).resolves.toMatchObject({ status: 'forgotten' });
+    expect(fixture.store.appended).toEqual([]);
+    expect(fixture.ai.requests).toEqual([]);
+  });
+
+  it('deduplicates replayed clears without deleting history created after the first clear', async () => {
+    const fixture = await createFixture();
+    const clearRequest = {
+      eventId: 'forget-replayed',
+      guildId: 'guild-1',
+      conversationId: 'conversation-1',
+      channelId: 'channel-1',
+      userId: 'user-1',
+    } as const;
+    await expect(fixture.service.clear(clearRequest)).resolves.toBe(0);
+
+    const responseGate = deferred<void>();
+    const aiStarted = deferred<void>();
+    fixture.ai.responseGate = responseGate.promise;
+    fixture.ai.onRequest = aiStarted.resolve;
+    const newAsk = fixture.service.ask(
+      request({ eventId: 'event-after-original-clear' }),
+    );
+    await aiStarted.promise;
+    expect(fixture.store.appended).toHaveLength(1);
+
+    await expect(fixture.service.clear(clearRequest)).resolves.toBe(0);
+    expect(fixture.store.appended).toHaveLength(1);
+
+    responseGate.resolve();
+    await expect(newAsk).resolves.toMatchObject({ status: 'success' });
+    expect(fixture.store.appended.map(({ role }) => role)).toEqual([
+      'user',
+      'assistant',
+    ]);
+  });
+
+  it('bounds active conversation coordination and releases capacity after work settles', async () => {
+    const telemetry: Record<string, unknown>[] = [];
+    const fixture = await createFixture({
+      maxActiveConversations: 1,
+      logger: {
+        info: () => undefined,
+        warn: (context) => {
+          telemetry.push(context);
+        },
+      },
+    });
+    const responseGate = deferred<void>();
+    const aiStarted = deferred<void>();
+    fixture.ai.responseGate = responseGate.promise;
+    fixture.ai.onRequest = aiStarted.resolve;
+
+    const first = fixture.service.ask(request());
+    await aiStarted.promise;
+    await expect(
+      fixture.service.ask(
+        request({
+          eventId: 'event-capacity',
+          conversationId: 'conversation-2',
+          channelId: 'channel-2',
+        }),
+      ),
+    ).resolves.toMatchObject({ status: 'ai_error' });
+    const capacityClear = {
+      eventId: 'forget-capacity',
+      guildId: 'guild-1',
+      conversationId: 'conversation-2',
+      channelId: 'channel-2',
+      userId: 'user-1',
+    } as const;
+    await expect(fixture.service.clear(capacityClear)).rejects.toMatchObject({
+      code: 'CONVERSATION_CAPACITY',
+    });
+    expect(
+      telemetry.find(({ outcome }) => outcome === 'clear_error'),
+    ).toMatchObject({
+      stage: 'coordination',
+      errorCategory: 'coordination',
+      errorCode: 'CONVERSATION_CAPACITY',
+    });
+
+    responseGate.resolve();
+    await expect(first).resolves.toMatchObject({ status: 'success' });
+    await expect(fixture.service.clear(capacityClear)).resolves.toBe(0);
+    await expect(
+      fixture.service.ask(
+        request({
+          eventId: 'event-capacity',
+          conversationId: 'conversation-2',
+          channelId: 'channel-2',
+        }),
+      ),
+    ).resolves.toMatchObject({ status: 'success' });
+    expect(fixture.ai.requests).toHaveLength(2);
+  });
+
+  it('logs request IDs, elapsed time, and sanitized error telemetry without content', async () => {
+    const telemetry: Array<{
+      level: string;
+      context: Record<string, unknown>;
+      message: string;
+    }> = [];
+    const elapsedTimes = [100, 137];
+    const fixture = await createFixture({
+      elapsedNow: () => elapsedTimes.shift() ?? 137,
+      logger: {
+        info: (context, message) => {
+          telemetry.push({ level: 'info', context, message });
+        },
+        warn: (context, message) => {
+          telemetry.push({ level: 'warn', context, message });
+        },
+      },
+    });
+    fixture.ai.error = new OpenAIServiceError('quota', {
+      cause: new Error('prompt=Status report? token=super-secret'),
+    });
+
+    await expect(fixture.service.ask(request())).resolves.toMatchObject({
+      status: 'ai_error',
+    });
+
+    expect(telemetry).toEqual([
+      {
+        level: 'info',
+        context: {
+          eventId: 'event-1',
+          guildId: 'guild-1',
+          conversationId: 'conversation-1',
+          channelId: 'channel-1',
+          userId: 'user-1',
+        },
+        message: 'Conversation request started.',
+      },
+      {
+        level: 'warn',
+        context: {
+          eventId: 'event-1',
+          guildId: 'guild-1',
+          conversationId: 'conversation-1',
+          channelId: 'channel-1',
+          userId: 'user-1',
+          elapsedMs: 37,
+          outcome: 'ai_error',
+          stage: 'openai',
+          errorClass: 'OpenAIServiceError',
+          errorCode: 'quota',
+          errorCategory: 'openai',
+        },
+        message: 'Conversation request failed.',
+      },
+    ]);
+    expect(JSON.stringify(telemetry)).not.toMatch(
+      /Status report|super-secret|prompt=/,
+    );
+  });
+
   it('uses a stable SHA-256 safety identifier based on IDs and the local secret, never a username', async () => {
     const fixture = await createFixture({
       safetyIdentifierSecret: 'local-key',
@@ -327,6 +572,12 @@ interface FixtureOptions {
   readonly rateLimitRequests?: number;
   readonly restrainedChannelIds?: ReadonlySet<string>;
   readonly safetyIdentifierSecret?: string;
+  readonly elapsedNow?: () => number;
+  readonly logger?: Readonly<{
+    info(context: Record<string, unknown>, message: string): void;
+    warn(context: Record<string, unknown>, message: string): void;
+  }>;
+  readonly maxActiveConversations?: number;
 }
 
 async function createFixture(options: FixtureOptions = {}) {
@@ -350,6 +601,13 @@ async function createFixture(options: FixtureOptions = {}) {
     maxInputChars: options.maxInputChars ?? 12_000,
     maxHistoryMessages: options.maxHistoryMessages ?? 20,
     safetyIdentifierSecret: options.safetyIdentifierSecret ?? 'test-secret',
+    ...(options.elapsedNow === undefined
+      ? {}
+      : { elapsedNow: options.elapsedNow }),
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
+    ...(options.maxActiveConversations === undefined
+      ? {}
+      : { maxActiveConversations: options.maxActiveConversations }),
   });
 
   return { ai, deduplicator, operations, rateLimiter, service, store };
@@ -359,7 +617,9 @@ class InMemoryStore implements ConversationStore {
   readonly appended: NewConversationMessage[] = [];
   readonly getRecentCalls: [string, string, number][] = [];
   appendError: Error | undefined;
+  clearGate: Promise<void> | undefined;
   history: ConversationMessage[] = [];
+  onClear: (() => void) | undefined;
 
   constructor(readonly operations: string[]) {}
 
@@ -381,8 +641,17 @@ class InMemoryStore implements ConversationStore {
     return this.history;
   }
 
-  async clear(): Promise<number> {
-    return 0;
+  async clear(guildId: string, conversationId: string): Promise<number> {
+    this.operations.push('clear');
+    this.onClear?.();
+    await this.clearGate;
+    const retained = this.appended.filter(
+      (entry) =>
+        entry.guildId !== guildId || entry.conversationId !== conversationId,
+    );
+    const deleted = this.appended.length - retained.length;
+    this.appended.splice(0, this.appended.length, ...retained);
+    return deleted;
   }
 
   async cleanup(): Promise<number> {
@@ -409,7 +678,9 @@ class StubAIService implements AIService {
     this.operations.push('ai');
     this.requests.push(requestToRespond);
     this.onRequest?.();
-    await this.responseGate;
+    const responseGate = this.responseGate;
+    this.responseGate = undefined;
+    await responseGate;
     if (this.error !== undefined) {
       throw this.error;
     }

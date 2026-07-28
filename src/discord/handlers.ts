@@ -11,7 +11,6 @@ import {
 export const discordGatewayIntents = Object.freeze([
   GatewayIntentBits.Guilds,
   GatewayIntentBits.GuildMessages,
-  GatewayIntentBits.MessageContent,
 ]);
 
 interface PermissionSet {

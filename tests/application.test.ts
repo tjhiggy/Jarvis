@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Logger } from 'pino';
 import type { AppConfig } from '../src/config/config.js';
-import type { TrustedPersona } from '../src/config/persona.js';
+import { loadPersona, type TrustedPersona } from '../src/config/persona.js';
 import { createApplication, reportStartupFailure } from '../src/index.js';
 
 const config: AppConfig = {
@@ -252,12 +252,14 @@ describe('createApplication', () => {
       }),
       createLogger: () =>
         ({
+          info: () => undefined,
           warn: () => {
             warningCalls += 1;
             if (warningCalls === 2) {
               releaseWarning();
             }
           },
+          error: () => undefined,
         }) as unknown as Logger,
     });
 
@@ -294,6 +296,82 @@ describe('createApplication', () => {
     expect(interactionResult).toBeUndefined();
     await warningLogged;
     expect(warningCalls).toBe(2);
+    await application.shutdown();
+  });
+
+  it('deduplicates repeated slash-command interactions through the real command handler', async () => {
+    const listeners = new Map<string, (...args: unknown[]) => unknown>();
+    const appendedRoles: string[] = [];
+    const editedReplies: string[] = [];
+    let aiCalls = 0;
+    const firstEdit = deferred<void>();
+    const secondEdit = deferred<void>();
+
+    const application = await createApplication({
+      loadConfig: () => config,
+      loadPersona: async () => loadPersona('config/jarvis-persona.md'),
+      createStore: () => ({
+        append: async (message) => {
+          appendedRoles.push(message.role);
+        },
+        getRecent: async () => [],
+        clear: async () => 0,
+        cleanup: async () => 0,
+        healthCheck: async () => true,
+        close: async () => undefined,
+      }),
+      createAIService: () => ({
+        respond: async () => {
+          aiCalls += 1;
+          return { text: 'One completed answer.' };
+        },
+      }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: (event, listener) => {
+          listeners.set(event, listener);
+        },
+        login: async () => 'logged-in',
+        destroy: () => undefined,
+      }),
+    });
+    const interaction = {
+      isChatInputCommand: () => true,
+      id: 'interaction-duplicate',
+      commandName: 'ask',
+      guildId: 'guild-id',
+      channelId: 'channel-id',
+      channel: { parentId: null, isThread: () => false },
+      user: { id: 'user-id' },
+      options: {
+        getString: (name: string) =>
+          name === 'prompt' ? 'Answer exactly once.' : null,
+      },
+      deferReply: async () => undefined,
+      reply: async () => undefined,
+      editReply: async (payload: { content: string }) => {
+        editedReplies.push(payload.content);
+        if (editedReplies.length === 1) {
+          firstEdit.resolve();
+        }
+        if (editedReplies.length === 2) {
+          secondEdit.resolve();
+        }
+      },
+      followUp: async () => undefined,
+    };
+
+    listeners.get('interactionCreate')?.(interaction);
+    await firstEdit.promise;
+    listeners.get('interactionCreate')?.(interaction);
+    await secondEdit.promise;
+
+    expect(aiCalls).toBe(1);
+    expect(appendedRoles).toEqual(['user', 'assistant']);
+    expect(editedReplies).toEqual([
+      'One completed answer.',
+      expect.stringMatching(/already.*handled/i),
+    ]);
     await application.shutdown();
   });
 
@@ -337,4 +415,79 @@ describe('createApplication', () => {
     expect(destroyCalls).toBe(1);
     expect(exitCode).toBe(1);
   });
+
+  it('logs sanitized startup failure telemetry with elapsed time and no error message', async () => {
+    const telemetry: Array<{
+      context: Record<string, unknown>;
+      message: string;
+    }> = [];
+    const elapsedTimes = [500, 560];
+    const startupError = Object.assign(
+      new Error('discord token=super-secret failed'),
+      { code: 'DISCORD_AUTHENTICATION_FAILED' },
+    );
+
+    await expect(
+      createApplication({
+        loadConfig: () => config,
+        loadPersona: async () => ({}) as TrustedPersona,
+        createStore: () => ({
+          append: async () => undefined,
+          getRecent: async () => [],
+          clear: async () => 0,
+          cleanup: async () => 0,
+          healthCheck: async () => true,
+          close: async () => undefined,
+        }),
+        createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+        createDiscordClient: () => ({
+          user: { id: 'bot-id' },
+          on: () => undefined,
+          login: async () => {
+            throw startupError;
+          },
+          destroy: () => undefined,
+        }),
+        createLogger: () =>
+          ({
+            info: () => undefined,
+            warn: () => undefined,
+            error: (
+              context: Record<string, unknown>,
+              message: string,
+            ): void => {
+              telemetry.push({ context, message });
+            },
+          }) as unknown as Logger,
+        elapsedNow: () => elapsedTimes.shift() ?? 560,
+      }),
+    ).rejects.toBe(startupError);
+
+    expect(telemetry).toEqual([
+      {
+        context: {
+          elapsedMs: 60,
+          errorClass: 'Error',
+          errorCode: 'DISCORD_AUTHENTICATION_FAILED',
+          errorCategory: 'startup',
+        },
+        message: 'Application startup failed.',
+      },
+    ]);
+    expect(JSON.stringify(telemetry)).not.toMatch(/super-secret|token=/);
+  });
 });
+
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve: ((value: T | PromiseLike<T>) => void) | undefined;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  if (resolve === undefined) {
+    throw new Error('Deferred promise initialization failed.');
+  }
+  return { promise, resolve };
+}

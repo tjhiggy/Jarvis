@@ -36,19 +36,32 @@ export interface AppConfig {
   }>;
 }
 
+export interface DiscordRegistrationConfig {
+  readonly token: string;
+  readonly clientId: string;
+  readonly guildId: string;
+  readonly maxInputChars: number;
+}
+
 const requiredString = z.string().trim().min(1);
 
 const optionalString = (defaultValue: string) =>
   z.string().trim().min(1).default(defaultValue);
 
-const integer = (defaultValue: number, minimum: number) =>
-  z.preprocess((value) => {
-    if (typeof value !== 'string' || value.trim() === '') {
-      return value;
-    }
+const integer = (defaultValue: number, minimum: number, maximum?: number) =>
+  z.preprocess(
+    (value) => {
+      if (typeof value !== 'string' || value.trim() === '') {
+        return value;
+      }
 
-    return Number(value);
-  }, z.number().int().min(minimum).default(defaultValue));
+      return Number(value);
+    },
+    (maximum === undefined
+      ? z.number().int().min(minimum)
+      : z.number().int().min(minimum).max(maximum)
+    ).default(defaultValue),
+  );
 
 const channelIds = z.preprocess(
   (value) => {
@@ -78,13 +91,20 @@ const environmentSchema = z.object({
   DATABASE_PATH: optionalString('./data/discord-bot.db'),
   MAX_INPUT_CHARS: integer(12000, 1),
   OPENAI_TIMEOUT_MS: integer(45000, 1),
-  OPENAI_MAX_RETRIES: integer(3, 0),
+  OPENAI_MAX_RETRIES: integer(3, 0, 10),
   RATE_LIMIT_REQUESTS: integer(5, 1),
   RATE_LIMIT_WINDOW_MS: integer(60000, 1),
   HISTORY_RETENTION_DAYS: integer(30, 1),
   PERSONA_PROMPT_PATH: optionalString('./config/jarvis-persona.md'),
   ALLOWED_CHANNEL_IDS: channelIds,
   RESTRAINED_CHANNEL_IDS: channelIds,
+});
+
+const discordRegistrationSchema = environmentSchema.pick({
+  DISCORD_TOKEN: true,
+  DISCORD_CLIENT_ID: true,
+  DISCORD_GUILD_ID: true,
+  MAX_INPUT_CHARS: true,
 });
 
 const readonlySet = (values: string[]): ReadonlySet<string> => {
@@ -109,20 +129,7 @@ const readonlySet = (values: string[]): ReadonlySet<string> => {
 };
 
 export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
-  const result = environmentSchema.safeParse(env);
-
-  if (!result.success) {
-    const variables = [
-      ...new Set(
-        result.error.issues.map((issue) => String(issue.path[0] ?? 'unknown')),
-      ),
-    ];
-    throw new Error(
-      `Invalid environment configuration: ${variables.join(', ')}`,
-    );
-  }
-
-  const parsed = result.data;
+  const parsed = parseEnvironment(environmentSchema, env);
   return Object.freeze({
     discord: Object.freeze({
       token: parsed.DISCORD_TOKEN,
@@ -154,3 +161,30 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
     logging: Object.freeze({ level: parsed.LOG_LEVEL }),
   });
 };
+
+export const loadDiscordRegistrationConfig = (
+  env: NodeJS.ProcessEnv,
+): DiscordRegistrationConfig => {
+  const parsed = parseEnvironment(discordRegistrationSchema, env);
+  return Object.freeze({
+    token: parsed.DISCORD_TOKEN,
+    clientId: parsed.DISCORD_CLIENT_ID,
+    guildId: parsed.DISCORD_GUILD_ID,
+    maxInputChars: parsed.MAX_INPUT_CHARS,
+  });
+};
+
+function parseEnvironment<T>(schema: z.ZodType<T>, env: NodeJS.ProcessEnv): T {
+  const result = schema.safeParse(env);
+  if (!result.success) {
+    const variables = [
+      ...new Set(
+        result.error.issues.map((issue) => String(issue.path[0] ?? 'unknown')),
+      ),
+    ];
+    throw new Error(
+      `Invalid environment configuration: ${variables.join(', ')}`,
+    );
+  }
+  return result.data;
+}

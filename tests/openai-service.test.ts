@@ -4,6 +4,7 @@ import {
   APIConnectionTimeoutError,
   APIUserAbortError,
 } from 'openai';
+import type { Response } from 'openai/resources/responses/responses.js';
 import { describe, expect, it, vi } from 'vitest';
 import { OpenAIServiceError } from '../src/openai/openai-errors.js';
 import { OpenAIResponsesService } from '../src/openai/openai-service.js';
@@ -18,7 +19,10 @@ describe('OpenAIResponsesService', () => {
           create: async (request, options) => {
             requests.push(request);
             requestOptions.push(options);
-            return { id: 'resp_123', output_text: 'At your service.' };
+            return sdkResponse({
+              id: 'resp_123',
+              output_text: 'At your service.',
+            });
           },
         },
       },
@@ -65,7 +69,8 @@ describe('OpenAIResponsesService', () => {
     const service = new OpenAIResponsesService({
       client: {
         responses: {
-          create: async () => ({ id: 'resp_empty', output_text: '' }),
+          create: async () =>
+            sdkResponse({ id: 'resp_empty', output_text: '' }),
         },
       },
       model: 'gpt-test',
@@ -97,6 +102,143 @@ describe('OpenAIResponsesService', () => {
     await expect(service.respond(request())).rejects.toMatchObject({
       code: 'authentication',
     } satisfies Partial<OpenAIServiceError>);
+  });
+
+  it.each([
+    ['max_output_tokens', 'output_limit'],
+    ['content_filter', 'safety'],
+  ] as const)(
+    'rejects an incomplete %s response without accepting its partial text',
+    async (reason, code) => {
+      let attempts = 0;
+      const service = new OpenAIResponsesService({
+        client: {
+          responses: {
+            create: async () => {
+              attempts += 1;
+              return sdkResponse({
+                id: `resp_incomplete_${reason}`,
+                status: 'incomplete',
+                output_text: 'Partial text must not escape.',
+                incomplete_details: { reason },
+              });
+            },
+          },
+        },
+        model: 'gpt-test',
+        timeoutMs: 1_000,
+        maxRetries: 3,
+        maxOutputTokens: 321,
+        sleep: async () => undefined,
+      });
+
+      await expect(service.respond(request())).rejects.toMatchObject({
+        code,
+      });
+      expect(attempts).toBe(1);
+    },
+  );
+
+  it('rejects a Response without an explicit completed terminal status', async () => {
+    let attempts = 0;
+    const service = new OpenAIResponsesService({
+      client: {
+        responses: {
+          create: async () => {
+            attempts += 1;
+            const response = sdkResponse({
+              id: 'resp_missing_status',
+              output_text: 'Text without completion is not an answer.',
+            });
+            delete response.status;
+            return response;
+          },
+        },
+      },
+      model: 'gpt-test',
+      timeoutMs: 1_000,
+      maxRetries: 3,
+      maxOutputTokens: 321,
+      sleep: async () => undefined,
+    });
+
+    await expect(service.respond(request())).rejects.toMatchObject({
+      code: 'service',
+    });
+    expect(attempts).toBe(1);
+  });
+
+  it('retries a failed server Response before accepting a completed Response', async () => {
+    let attempts = 0;
+    const delays: number[] = [];
+    const service = new OpenAIResponsesService({
+      client: {
+        responses: {
+          create: async () => {
+            attempts += 1;
+            return attempts === 1
+              ? sdkResponse({
+                  id: 'resp_failed',
+                  status: 'failed',
+                  error: {
+                    code: 'server_error',
+                    message: 'Internal detail must remain private.',
+                  },
+                })
+              : sdkResponse({
+                  id: 'resp_recovered_terminal',
+                  output_text: 'Recovered.',
+                });
+          },
+        },
+      },
+      model: 'gpt-test',
+      timeoutMs: 1_000,
+      maxRetries: 1,
+      maxOutputTokens: 321,
+      sleep: async (delayMs) => {
+        delays.push(delayMs);
+      },
+      jitter: () => 0,
+    });
+
+    await expect(service.respond(request())).resolves.toEqual({
+      text: 'Recovered.',
+      responseId: 'resp_recovered_terminal',
+    });
+    expect(attempts).toBe(2);
+    expect(delays).toEqual([100]);
+  });
+
+  it('maps a failed invalid-prompt Response to a permanent validation error', async () => {
+    let attempts = 0;
+    const service = new OpenAIResponsesService({
+      client: {
+        responses: {
+          create: async () => {
+            attempts += 1;
+            return sdkResponse({
+              id: 'resp_invalid_prompt',
+              status: 'failed',
+              error: {
+                code: 'invalid_prompt',
+                message: 'Prompt detail must remain private.',
+              },
+            });
+          },
+        },
+      },
+      model: 'gpt-test',
+      timeoutMs: 1_000,
+      maxRetries: 3,
+      maxOutputTokens: 321,
+      sleep: async () => undefined,
+    });
+
+    await expect(service.respond(request())).rejects.toMatchObject({
+      code: 'validation',
+    });
+    expect(attempts).toBe(1);
   });
 
   it.each([
@@ -137,7 +279,10 @@ describe('OpenAIResponsesService', () => {
               throw { status: 500, code: 'server_error' };
             }
 
-            return { id: 'resp_recovered', output_text: 'Recovered.' };
+            return sdkResponse({
+              id: 'resp_recovered',
+              output_text: 'Recovered.',
+            });
           },
         },
       },
@@ -171,7 +316,10 @@ describe('OpenAIResponsesService', () => {
               throw { status: 500, code: 'server_error' };
             }
 
-            return { id: 'resp_delayed', output_text: 'Eventually.' };
+            return sdkResponse({
+              id: 'resp_delayed',
+              output_text: 'Eventually.',
+            });
           },
         },
       },
@@ -448,7 +596,10 @@ describe('OpenAIResponsesService', () => {
               throw { status: 500, code: 'server_error' };
             }
 
-            return { id: 'resp_retried', output_text: 'Done.' };
+            return sdkResponse({
+              id: 'resp_retried',
+              output_text: 'Done.',
+            });
           },
         },
       },
@@ -481,4 +632,26 @@ function request() {
     prompt: 'Current question',
     safetyIdentifier: 'guild-7:user-9',
   } as const;
+}
+
+function sdkResponse(overrides: Partial<Response> = {}): Response {
+  return {
+    id: 'resp_default',
+    created_at: 1_774_915_200,
+    output_text: 'Completed response.',
+    error: null,
+    incomplete_details: null,
+    instructions: null,
+    metadata: null,
+    model: 'gpt-test',
+    object: 'response',
+    output: [],
+    parallel_tool_calls: false,
+    temperature: null,
+    tool_choice: 'auto',
+    tools: [],
+    top_p: null,
+    status: 'completed',
+    ...overrides,
+  };
 }

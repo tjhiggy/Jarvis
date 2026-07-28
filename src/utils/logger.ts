@@ -5,6 +5,11 @@ const redacted = '[REDACTED]';
 const sensitiveKey = /^(token|apiKey|authorization)$/i;
 const safeIdentifier = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 
+export interface OperationalLogger {
+  info(context: Record<string, unknown>, message: string): void;
+  warn(context: Record<string, unknown>, message: string): void;
+}
+
 const safeErrorProjection = (error: Error): Record<string, string | number> => {
   const name = safeName(error.name, 'Error');
   const projection: Record<string, string | number> = {
@@ -22,6 +27,24 @@ const safeErrorProjection = (error: Error): Record<string, string | number> => {
 
 const safeName = (value: string, fallback: string): string =>
   safeIdentifier.test(value) ? value : fallback;
+
+export const projectOperationalError = (
+  error: unknown,
+  category: string,
+): Readonly<Record<string, string | number>> => {
+  const projection =
+    error instanceof Error
+      ? safeErrorProjection(error)
+      : { name: 'Error', class: 'Error' };
+  const result: Record<string, string | number> = {
+    errorClass: String(projection.class),
+    errorCategory: safeName(category, 'internal'),
+  };
+  if (projection.code !== undefined) {
+    result.errorCode = projection.code;
+  }
+  return result;
+};
 
 const redactLogObject = (
   value: unknown,

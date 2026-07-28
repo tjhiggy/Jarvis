@@ -15,7 +15,8 @@
 - Default `OPENAI_MODEL` to `gpt-5.6-luna` for a current cost-sensitive community-bot baseline; keep it environment-configurable.
 - Do not configure or expose any OpenAI built-in tools.
 - No shell execution, dynamic evaluation, arbitrary file access, Discord administration, repository mutation, or GitHub writes.
-- Discord permissions are view channel, read message history, send messages, embed links, and application commands only.
+- Discord permissions are view channel, read message history, send messages,
+  optional embed links, and application commands only.
 - Direct messages are unsupported; all conversation queries include guild and conversation IDs.
 - Jarvis is immersive by default and restrained in `RESTRAINED_CHANNEL_IDS`; threads inherit the parent channel profile.
 - User text and retrieved history are untrusted data and never become system instructions.
@@ -485,14 +486,15 @@ git commit -m "feat: persist isolated conversations in SQLite"
 - Produces: `AIRequest = { instructions: string; history: ConversationTurn[]; prompt: string; safetyIdentifier: string }`
 - Produces: `AIResponse = { text: string; responseId?: string }`
 - Produces internal error codes: `authentication`, `quota`, `rate_limit`,
-  `safety`, `timeout`, `service`.
+  `safety`, `timeout`, `validation`, `output_limit`, `service`.
 
 - [ ] **Step 1: Write failing error-mapping and success tests**
 
-Inject a narrow client interface whose `responses.create` returns
-`{ id, output_text }`. Verify the request uses `model`, `instructions`, ordered
-role/content input, `max_output_tokens`, `store: false`, and a stable hashed
-`safety_identifier`. Verify empty output becomes a service error.
+Inject a narrow client interface whose `responses.create` returns the official
+SDK `Response` shape, including `status`, `error`, and `incomplete_details`.
+Verify the request uses `model`, `instructions`, ordered role/content input,
+`max_output_tokens`, `store: false`, and a stable hashed `safety_identifier`.
+Verify only explicit completed nonempty output succeeds.
 
 Map SDK status/errors:
 
@@ -516,7 +518,10 @@ Expected: FAIL because the service does not exist.
 Create one `AbortController` per attempt, clear every timeout in `finally`, use
 exponential delay with injected sleep/jitter for deterministic tests, and cap
 retries from configuration. Do not enable tools. Do not log input or output.
-Use `response.output_text` and retain `response.id`.
+Use `response.output_text` and retain `response.id` only for an explicit
+completed success. Classify failed server and rate-limit Responses as retryable,
+failed validation/safety Responses as permanent, and incomplete output-limit or
+content-filter Responses as typed permanent errors.
 
 - [ ] **Step 4: Verify retry behavior**
 
@@ -605,7 +610,9 @@ git commit -m "feat: orchestrate safe channel conversations"
 Use typed minimal fakes. Verify:
 
 - `/ask` rejects DMs, defers, and edits the deferred reply;
-- `/forget` clears only current guild/conversation and reports the count safely;
+- `/forget` clears only current guild/conversation through
+  `ConversationService`, invalidates older in-flight writes, and reports the
+  count safely;
 - `/help` lists all four commands and no unavailable capabilities;
 - `/status` returns explicit Discord/database/OpenAI configured states;
 - unknown commands receive a safe ephemeral error;
@@ -621,9 +628,10 @@ Expected: FAIL because command modules do not exist.
 - [ ] **Step 3: Implement definitions, access, delivery, and handlers**
 
 Set prompt maximum length at the Discord command definition and repeat the
-check server-side. `/forget` changes SQLite only. `/status` calls the database
-health check and inspects already-validated configuration without contacting
-OpenAI.
+check server-side. `/forget` changes SQLite only and uses a bounded
+per-conversation coordinator so a successful clear cannot be repopulated by
+older work. `/status` calls the database health check and inspects
+already-validated configuration without contacting OpenAI.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -667,10 +675,11 @@ Expected: FAIL because handlers do not exist.
 
 - [ ] **Step 3: Implement event routing**
 
-Use only the `Guilds`, `GuildMessages`, and `MessageContent` gateway intents.
-Check the bot's `ViewChannel`, `ReadMessageHistory`, and `SendMessages`
-permissions before work. Use the Discord event ID for deduplication and never
-log message content.
+Use only the nonprivileged `Guilds` and `GuildMessages` gateway intents. Discord
+supplies content for direct application mentions without the privileged Message
+Content intent. Check the bot's `ViewChannel`, `ReadMessageHistory`, and
+`SendMessages` permissions before work. Use the Discord event ID for
+deduplication and never log message content.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -731,10 +740,12 @@ already-created resources and set a nonzero exit code.
 
 - [ ] **Step 5: Implement development-guild registration**
 
-Use `REST({ version: '10' })` and
-`Routes.applicationGuildCommands(clientId, guildId)`. Require the validated
-Discord token/client/guild values. Do not include or automatically call the
-global route.
+Export an injectable registration function. Use `REST({ version: '10' })` and
+`Routes.applicationGuildCommands(clientId, guildId)`. Validate only the Discord
+token/client/guild values plus the command input bound. Do not require OpenAI
+configuration, include the global route, or register automatically when the
+module is imported. Document that the route bulk-overwrites this application's
+guild command set.
 
 - [ ] **Step 6: Verify Task 10**
 
@@ -820,7 +831,7 @@ Run:
 ```powershell
 npm run format
 npm run format:check
-docker compose config
+docker compose config --quiet
 docker build -t jarvis-discord-bot:test .
 ```
 
@@ -853,7 +864,7 @@ npm run lint
 npm test
 npm run build
 npm audit --omit=dev
-docker compose config
+docker compose config --quiet
 docker build -t jarvis-discord-bot:test .
 git diff --check
 git status --short

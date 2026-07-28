@@ -34,10 +34,10 @@ RUN groupadd --gid 10001 jarvis \
   && mkdir -p /app/data \
   && chown jarvis:jarvis /app/data
 
-COPY --from=build --chown=jarvis:jarvis /app/dist/src ./dist/src
-COPY --from=build --chown=jarvis:jarvis /app/node_modules ./node_modules
-COPY --from=build --chown=jarvis:jarvis /app/package.json /app/package-lock.json ./
-COPY --from=build --chown=jarvis:jarvis /app/config ./config
+COPY --from=build /app/dist/src ./dist/src
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json /app/package-lock.json ./
+COPY --from=build /app/config ./config
 
 USER jarvis:jarvis
 

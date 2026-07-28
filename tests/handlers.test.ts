@@ -27,7 +27,6 @@ describe('Discord event routing', () => {
     expect(discordGatewayIntents).toEqual([
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.MessageContent,
     ]);
   });
 

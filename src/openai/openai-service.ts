@@ -4,6 +4,10 @@ import {
   APIConnectionTimeoutError,
   APIUserAbortError,
 } from 'openai';
+import type {
+  Response,
+  ResponseError,
+} from 'openai/resources/responses/responses.js';
 import { OpenAIServiceError } from './openai-errors.js';
 
 export interface ConversationTurn {
@@ -30,15 +34,10 @@ export interface AIService {
 export interface ResponsesRequest {
   readonly model: string;
   readonly instructions: string;
-  readonly input: readonly ConversationTurn[];
+  readonly input: ConversationTurn[];
   readonly max_output_tokens: number;
   readonly store: false;
   readonly safety_identifier: string;
-}
-
-export interface ResponsesResult {
-  readonly id: string;
-  readonly output_text: string | null;
 }
 
 export interface OpenAIResponsesClient {
@@ -46,7 +45,7 @@ export interface OpenAIResponsesClient {
     create(
       request: ResponsesRequest,
       options: Readonly<{ signal: AbortSignal; maxRetries: 0 }>,
-    ): Promise<ResponsesResult>;
+    ): Promise<Response>;
   }>;
 }
 
@@ -124,7 +123,15 @@ export class OpenAIResponsesService implements AIService {
         { signal: controller.signal, maxRetries: 0 },
       );
 
-      if (response.output_text === null || response.output_text.trim() === '') {
+      if (
+        response.status !== 'completed' ||
+        response.error !== null ||
+        response.incomplete_details !== null
+      ) {
+        throw mapTerminalResponse(response);
+      }
+
+      if (response.output_text.trim() === '') {
         throw new OpenAIServiceError('service');
       }
 
@@ -184,7 +191,11 @@ function mapError(error: unknown): OpenAIServiceError {
 }
 
 function isRetryable(error: unknown): boolean {
-  if (error instanceof OpenAIServiceError || getName(error) === 'AbortError') {
+  if (error instanceof OpenAIServiceError) {
+    return error.retryable;
+  }
+
+  if (getName(error) === 'AbortError') {
     return false;
   }
 
@@ -198,6 +209,42 @@ function isRetryable(error: unknown): boolean {
   }
 
   return status === 408 || status === 409 || status >= 500;
+}
+
+function mapTerminalResponse(response: Response): OpenAIServiceError {
+  if (response.status === 'incomplete') {
+    return response.incomplete_details?.reason === 'content_filter'
+      ? new OpenAIServiceError('safety')
+      : response.incomplete_details?.reason === 'max_output_tokens'
+        ? new OpenAIServiceError('output_limit')
+        : new OpenAIServiceError('service');
+  }
+
+  if (response.error !== null) {
+    return mapResponseError(response.error);
+  }
+
+  return new OpenAIServiceError('service', {
+    retryable:
+      response.status === 'failed' ||
+      response.status === 'in_progress' ||
+      response.status === 'queued',
+  });
+}
+
+function mapResponseError(error: ResponseError): OpenAIServiceError {
+  switch (error.code) {
+    case 'server_error':
+    case 'vector_store_timeout':
+      return new OpenAIServiceError('service', { retryable: true });
+    case 'rate_limit_exceeded':
+      return new OpenAIServiceError('rate_limit', { retryable: true });
+    case 'bio_policy':
+    case 'image_content_policy_violation':
+      return new OpenAIServiceError('safety');
+    default:
+      return new OpenAIServiceError('validation');
+  }
 }
 
 function getStatus(error: unknown): number | undefined {

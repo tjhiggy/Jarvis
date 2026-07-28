@@ -112,6 +112,45 @@ describe('handleCommand', () => {
     ]);
   });
 
+  it('inherits allowlist access only for actual threads, not category children', async () => {
+    const categoryChild = interaction({
+      commandName: 'ask',
+      channelId: 'category-child',
+      parentId: 'allowed-parent',
+      isThread: false,
+    });
+    const thread = interaction({
+      commandName: 'ask',
+      channelId: 'thread-1',
+      parentId: 'allowed-parent',
+      isThread: true,
+    });
+    const requests: unknown[] = [];
+    const commandDependencies = dependencies({
+      allowedChannelIds: new Set(['allowed-parent']),
+      ask: async (request) => {
+        requests.push(request);
+        return { status: 'success', text: 'Allowed.' };
+      },
+    });
+
+    await handleCommand(categoryChild.interaction, commandDependencies);
+    await handleCommand(thread.interaction, commandDependencies);
+
+    expect(categoryChild.deferred).toEqual([]);
+    expect(categoryChild.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/not available/i),
+      }),
+    ]);
+    expect(requests).toEqual([
+      expect.objectContaining({
+        channelId: 'thread-1',
+        parentChannelId: 'allowed-parent',
+      }),
+    ]);
+  });
+
   it('safely edits a deferred /ask when the conversation service fails', async () => {
     const fake = interaction({ commandName: 'ask' });
     const internalDetail = 'token=discord-secret';
@@ -170,7 +209,7 @@ describe('handleCommand', () => {
     await handleCommand(
       fake.interaction,
       dependencies({
-        clear: async (guildId, conversationId) => {
+        clear: async ({ guildId, conversationId }) => {
           const key = `${guildId}:${conversationId}`;
           const deleted = messages.get(key) ?? 0;
           messages.delete(key);
@@ -232,7 +271,38 @@ describe('handleCommand', () => {
     expect(content).toContain('/help');
     expect(content).toContain('/status');
     expect(content).not.toMatch(/moderate|ban|kick|role/i);
+    expect(content).toMatch(/cannot.*(?:administer|modify).*server/i);
+    expect(content).toMatch(/cannot.*(?:tool|external action)/i);
+    expect(content).toMatch(
+      /history.*current.*channel|current.*channel.*history/i,
+    );
   });
+
+  it.each(['help', 'status'] as const)(
+    'rejects /%s from a DM before running diagnostics',
+    async (commandName) => {
+      const fake = interaction({ commandName, guildId: null });
+      let databaseChecks = 0;
+
+      await handleCommand(
+        fake.interaction,
+        dependencies({
+          healthCheck: async () => {
+            databaseChecks += 1;
+            return true;
+          },
+        }),
+      );
+
+      expect(databaseChecks).toBe(0);
+      expect(fake.replies).toEqual([
+        expect.objectContaining({
+          content: expect.stringMatching(/server/i),
+          ephemeral: true,
+        }),
+      ]);
+    },
+  );
 
   it('reports configured Discord and OpenAI plus database health without a model request', async () => {
     const fake = interaction({ commandName: 'status' });
@@ -281,6 +351,7 @@ function interaction(
     guildId: string | null;
     channelId: string;
     parentId: string | null;
+    isThread: boolean;
     prompt: string;
   }> = {},
 ): {
@@ -307,7 +378,10 @@ function interaction(
       commandName,
       guildId: overrides.guildId === undefined ? 'guild-1' : overrides.guildId,
       channelId: overrides.channelId ?? 'channel-1',
-      channel: { parentId: overrides.parentId ?? null },
+      channel: {
+        parentId: overrides.parentId ?? null,
+        isThread: () => overrides.isThread ?? false,
+      },
       user: { id: 'user-1' },
       options: { getString: (name) => (name === 'prompt' ? prompt : null) },
       deferReply: async (payload) => {
@@ -329,8 +403,9 @@ function interaction(
 function dependencies(
   overrides: Partial<{
     maxInputChars: number;
+    allowedChannelIds: ReadonlySet<string>;
     ask: CommandDependencies['conversationService']['ask'];
-    clear: CommandDependencies['store']['clear'];
+    clear: CommandDependencies['conversationService']['clear'];
     healthCheck: CommandDependencies['store']['healthCheck'];
   }> = {},
 ): CommandDependencies {
@@ -343,7 +418,7 @@ function dependencies(
       },
       openai: { apiKey: 'openai-key' },
       security: {
-        allowedChannelIds: new Set<string>(),
+        allowedChannelIds: overrides.allowedChannelIds ?? new Set<string>(),
         maxInputChars: overrides.maxInputChars ?? 100,
       },
     },
@@ -351,9 +426,9 @@ function dependencies(
       ask:
         overrides.ask ??
         (async () => ({ status: 'success', text: 'Default response.' })),
+      clear: overrides.clear ?? (async () => 0),
     },
     store: {
-      clear: overrides.clear ?? (async () => 0),
       healthCheck: overrides.healthCheck ?? (async () => true),
     },
   };

@@ -16,7 +16,10 @@ export interface CommandInteraction extends ReplyTarget, DeferredReplyTarget {
   readonly commandName: string;
   readonly guildId: string | null;
   readonly channelId: string;
-  readonly channel: Readonly<{ parentId: string | null }> | null;
+  readonly channel: Readonly<{
+    parentId: string | null;
+    isThread?(): boolean;
+  }> | null;
   readonly user: Readonly<{ id: string }>;
   readonly options: Readonly<{
     getString(name: string): string | null;
@@ -43,8 +46,15 @@ export interface CommandDependencies {
       readonly userId: string;
       readonly prompt: string;
     }): Promise<ConversationResult>;
+    clear(request: {
+      readonly eventId: string;
+      readonly guildId: string;
+      readonly conversationId: string;
+      readonly channelId: string;
+      readonly userId: string;
+    }): Promise<number>;
   }>;
-  readonly store: Pick<ConversationStore, 'clear' | 'healthCheck'>;
+  readonly store: Pick<ConversationStore, 'healthCheck'>;
 }
 
 const dmMessage = 'This command is available only in a server channel.';
@@ -59,6 +69,7 @@ const helpMessage = [
   '/forget clears Jarvis history in this channel or thread.',
   '/help lists the available commands.',
   '/status reports safe service configuration and database health.',
+  'Safety: Jarvis cannot administer or modify the server, cannot use tools or take external actions, and keeps history only for the current channel or thread.',
 ].join('\n');
 
 export const handleCommand = async (
@@ -73,14 +84,30 @@ export const handleCommand = async (
       await handleForget(interaction, dependencies);
       return;
     case 'help':
+      if (await rejectDirectMessage(interaction)) {
+        return;
+      }
       await replySafely(interaction, helpMessage, true);
       return;
     case 'status':
+      if (await rejectDirectMessage(interaction)) {
+        return;
+      }
       await handleStatus(interaction, dependencies);
       return;
     default:
       await replySafely(interaction, unknownCommandMessage, true);
   }
+};
+
+const rejectDirectMessage = async (
+  interaction: CommandInteraction,
+): Promise<boolean> => {
+  if (interaction.guildId?.trim()) {
+    return false;
+  }
+  await replySafely(interaction, dmMessage, true);
+  return true;
 };
 
 const handleAsk = async (
@@ -94,7 +121,7 @@ const handleAsk = async (
   }
 
   const channelId = interaction.channelId.trim();
-  const parentChannelId = interaction.channel?.parentId ?? undefined;
+  const parentChannelId = threadParentId(interaction);
   if (
     channelId === '' ||
     !isAllowedChannel(
@@ -148,7 +175,7 @@ const handleForget = async (
   }
 
   const channelId = interaction.channelId.trim();
-  const parentChannelId = interaction.channel?.parentId ?? undefined;
+  const parentChannelId = threadParentId(interaction);
   if (
     channelId === '' ||
     !isAllowedChannel(
@@ -164,7 +191,13 @@ const handleForget = async (
   await interaction.deferReply({ ephemeral: true });
   let deleted: number;
   try {
-    deleted = await dependencies.store.clear(guildId, channelId);
+    deleted = await dependencies.conversationService.clear({
+      eventId: interaction.id,
+      guildId,
+      conversationId: channelId,
+      channelId,
+      userId: interaction.user.id,
+    });
   } catch {
     await editDeferredReplySafely(interaction, operationalErrorMessage);
     return;
@@ -203,3 +236,8 @@ const handleStatus = async (
 
 const resultMessage = (result: ConversationResult): string =>
   result.status === 'success' ? result.text : result.message;
+
+const threadParentId = (interaction: CommandInteraction): string | undefined =>
+  (interaction.channel?.isThread?.() ?? false)
+    ? (interaction.channel?.parentId ?? undefined)
+    : undefined;

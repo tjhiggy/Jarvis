@@ -76,6 +76,43 @@ describe('SQLiteConversationStore', () => {
     ).resolves.toMatchObject([{ content: 'middle' }, { content: 'newest' }]);
   });
 
+  it('enforces the global storage bound across different conversations', async () => {
+    await store.close();
+    store = new SQLiteConversationStore(databasePath, 2);
+
+    await store.append(
+      message({
+        content: 'oldest channel one',
+        conversationId: 'channel-1',
+        timestamp: date(1),
+      }),
+    );
+    await store.append(
+      message({
+        content: 'middle channel two',
+        conversationId: 'channel-2',
+        timestamp: date(2),
+      }),
+    );
+    await store.append(
+      message({
+        content: 'newest channel three',
+        conversationId: 'channel-3',
+        timestamp: date(3),
+      }),
+    );
+
+    await expect(store.getRecent('guild-1', 'channel-1', 10)).resolves.toEqual(
+      [],
+    );
+    await expect(
+      store.getRecent('guild-1', 'channel-2', 10),
+    ).resolves.toMatchObject([{ content: 'middle channel two' }]);
+    await expect(
+      store.getRecent('guild-1', 'channel-3', 10),
+    ).resolves.toMatchObject([{ content: 'newest channel three' }]);
+  });
+
   it('isolates identical conversation IDs between guilds', async () => {
     await store.append(message({ content: 'guild one', guildId: 'guild-1' }));
     await store.append(message({ content: 'guild two', guildId: 'guild-2' }));

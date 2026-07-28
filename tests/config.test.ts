@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/config/config.js';
+import {
+  loadConfig,
+  loadDiscordRegistrationConfig,
+} from '../src/config/config.js';
 
 const validEnv = {
   DISCORD_TOKEN: 'discord-token',
@@ -38,6 +41,9 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...validEnv, MAX_STORED_MESSAGES: '0' })).toThrow(
       /MAX_STORED_MESSAGES/,
     );
+    expect(() => loadConfig({ ...validEnv, OPENAI_MAX_RETRIES: '11' })).toThrow(
+      /OPENAI_MAX_RETRIES/,
+    );
   });
 
   it('keeps channel policy immutable through public and Set prototype paths', () => {
@@ -57,5 +63,23 @@ describe('loadConfig', () => {
     expect([...channelIds]).toEqual(['1']);
     expect(channelIds.has('1')).toBe(true);
     expect(channelIds.has('2')).toBe(false);
+  });
+});
+
+describe('loadDiscordRegistrationConfig', () => {
+  it('loads only the Discord registration values without requiring OpenAI', () => {
+    expect(
+      loadDiscordRegistrationConfig({
+        DISCORD_TOKEN: 'discord-token',
+        DISCORD_CLIENT_ID: 'client-id',
+        DISCORD_GUILD_ID: 'guild-id',
+        MAX_INPUT_CHARS: '123',
+      }),
+    ).toEqual({
+      token: 'discord-token',
+      clientId: 'client-id',
+      guildId: 'guild-id',
+      maxInputChars: 123,
+    });
   });
 });
