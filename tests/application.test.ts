@@ -35,6 +35,7 @@ describe('createApplication', () => {
     let closeCalls = 0;
     let destroyCalls = 0;
     let replyCalls = 0;
+    let cleanupCalls = 0;
     let clearedTimer: unknown;
     const signalHandlers: Array<() => void | Promise<void>> = [];
 
@@ -48,7 +49,10 @@ describe('createApplication', () => {
         append: async () => undefined,
         getRecent: async () => [],
         clear: async () => 0,
-        cleanup: async () => 0,
+        cleanup: async () => {
+          cleanupCalls += 1;
+          return 0;
+        },
         healthCheck: async () => true,
         close: async () => {
           closeCalls += 1;
@@ -98,9 +102,79 @@ describe('createApplication', () => {
     });
 
     expect(clearedTimer).toBe('cleanup-timer');
+    expect(cleanupCalls).toBe(1);
     expect(closeCalls).toBe(1);
     expect(destroyCalls).toBe(1);
     expect(replyCalls).toBe(0);
+  });
+
+  it('binds gated listeners before login and enables them only after startup', async () => {
+    const listeners = new Map<string, (...args: unknown[]) => unknown>();
+    let releaseLogin = (): void => undefined;
+    let signalLoginStarted = (): void => undefined;
+    const loginStarted = new Promise<void>((resolve) => {
+      signalLoginStarted = resolve;
+    });
+    let clientUser: Readonly<{ id: string }> | null = null;
+    let replyCalls = 0;
+    const message = {
+      id: 'message-id',
+      content: '<@bot-id> hello',
+      guildId: 'guild-id',
+      channelId: 'channel-id',
+      channel: {
+        parentId: null,
+        permissionsFor: () => ({ has: () => true }),
+      },
+      author: { id: 'user-id', bot: false },
+      mentions: { users: { has: () => true } },
+      reply: async () => {
+        replyCalls += 1;
+      },
+    };
+
+    const starting = createApplication({
+      loadConfig: () => config,
+      loadPersona: async () => ({} as TrustedPersona),
+      createStore: () => ({
+        append: async () => undefined,
+        getRecent: async () => [],
+        clear: async () => 0,
+        cleanup: async () => 0,
+        healthCheck: async () => true,
+        close: async () => undefined,
+      }),
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        get user() {
+          return clientUser;
+        },
+        on: (event, listener) => {
+          listeners.set(event, listener);
+        },
+        login: async () => {
+          signalLoginStarted();
+          await new Promise<void>((resolve) => {
+            releaseLogin = resolve;
+          });
+          clientUser = { id: 'bot-id' };
+        },
+        destroy: () => undefined,
+      }),
+    });
+
+    await loginStarted;
+    const messageHandler = listeners.get('messageCreate');
+    expect(messageHandler).toBeDefined();
+    expect(listeners.has('interactionCreate')).toBe(true);
+    await messageHandler?.(message);
+    expect(replyCalls).toBe(0);
+
+    releaseLogin();
+    const application = await starting;
+    await messageHandler?.(message);
+    expect(replyCalls).toBe(1);
+    await application.shutdown();
   });
 
   it('releases resources and sets a failing exit code when startup fails', async () => {

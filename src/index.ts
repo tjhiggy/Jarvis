@@ -121,7 +121,7 @@ export const createApplication = async (
   let store: ConversationStore | undefined;
   let client: RuntimeDiscordClient | undefined;
   let cleanupTimer: unknown;
-  let acceptingWork = true;
+  let acceptingWork = false;
   let shutdownPromise: Promise<void> | undefined;
 
   const shutdown = (): Promise<void> => {
@@ -161,12 +161,6 @@ export const createApplication = async (
     const ai = aiFactory(config);
     client = discordFactory();
 
-    await client.login(config.discord.token);
-    const botUserId = client.user?.id.trim();
-    if (botUserId === undefined || botUserId === '') {
-      throw new Error('Discord client did not expose a bot user after login.');
-    }
-
     const conversationService = new ConversationService({
       store: initializedStore,
       ai,
@@ -183,7 +177,30 @@ export const createApplication = async (
       maxHistoryMessages: config.storage.maxHistoryMessages,
       safetyIdentifierSecret: config.openai.apiKey,
     });
-    const handlers = createDiscordHandlers({
+    const handlerState: {
+      handlers: ReturnType<typeof createDiscordHandlers> | undefined;
+    } = { handlers: undefined };
+    client.on('messageCreate', (message) => {
+      if (acceptingWork && handlerState.handlers !== undefined) {
+        return handlerState.handlers.onMessageCreate(message as DiscordMessage);
+      }
+      return undefined;
+    });
+    client.on('interactionCreate', (interaction) => {
+      if (acceptingWork && handlerState.handlers !== undefined) {
+        return handlerState.handlers.onInteractionCreate(
+          interaction as DiscordInteraction,
+        );
+      }
+      return undefined;
+    });
+
+    await client.login(config.discord.token);
+    const botUserId = client.user?.id.trim();
+    if (botUserId === undefined || botUserId === '') {
+      throw new Error('Discord client did not expose a bot user after login.');
+    }
+    handlerState.handlers = createDiscordHandlers({
       botUserId,
       allowedChannelIds: config.security.allowedChannelIds,
       conversationService,
@@ -194,33 +211,25 @@ export const createApplication = async (
           store: initializedStore,
         }),
     });
-    client.on('messageCreate', (message) => {
-      if (acceptingWork) {
-        return handlers.onMessageCreate(message as DiscordMessage);
-      }
-      return undefined;
-    });
-    client.on('interactionCreate', (interaction) => {
-      if (acceptingWork) {
-        return handlers.onInteractionCreate(interaction as DiscordInteraction);
-      }
-      return undefined;
-    });
 
-    const cleanup = (): void => {
-      void initializedStore
-        .cleanup(
+    const cleanup = async (): Promise<void> => {
+      try {
+        await initializedStore.cleanup(
           new Date(
             Date.now() - config.storage.historyRetentionDays * 24 * 60 * 60 * 1_000,
           ),
-        )
-        .catch((error: unknown) => {
-          logger?.warn({ error }, 'Conversation retention cleanup failed.');
-        });
+        );
+      } catch (error) {
+        logger?.warn({ error }, 'Conversation retention cleanup failed.');
+      }
     };
-    cleanupTimer = timers.setInterval(cleanup, cleanupIntervalMs);
+    await cleanup();
+    cleanupTimer = timers.setInterval(() => {
+      void cleanup();
+    }, cleanupIntervalMs);
     registerSignal('SIGINT', shutdown);
     registerSignal('SIGTERM', shutdown);
+    acceptingWork = true;
 
     return { shutdown };
   } catch (error) {
