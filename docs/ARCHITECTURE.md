@@ -4,18 +4,18 @@ Jarvis is a single Node.js process. It receives Discord gateway events, applies 
 
 ## Components
 
-| Component               | Responsibility                                                                                                                                                              | Source                                                                                                          |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Application composition | Loads configuration and persona, constructs adapters, starts the Discord client, runs retention cleanup, and closes resources on `SIGINT` or `SIGTERM`.                     | `src/index.ts`                                                                                                  |
-| Configuration           | Parses and validates environment settings into immutable configuration objects.                                                                                             | `src/config/config.ts`                                                                                          |
-| Discord adapter         | Accepts guild mentions and chat-input commands, checks message permissions, derives channel or thread context, neutralizes mentions, and chunks replies.                    | `src/discord/handlers.ts`, `src/commands/handlers.ts`, `src/discord/delivery.ts`, `src/utils/chunk-response.ts` |
-| Command definitions     | Defines `/ask`, `/search`, `/forget`, `/help`, and `/status` for guild registration.                                                                                        | `src/commands/definitions.ts`                                                                                   |
-| Conversation service    | Enforces input validation, channel access, event de-duplication, per-guild/user rate limits, coordinated storage transitions, persona mode, history reads, and persistence. | `src/services/conversation-service.ts`                                                                          |
-| AI providers            | Implements the shared AI boundary for OpenAI Responses and Ollama chat. Each runtime response is capped at 1,000 output tokens by application composition.                  | `src/openai/openai-service.ts`, `src/ollama/ollama-service.ts`, `src/index.ts`                                  |
-| Web grounding           | Uses Tavily only when configured and either requested by `/search` or inferred by the current-information heuristic.                                                        | `src/search/web-search.ts`                                                                                      |
-| Storage                 | Defines the conversation-store boundary and provides the SQLite implementation.                                                                                             | `src/storage/conversation-store.ts`, `src/storage/sqlite-conversation-store.ts`                                 |
-| Disabled extensions     | Declares disabled-by-default, operator-approved extension shapes; it does not implement or wire tools.                                                                      | `src/extensions/contracts.ts`                                                                                   |
-| Command registration    | Bulk-registers this application's command definitions in the configured development guild.                                                                                  | `scripts/register-commands.ts`                                                                                  |
+| Component               | Responsibility                                                                                                                                                                                                   | Source                                                                                                          |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Application composition | Loads configuration and persona, constructs adapters, starts the Discord client, runs retention cleanup, and closes resources on `SIGINT` or `SIGTERM`.                                                          | `src/index.ts`                                                                                                  |
+| Configuration           | Parses and validates environment settings into immutable configuration objects.                                                                                                                                  | `src/config/config.ts`                                                                                          |
+| Discord adapter         | Accepts guild mentions and chat-input commands, checks message permissions, derives channel or thread context, neutralizes reply mentions, and chunks replies.                                                   | `src/discord/handlers.ts`, `src/commands/handlers.ts`, `src/discord/delivery.ts`, `src/utils/chunk-response.ts` |
+| Command definitions     | Defines `/ask`, `/search`, `/forget`, `/help`, and `/status` for guild registration.                                                                                                                             | `src/commands/definitions.ts`                                                                                   |
+| Conversation service    | Owns shared prompt normalization, input validation, channel access, event de-duplication, per-guild/user rate limits, unsupported-action UX responses, persona mode, history reads, and coordinated persistence. | `src/services/conversation-service.ts`, `src/security/unsupported-action-classifier.ts`                         |
+| AI providers            | Implements the shared AI boundary for OpenAI Responses and Ollama chat. Each runtime response is capped at 1,000 output tokens by application composition.                                                       | `src/openai/openai-service.ts`, `src/ollama/ollama-service.ts`, `src/index.ts`                                  |
+| Web grounding           | Uses Tavily only when configured and either requested by `/search` or inferred by the current-information heuristic.                                                                                             | `src/search/web-search.ts`                                                                                      |
+| Storage                 | Defines the conversation-store boundary and provides the SQLite implementation.                                                                                                                                  | `src/storage/conversation-store.ts`, `src/storage/sqlite-conversation-store.ts`                                 |
+| Disabled extensions     | Declares disabled-by-default, operator-approved extension shapes; it does not implement or wire tools.                                                                                                           | `src/extensions/contracts.ts`                                                                                   |
+| Command registration    | Bulk-registers this application's command definitions in the configured development guild.                                                                                                                       | `scripts/register-commands.ts`                                                                                  |
 
 ## Request flow
 
@@ -32,19 +32,21 @@ flowchart TD
     F -->|"No"| R["Return safe rate-limit response"]
     F -->|"Yes"| G["Coordinate this guild plus conversation's storage read and write transitions"]
     G --> H["Persist user message"]
-    H --> I{"Web grounding selected and Tavily configured?"}
+    H --> Q{"Clearly unsupported action request?"}
+    Q -->|"Yes"| N["Persist local UX response"]
+    Q -->|"No"| I{"Web grounding selected and Tavily configured?"}
     I -->|"Yes"| J["Fetch, sanitize, cache, and label Tavily results as untrusted evidence"]
     I -->|"No"| K{"Selected provider"}
     J --> K
     K -->|"OpenAI"| L["OpenAI Responses API"]
     K -->|"Ollama"| M["Ollama /api/chat"]
-    L --> N["Persist assistant message"]
+    L --> N
     M --> N
     N --> O["Neutralize Discord mentions and split response into chunks within Discord limits"]
     O --> P["Safe Discord reply or deferred-reply edit"]
 ```
 
-For direct mentions, the Discord adapter first requires a bot mention, a guild context, an allowed channel, and the bot's channel permissions. Commands make their own guild, channel, allowlist, and input checks before calling the same conversation service. The service is the owner of event de-duplication and rate limiting for requests that reach it.
+For direct mentions, the Discord adapter first requires a bot mention, a guild context, an allowed channel, and the bot's channel permissions. Commands make their own guild, channel, allowlist, and input checks before calling the same conversation service. The service is the shared normalization boundary for both ingress paths: it replaces unverified Discord member IDs before persistence or provider use, and it owns event de-duplication and rate limiting for requests that reach it.
 
 Storage transitions for a guild plus conversation are coordinated and serialized. A clear operation advances that conversation's generation, so queued stale storage work is invalidated. The provider call runs outside those coordinated sections, so provider calls for the same conversation can overlap; the subsequent assistant-message append is checked against the generation before it persists.
 
@@ -67,6 +69,11 @@ The selected provider is an external boundary:
 - Tavily is optional. When web search is invoked, Tavily receives the user's full normalized prompt as its search query. Its sanitized summaries are evidence only; the grounding wrapper explicitly tells the AI not to treat them as instructions.
 
 Jarvis has no implemented shell, code-execution, arbitrary-file, GitHub-write, Discord-administration, webhook-management, or autonomous-learning capability. Conversation history supplies request context only. It is not a training loop, and no request can grant the application new authority.
+
+`classifyUnsupportedAction` returns local explanatory responses for obvious
+requests that the current release cannot perform. It is deliberately a UX
+classifier, not an authorization boundary. It cannot grant an action, validate
+Discord authority, or replace permission and configuration checks.
 
 ## Extension seams
 

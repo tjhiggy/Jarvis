@@ -43,6 +43,13 @@ platform's approved secret-management boundary.
 - **Input and concurrency bounds.** Prompts have a configured character limit,
   history and stored rows are bounded, duplicate events are suppressed, and
   rate limits apply per guild and user.
+- **Shared prompt normalization.** The conversation service replaces raw
+  Discord member-mention IDs before prompts from either mentions or slash
+  commands are stored or sent to a provider.
+- **Unsupported-action responses.** An explicit classifier answers obvious
+  requests for unavailable actions locally. This is a UX guardrail, not
+  authorization or permission enforcement; supported-action classification
+  would not grant Jarvis any capability.
 - **Data separation.** History is isolated by guild and channel or thread.
   `/forget` removes only Jarvis-owned history for the current conversation;
   retention cleanup removes old bot-owned rows.
@@ -84,6 +91,11 @@ external tool invocation, or autonomous learning. Disabled extension contracts,
 including the read-only MCP context contract, exist as declarations only; they
 do not implement tools or grant authority. The persona cannot grant those
 powers.
+
+The unsupported-action classifier improves clarity and avoids wasting provider
+calls on obvious requests Jarvis cannot perform. It must never be treated as a
+security boundary or allowlist. Implemented adapters, credentials, Discord
+permissions, configuration, and operator approval define actual authority.
 
 Jarvis makes ordinary delivery edits to its own deferred interaction reply, and
 an operator-run command-registration script bulk-overwrites this application's
