@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { Logger } from 'pino';
 import type { AppConfig } from '../src/config/config.js';
 import type { TrustedPersona } from '../src/config/persona.js';
-import { createApplication } from '../src/index.js';
+import { createApplication, reportStartupFailure } from '../src/index.js';
 
 const config: AppConfig = {
   discord: {
@@ -18,6 +19,7 @@ const config: AppConfig = {
   storage: {
     databasePath: ':memory:',
     maxHistoryMessages: 5,
+    maxStoredMessages: 100,
     historyRetentionDays: 30,
   },
   security: {
@@ -32,6 +34,32 @@ const config: AppConfig = {
   },
   logging: { level: 'silent' },
 };
+
+describe('reportStartupFailure', () => {
+  it('surfaces safe configuration names and suppresses arbitrary error details', () => {
+    const messages: string[] = [];
+    const write = (message: string): void => {
+      messages.push(message);
+    };
+
+    reportStartupFailure(
+      new Error(
+        'Invalid environment configuration: DISCORD_TOKEN, OPENAI_API_KEY',
+      ),
+      write,
+    );
+    reportStartupFailure(
+      new Error('startup failed with discord-token-secret'),
+      write,
+    );
+
+    expect(messages).toEqual([
+      'Invalid environment configuration: DISCORD_TOKEN, OPENAI_API_KEY',
+      'Application startup failed.',
+    ]);
+    expect(messages.join('\n')).not.toContain('discord-token-secret');
+  });
+});
 
 describe('createApplication', () => {
   it('shuts down once, stopping event work before closing dependencies', async () => {
@@ -123,6 +151,10 @@ describe('createApplication', () => {
     let loginCalls = 0;
     let listenersBoundBeforeLogin = false;
     let replyCalls = 0;
+    let releaseReply = (): void => undefined;
+    const replyObserved = new Promise<void>((resolve) => {
+      releaseReply = resolve;
+    });
     const message = {
       id: 'message-id',
       content: '<@bot-id> hello',
@@ -136,6 +168,7 @@ describe('createApplication', () => {
       mentions: { users: { has: () => true } },
       reply: async () => {
         replyCalls += 1;
+        releaseReply();
       },
     };
 
@@ -181,8 +214,86 @@ describe('createApplication', () => {
     expect(listenersBoundBeforeLogin).toBe(true);
     const messageHandler = listeners.get('messageCreate');
     expect(messageHandler).toBeDefined();
-    await messageHandler?.(message);
+    messageHandler?.(message);
+    await replyObserved;
     expect(replyCalls).toBe(1);
+    await application.shutdown();
+  });
+
+  it('contains rejected Discord event handlers at the listener boundary', async () => {
+    const listeners = new Map<string, (...args: unknown[]) => unknown>();
+    let warningCalls = 0;
+    let releaseWarning = (): void => undefined;
+    const warningLogged = new Promise<void>((resolve) => {
+      releaseWarning = resolve;
+    });
+
+    const application = await createApplication({
+      loadConfig: () => config,
+      loadPersona: async () => ({}) as TrustedPersona,
+      createStore: () => ({
+        append: async () => undefined,
+        getRecent: async () => [],
+        clear: async () => 0,
+        cleanup: async () => 0,
+        healthCheck: async () => true,
+        close: async () => undefined,
+      }),
+      createAIService: () => ({
+        respond: async () => ({ text: 'completed response' }),
+      }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: (event, listener) => {
+          listeners.set(event, listener);
+        },
+        login: async () => 'logged-in',
+        destroy: () => undefined,
+      }),
+      createLogger: () =>
+        ({
+          warn: () => {
+            warningCalls += 1;
+            if (warningCalls === 2) {
+              releaseWarning();
+            }
+          },
+        }) as unknown as Logger,
+    });
+
+    const listenerResult = listeners.get('messageCreate')?.({
+      id: 'message-id',
+      content: '<@bot-id> hello',
+      guildId: 'guild-id',
+      channelId: 'channel-id',
+      channel: {
+        parentId: null,
+        permissionsFor: () => ({ has: () => true }),
+      },
+      author: { id: 'user-id', bot: false },
+      mentions: { users: { has: () => true } },
+      reply: async () => {
+        throw new Error('message was deleted');
+      },
+    });
+    if (listenerResult instanceof Promise) {
+      void listenerResult.catch(() => undefined);
+    }
+    const interactionResult = listeners.get('interactionCreate')?.({
+      isChatInputCommand: () => true,
+      commandName: 'help',
+      reply: async () => {
+        throw new Error('interaction token expired');
+      },
+    });
+    if (interactionResult instanceof Promise) {
+      void interactionResult.catch(() => undefined);
+    }
+
+    expect(listenerResult).toBeUndefined();
+    expect(interactionResult).toBeUndefined();
+    await warningLogged;
+    expect(warningCalls).toBe(2);
     await application.shutdown();
   });
 

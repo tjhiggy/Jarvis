@@ -282,7 +282,9 @@ History includes prompts and successful assistant responses. It is isolated by
 guild and conversation, stored in the local SQLite volume, and is not encrypted
 by the application. Protect the host, volume, and backups accordingly.
 `MAX_HISTORY_MESSAGES` limits context sent to OpenAI but does not itself delete
-newer database rows.
+newer database rows. `MAX_STORED_MESSAGES` caps total retained rows and evicts
+the oldest records after each append so rate-compliant traffic cannot grow the
+database without an application bound.
 
 Additional controls include input bounds, explicit channel allowlisting,
 per-guild/user rate limits, duplicate-event suppression, parameterized SQL,
@@ -345,8 +347,8 @@ unavailable.
   estimate.
 - Keep `ALLOWED_CHANNEL_IDS` narrow and Discord permissions narrower.
 - Tune `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_MS`, `MAX_INPUT_CHARS`, and
-  `MAX_HISTORY_MESSAGES`. Smaller inputs and histories generally reduce token
-  use.
+  `MAX_HISTORY_MESSAGES`. Set `MAX_STORED_MESSAGES` for the volume available to
+  SQLite. Smaller inputs and histories generally reduce token use.
 - The code caps model output at 1,000 tokens per request. Changing that cap
   requires a reviewed code change in `src/index.ts`.
 - Keep bounded timeouts and retries. Do not turn transient failure handling into

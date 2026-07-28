@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
-import { APIConnectionTimeoutError, APIUserAbortError } from 'openai';
+import {
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  APIUserAbortError,
+} from 'openai';
 import { describe, expect, it, vi } from 'vitest';
 import { OpenAIServiceError } from '../src/openai/openai-errors.js';
 import { OpenAIResponsesService } from '../src/openai/openai-service.js';
@@ -198,7 +202,12 @@ describe('OpenAIResponsesService', () => {
     [{ status: 408, code: 'request_timeout' }, 'service'],
     [{ status: 409, code: 'conflict' }, 'service'],
     [{ status: 429, code: 'rate_limit_exceeded' }, 'rate_limit'],
-    [new TypeError('network connection failed'), 'service'],
+    [
+      new APIConnectionError({
+        cause: new TypeError('network connection failed'),
+      }),
+      'service',
+    ],
   ] as const)(
     'retries transient %s failures before reporting %s',
     async (sdkError, code) => {
@@ -235,6 +244,7 @@ describe('OpenAIResponsesService', () => {
     [{ status: 401, code: 'invalid_api_key' }, 'authentication'],
     [{ status: 400, code: 'safety_violation' }, 'safety'],
     [{ status: 429, code: 'insufficient_quota' }, 'quota'],
+    [new TypeError('permanent client misuse'), 'service'],
   ] as const)(
     'does not retry a permanent %s failure',
     async (sdkError, code) => {

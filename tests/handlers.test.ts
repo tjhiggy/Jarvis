@@ -99,6 +99,7 @@ describe('Discord event routing', () => {
     const fake = message({
       channelId: 'thread-7',
       parentId: 'channel-1',
+      isThread: true,
       content: '<@bot-1> inspect <@other-user> please',
     });
     const requests: unknown[] = [];
@@ -138,6 +139,28 @@ describe('Discord event routing', () => {
     expect(
       fake.replies.every(({ content }) => (content?.length ?? 0) <= 1_900),
     ).toBe(true);
+  });
+
+  it('rejects a thread mention without Send Messages in Threads before doing work', async () => {
+    const fake = message({
+      channelId: 'thread-7',
+      parentId: 'channel-1',
+      isThread: true,
+      canSendInThreads: false,
+    });
+    let requests = 0;
+
+    await createDiscordHandlers(
+      dependencies({
+        ask: async () => {
+          requests += 1;
+          return { status: 'success', text: 'This must not send.' };
+        },
+      }),
+    ).onMessageCreate(fake.message);
+
+    expect(requests).toBe(0);
+    expect(fake.replies).toEqual([]);
   });
 
   it('sends only a safe generic error when conversation handling throws', async () => {
@@ -231,9 +254,11 @@ function message(
     content: string;
     channelId: string;
     parentId: string | null;
+    isThread: boolean;
     canView: boolean;
     canReadHistory: boolean;
     canSend: boolean;
+    canSendInThreads: boolean;
   }> = {},
 ): { readonly message: DiscordMessage; readonly replies: Reply[] } {
   const replies: Reply[] = [];
@@ -248,6 +273,7 @@ function message(
       channelId: overrides.channelId ?? 'channel-1',
       channel: {
         parentId: overrides.parentId ?? null,
+        isThread: () => overrides.isThread ?? false,
         permissionsFor: () => ({
           has: (permission) =>
             permission === PermissionFlagsBits.ViewChannel
@@ -256,7 +282,9 @@ function message(
                 ? (overrides.canReadHistory ?? true)
                 : permission === PermissionFlagsBits.SendMessages
                   ? (overrides.canSend ?? true)
-                  : false,
+                  : permission === PermissionFlagsBits.SendMessagesInThreads
+                    ? (overrides.canSendInThreads ?? true)
+                    : false,
         }),
       },
       author: { id: 'user-1', bot: overrides.authorBot ?? false },

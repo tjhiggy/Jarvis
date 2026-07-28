@@ -28,12 +28,16 @@ describe('loadConfig', () => {
     expect([...config.security.allowedChannelIds]).toEqual(['1', '2']);
     expect([...config.persona.restrainedChannelIds]).toEqual(['3']);
     expect(config.storage.maxHistoryMessages).toBe(20);
+    expect(config.storage.maxStoredMessages).toBe(10_000);
   });
 
   it('rejects invalid limits', () => {
     expect(() =>
       loadConfig({ ...validEnv, MAX_HISTORY_MESSAGES: '0' }),
     ).toThrow(/MAX_HISTORY_MESSAGES/);
+    expect(() => loadConfig({ ...validEnv, MAX_STORED_MESSAGES: '0' })).toThrow(
+      /MAX_STORED_MESSAGES/,
+    );
   });
 
   it('keeps channel policy immutable through public and Set prototype paths', () => {

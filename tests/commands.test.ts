@@ -31,6 +31,12 @@ describe('command definitions', () => {
       ],
     });
   });
+
+  it('caps the slash-command prompt at Discord string-option limits', () => {
+    const definitions = createCommandDefinitions(12_000);
+
+    expect(definitions[0]?.options?.[0]?.max_length).toBe(6_000);
+  });
 });
 
 describe('isAllowedChannel', () => {

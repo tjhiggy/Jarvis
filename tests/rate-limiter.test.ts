@@ -48,6 +48,22 @@ describe('RateLimiter', () => {
     expect(limiter.size).toBe(1);
   });
 
+  it('evicts the least-recently-used key at the configured map bound', () => {
+    const limiter = new RateLimiter(1, 10_000, 2);
+
+    limiter.consume('oldest', 10_000);
+    limiter.consume('middle', 10_000);
+    limiter.consume('newest', 10_000);
+
+    expect(limiter.size).toBe(2);
+    expect(limiter.consume('oldest', 10_001)).toEqual({
+      allowed: true,
+      retryAfterMs: 0,
+    });
+    expect(limiter.size).toBe(2);
+    expect(limiter.consume('newest', 10_001).allowed).toBe(false);
+  });
+
   it('rejects non-positive bounds', () => {
     expect(() => new RateLimiter(0, 1_000, 10)).toThrow(RangeError);
     expect(() => new RateLimiter(1, 0, 10)).toThrow(RangeError);

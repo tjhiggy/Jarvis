@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
-import { APIConnectionTimeoutError, APIUserAbortError } from 'openai';
+import {
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  APIUserAbortError,
+} from 'openai';
 import { OpenAIServiceError } from './openai-errors.js';
 
 export interface ConversationTurn {
@@ -186,7 +190,7 @@ function isRetryable(error: unknown): boolean {
 
   const status = getStatus(error);
   if (status === undefined) {
-    return true;
+    return error instanceof APIConnectionError;
   }
 
   if (status === 429) {

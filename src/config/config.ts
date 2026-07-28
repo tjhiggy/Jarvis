@@ -18,6 +18,7 @@ export interface AppConfig {
   readonly storage: Readonly<{
     databasePath: string;
     maxHistoryMessages: number;
+    maxStoredMessages: number;
     historyRetentionDays: number;
   }>;
   readonly security: Readonly<{
@@ -70,6 +71,7 @@ const environmentSchema = z.object({
   OPENAI_API_KEY: requiredString,
   OPENAI_MODEL: optionalString('gpt-5.6-luna'),
   MAX_HISTORY_MESSAGES: integer(20, 1),
+  MAX_STORED_MESSAGES: integer(10000, 1),
   LOG_LEVEL: z
     .enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent'])
     .default('info'),
@@ -136,6 +138,7 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
     storage: Object.freeze({
       databasePath: parsed.DATABASE_PATH,
       maxHistoryMessages: parsed.MAX_HISTORY_MESSAGES,
+      maxStoredMessages: parsed.MAX_STORED_MESSAGES,
       historyRetentionDays: parsed.HISTORY_RETENTION_DAYS,
     }),
     security: Object.freeze({

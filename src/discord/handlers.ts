@@ -25,6 +25,7 @@ export interface DiscordMessage {
   readonly channelId: string;
   readonly channel: Readonly<{
     parentId: string | null;
+    isThread?(): boolean;
     permissionsFor(userId: string): PermissionSet | null;
   }>;
   readonly author: Readonly<{ id: string; bot: boolean }>;
@@ -60,10 +61,9 @@ export interface DiscordHandlers {
   onInteractionCreate(interaction: DiscordInteraction): Promise<void>;
 }
 
-const requiredPermissions = [
+const commonRequiredPermissions = [
   PermissionFlagsBits.ViewChannel,
   PermissionFlagsBits.ReadMessageHistory,
-  PermissionFlagsBits.SendMessages,
 ] as const;
 
 const operationalErrorMessage =
@@ -117,7 +117,10 @@ const normalizeMention = (
   const channelId = message.channelId.trim();
   const userId = message.author.id.trim();
   const botUserId = dependencies.botUserId.trim();
-  const parentChannelId = message.channel.parentId?.trim();
+  const isThread = message.channel.isThread?.() ?? false;
+  const parentChannelId = isThread
+    ? message.channel.parentId?.trim()
+    : undefined;
   if (
     eventId === '' ||
     guildId === '' ||
@@ -130,7 +133,7 @@ const normalizeMention = (
       parentChannelId,
       dependencies.allowedChannelIds,
     ) ||
-    !hasRequiredPermissions(message, botUserId)
+    !hasRequiredPermissions(message, botUserId, isThread)
   ) {
     return undefined;
   }
@@ -156,11 +159,19 @@ const normalizeMention = (
 const hasRequiredPermissions = (
   message: DiscordMessage,
   botUserId: string,
+  isThread: boolean,
 ): boolean => {
   const permissions = message.channel.permissionsFor(botUserId);
   return (
     permissions !== null &&
-    requiredPermissions.every((permission) => permissions.has(permission))
+    commonRequiredPermissions.every((permission) =>
+      permissions.has(permission),
+    ) &&
+    permissions.has(
+      isThread
+        ? PermissionFlagsBits.SendMessagesInThreads
+        : PermissionFlagsBits.SendMessages,
+    )
   );
 };
 

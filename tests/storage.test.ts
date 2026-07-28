@@ -63,6 +63,19 @@ describe('SQLiteConversationStore', () => {
     ]);
   });
 
+  it('evicts the oldest rows at the configured global storage bound', async () => {
+    await store.close();
+    store = new SQLiteConversationStore(databasePath, 2);
+
+    await store.append(message({ content: 'oldest', timestamp: date(1) }));
+    await store.append(message({ content: 'middle', timestamp: date(2) }));
+    await store.append(message({ content: 'newest', timestamp: date(3) }));
+
+    await expect(
+      store.getRecent('guild-1', 'channel-1', 10),
+    ).resolves.toMatchObject([{ content: 'middle' }, { content: 'newest' }]);
+  });
+
   it('isolates identical conversation IDs between guilds', async () => {
     await store.append(message({ content: 'guild one', guildId: 'guild-1' }));
     await store.append(message({ content: 'guild two', guildId: 'guild-2' }));
@@ -73,6 +86,27 @@ describe('SQLiteConversationStore', () => {
     await expect(
       store.getRecent('guild-2', 'channel-1', 10),
     ).resolves.toMatchObject([{ content: 'guild two', guildId: 'guild-2' }]);
+  });
+
+  it('isolates reads and deletion between conversations in one guild', async () => {
+    await store.append(
+      message({ content: 'channel one', conversationId: 'channel-1' }),
+    );
+    await store.append(
+      message({ content: 'channel two', conversationId: 'channel-2' }),
+    );
+
+    await expect(
+      store.getRecent('guild-1', 'channel-1', 10),
+    ).resolves.toMatchObject([
+      { content: 'channel one', conversationId: 'channel-1' },
+    ]);
+    await expect(store.clear('guild-1', 'channel-1')).resolves.toBe(1);
+    await expect(
+      store.getRecent('guild-1', 'channel-2', 10),
+    ).resolves.toMatchObject([
+      { content: 'channel two', conversationId: 'channel-2' },
+    ]);
   });
 
   it('clears only the requested guild conversation and returns the deleted count', async () => {

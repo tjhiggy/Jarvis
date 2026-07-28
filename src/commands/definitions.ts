@@ -13,6 +13,8 @@ export interface CommandDefinition {
   readonly options?: readonly CommandOptionDefinition[];
 }
 
+const discordStringOptionMaxLength = 6_000;
+
 export const createCommandDefinitions = (
   maxInputChars: number,
 ): readonly CommandDefinition[] => {
@@ -33,7 +35,7 @@ export const createCommandDefinitions = (
           name: 'prompt',
           description: 'The question to ask.',
           required: true,
-          max_length: maxInputChars,
+          max_length: Math.min(maxInputChars, discordStringOptionMaxLength),
         },
       ],
     },

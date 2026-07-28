@@ -23,13 +23,21 @@ const schemaVersion = 1;
 export class SQLiteConversationStore implements ConversationStore {
   private readonly database: Database.Database;
   private readonly appendStatement: Database.Statement;
+  private readonly trimStatement: Database.Statement;
+  private readonly appendTransaction: (message: NewConversationMessage) => void;
   private readonly getRecentStatement: Database.Statement;
   private readonly clearStatement: Database.Statement;
   private readonly cleanupStatement: Database.Statement;
   private readonly healthCheckStatement: Database.Statement;
   private closed = false;
 
-  constructor(databasePath: string) {
+  constructor(databasePath: string, maxStoredMessages = 10_000) {
+    if (!Number.isSafeInteger(maxStoredMessages) || maxStoredMessages < 1) {
+      throw new RangeError(
+        'Stored message limit must be a positive safe integer.',
+      );
+    }
+
     mkdirSync(dirname(databasePath), { recursive: true });
     this.database = new Database(databasePath);
     this.configure();
@@ -46,6 +54,32 @@ export class SQLiteConversationStore implements ConversationStore {
         openai_response_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
+    this.trimStatement = this.database.prepare(`
+      DELETE FROM conversation_messages
+      WHERE id IN (
+        SELECT id
+        FROM conversation_messages
+        ORDER BY id ASC
+        LIMIT MAX(
+          (SELECT COUNT(*) FROM conversation_messages) - ?,
+          0
+        )
+      )
+    `);
+    this.appendTransaction = this.database.transaction(
+      (message: NewConversationMessage) => {
+        this.appendStatement.run(
+          message.guildId,
+          message.conversationId,
+          message.userId,
+          message.role,
+          message.content,
+          message.timestamp.getTime(),
+          message.openaiResponseId ?? null,
+        );
+        this.trimStatement.run(maxStoredMessages);
+      },
+    );
     this.getRecentStatement = this.database.prepare(`
       SELECT
         id,
@@ -86,15 +120,7 @@ export class SQLiteConversationStore implements ConversationStore {
 
   async append(message: NewConversationMessage): Promise<void> {
     this.ensureOpen();
-    this.appendStatement.run(
-      message.guildId,
-      message.conversationId,
-      message.userId,
-      message.role,
-      message.content,
-      message.timestamp.getTime(),
-      message.openaiResponseId ?? null,
-    );
+    this.appendTransaction(message);
   }
 
   async getRecent(

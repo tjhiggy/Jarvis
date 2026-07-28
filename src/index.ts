@@ -26,6 +26,8 @@ import { SQLiteConversationStore } from './storage/sqlite-conversation-store.js'
 import { createLogger } from './utils/logger.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
+const safeConfigurationError =
+  /^Invalid environment configuration: (?:[A-Z][A-Z0-9_]*|unknown)(?:, (?:[A-Z][A-Z0-9_]*|unknown))*$/;
 let dotenvLoaded = false;
 
 interface RuntimeDiscordClient {
@@ -44,7 +46,10 @@ export interface ApplicationDependencies {
   readonly loadEnvironment?: () => unknown;
   readonly loadConfig?: (env: NodeJS.ProcessEnv) => AppConfig;
   readonly loadPersona?: (path: string) => Promise<TrustedPersona>;
-  readonly createStore?: (databasePath: string) => ConversationStore;
+  readonly createStore?: (
+    databasePath: string,
+    maxStoredMessages: number,
+  ) => ConversationStore;
   readonly createAIService?: (config: AppConfig) => AIService;
   readonly createDiscordClient?: () => RuntimeDiscordClient;
   readonly createLogger?: (level: string) => Logger;
@@ -110,7 +115,9 @@ export const createApplication = async (
   const configLoader = dependencies.loadConfig ?? loadConfig;
   const personaLoader = dependencies.loadPersona ?? loadPersona;
   const storeFactory =
-    dependencies.createStore ?? ((path) => new SQLiteConversationStore(path));
+    dependencies.createStore ??
+    ((path, maxStoredMessages) =>
+      new SQLiteConversationStore(path, maxStoredMessages));
   const aiFactory = dependencies.createAIService ?? createDefaultAIService;
   const discordFactory =
     dependencies.createDiscordClient ?? createDefaultDiscordClient;
@@ -165,7 +172,10 @@ export const createApplication = async (
     const config = configLoader(process.env);
     logger = loggerFactory(config.logging.level);
     const persona = await personaLoader(config.persona.promptPath);
-    store = storeFactory(config.storage.databasePath);
+    store = storeFactory(
+      config.storage.databasePath,
+      config.storage.maxStoredMessages,
+    );
     const initializedStore = store;
     const ai = aiFactory(config);
     client = discordFactory();
@@ -205,15 +215,24 @@ export const createApplication = async (
     } = { handlers: undefined };
     client.on('messageCreate', (message) => {
       if (acceptingWork && handlerState.handlers !== undefined) {
-        return handlerState.handlers.onMessageCreate(message as DiscordMessage);
+        void handlerState.handlers
+          .onMessageCreate(message as DiscordMessage)
+          .catch((error: unknown) => {
+            logger?.warn({ error }, 'Discord message event handling failed.');
+          });
       }
       return undefined;
     });
     client.on('interactionCreate', (interaction) => {
       if (acceptingWork && handlerState.handlers !== undefined) {
-        return handlerState.handlers.onInteractionCreate(
-          interaction as DiscordInteraction,
-        );
+        void handlerState.handlers
+          .onInteractionCreate(interaction as DiscordInteraction)
+          .catch((error: unknown) => {
+            logger?.warn(
+              { error },
+              'Discord interaction event handling failed.',
+            );
+          });
       }
       return undefined;
     });
@@ -254,10 +273,23 @@ export const main = async (): Promise<void> => {
   await createApplication();
 };
 
+export const reportStartupFailure = (
+  error: unknown,
+  write: (message: string) => void = (message) => {
+    process.stderr.write(`${message}\n`);
+  },
+): void => {
+  const message =
+    error instanceof Error && safeConfigurationError.test(error.message)
+      ? error.message
+      : 'Application startup failed.';
+  write(message);
+};
+
 const invokedDirectly =
   process.argv[1] !== undefined &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) {
-  void main().catch(() => undefined);
+  void main().catch(reportStartupFailure);
 }
