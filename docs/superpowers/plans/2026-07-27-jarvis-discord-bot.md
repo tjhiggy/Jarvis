@@ -6,7 +6,7 @@
 
 **Architecture:** A layered modular monolith normalizes Discord events into a single conversation service. Discord, OpenAI, persona selection, storage, and security concerns communicate through narrow TypeScript interfaces so future integrations can be added without granting capabilities now.
 
-**Tech Stack:** Node.js 22+, TypeScript 7, discord.js 14, OpenAI Node SDK 7, better-sqlite3 13, Zod 4, Pino 10, dotenv 17, Vitest 4, ESLint 10, Prettier 3, Docker.
+**Tech Stack:** Node.js 22+, TypeScript 6, discord.js 14, OpenAI Node SDK 7, better-sqlite3 13, Zod 4, Pino 10, dotenv 17, Vitest 4, ESLint 10, Prettier 3, Docker.
 
 ## Global Constraints
 
@@ -119,7 +119,7 @@ Install runtime packages at the resolved versions:
 
 ```powershell
 npm install discord.js@14.27.0 openai@7.0.0 dotenv@17.4.2 better-sqlite3@13.0.1 zod@4.4.3 pino@10.3.1
-npm install --save-dev typescript@7.0.2 tsx@4.23.1 vitest@4.1.10 eslint@10.8.0 @eslint/js@10.0.1 typescript-eslint@8.65.0 prettier@3.9.6 @types/node@26.1.2 @types/better-sqlite3@7.6.13 pino-pretty@13.1.3
+npm install --save-dev typescript@6.0.3 tsx@4.23.1 vitest@4.1.10 eslint@10.8.0 @eslint/js@10.0.1 typescript-eslint@8.65.0 prettier@3.9.6 @types/node@26.1.2 @types/better-sqlite3@7.6.13 pino-pretty@13.1.3
 ```
 
 - [ ] **Step 2: Write failing configuration tests**
