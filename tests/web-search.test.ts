@@ -30,6 +30,8 @@ describe('requiresWebGrounding', () => {
     'Write a story explaining what is current in AI regulation.',
     'Draft a memo explaining what law governs this contract.',
     'What is the safest dose of aspirin?',
+    "Write a fictional story about a detective, then explain what's in the latest ARC Raiders update.",
+    'Write a fictional story about a doctor, then tell me whether aspirin is safe.',
   ])('requires web grounding for %s', (prompt) => {
     expect(requiresWebGrounding(prompt)).toBe(true);
   });

@@ -73,7 +73,7 @@ const evidenceDependentScientificClaimSignal =
 const suppliedTextExclusion =
   /^(?:please\s+)?(?:summarize|rewrite|edit|proofread|polish|translate)\s+(?:this|the following|these supplied)\b/i;
 const additionalRequestClauseSignal =
-  /(?:[.!?;]\s+)(?:also|additionally|separately|then)(?:,\s*|\s+)((?:what(?:'s| is)|who|when|where|how|is|are|does|do|can|could|would|will|explain|tell|find|research|look up)\b.*)$/i;
+  /(?:[.!?;,]\s+)(?:also|additionally|separately|then)(?:,\s*|\s+)((?:what(?:'s| is)|who|when|where|how|is|are|does|do|can|could|would|will|explain|tell|find|research|look up)\b.*)$/i;
 const draftingExclusion =
   /^(?:please\s+)?(?:write|draft|rewrite|edit|proofread|polish|compose|create|brainstorm)\b/i;
 const creativeExclusion =
@@ -264,7 +264,11 @@ export const requiresWebGrounding = (prompt: string): boolean => {
   }
 
   if (explicitFictionWholeRequestExclusion.test(routingPrompt)) {
-    return false;
+    const additionalRequest = extractAdditionalRequestClause(routingPrompt);
+    if (additionalRequest === undefined) {
+      return false;
+    }
+    routingPrompt = additionalRequest;
   }
 
   if (
