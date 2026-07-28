@@ -38,11 +38,6 @@ export interface DiscordInteraction {
   isChatInputCommand(): boolean;
 }
 
-interface EventDeduplicator {
-  accept(eventId: string): boolean;
-  release(eventId: string): void;
-}
-
 export interface MessageHandlerDependencies {
   readonly botUserId: string;
   readonly allowedChannelIds: ReadonlySet<string>;
@@ -57,7 +52,6 @@ export interface MessageHandlerDependencies {
       readonly prompt: string;
     }): Promise<ConversationResult>;
   }>;
-  readonly deduplicator: EventDeduplicator;
   readonly handleCommand: (interaction: unknown) => Promise<void>;
 }
 
@@ -84,15 +78,10 @@ export const createDiscordHandlers = (
       return;
     }
 
-    if (!dependencies.deduplicator.accept(normalized.eventId)) {
-      return;
-    }
-
     try {
       const result = await dependencies.conversationService.ask(normalized);
       await replyInChunks(message, resultMessage(result));
     } catch {
-      dependencies.deduplicator.release(normalized.eventId);
       await replyInChunks(message, operationalErrorMessage);
     }
   },

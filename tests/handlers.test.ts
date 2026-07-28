@@ -1,5 +1,6 @@
 import { GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
 import { describe, expect, it } from 'vitest';
+import { loadPersona } from '../src/config/persona.js';
 import {
   createDiscordHandlers,
   discordGatewayIntents,
@@ -7,6 +8,19 @@ import {
   type MessageHandlerDependencies,
 } from '../src/discord/handlers.js';
 import type { ReplyPayload } from '../src/discord/delivery.js';
+import type {
+  AIRequest,
+  AIResponse,
+  AIService,
+} from '../src/openai/openai-service.js';
+import { EventDeduplicator } from '../src/security/event-deduplicator.js';
+import { RateLimiter } from '../src/security/rate-limiter.js';
+import { ConversationService } from '../src/services/conversation-service.js';
+import type {
+  ConversationMessage,
+  ConversationStore,
+  NewConversationMessage,
+} from '../src/storage/conversation-store.js';
 
 describe('Discord event routing', () => {
   it('declares only the gateway intents required for guild mention handling', () => {
@@ -44,23 +58,41 @@ describe('Discord event routing', () => {
     },
   );
 
-  it('suppresses duplicate message IDs before the conversation service', async () => {
-    const fake = message();
-    let requests = 0;
+  it('lets ConversationService own duplicate suppression and failed-event release', async () => {
+    const fixture = await createConversationFixture();
+    const first = message();
+    const concurrentDuplicate = message();
     const handlers = createDiscordHandlers(
       dependencies({
-        ask: async () => {
-          requests += 1;
-          return { status: 'success', text: 'Acknowledged.' };
-        },
+        conversationService: fixture.service,
       }),
     );
 
-    await handlers.onMessageCreate(fake.message);
-    await handlers.onMessageCreate(fake.message);
+    await Promise.all([
+      handlers.onMessageCreate(first.message),
+      handlers.onMessageCreate(concurrentDuplicate.message),
+    ]);
+    await handlers.onMessageCreate(message().message);
 
-    expect(requests).toBe(1);
-    expect(fake.replies).toHaveLength(1);
+    expect(fixture.ai.requests).toHaveLength(1);
+    expect(concurrentDuplicate.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/already.*handled/i),
+      }),
+    ]);
+
+    fixture.ai.error = new Error('temporary upstream failure');
+    const failed = message({ id: 'message-2' });
+    await handlers.onMessageCreate(failed.message);
+
+    fixture.ai.error = undefined;
+    const retry = message({ id: 'message-2' });
+    await handlers.onMessageCreate(retry.message);
+
+    expect(fixture.ai.requests).toHaveLength(3);
+    expect(retry.replies).toEqual([
+      expect.objectContaining({ content: 'Acknowledged.' }),
+    ]);
   });
 
   it('routes a valid thread mention with its own context and parent persona', async () => {
@@ -147,6 +179,34 @@ describe('Discord event routing', () => {
     expect(handled).toEqual([interaction]);
   });
 
+  it('keeps interaction deduplication within ConversationService', async () => {
+    const fixture = await createConversationFixture();
+    const statuses: string[] = [];
+    const interaction = { id: 'interaction-1', isChatInputCommand: () => true };
+    const handlers = createDiscordHandlers(
+      dependencies({
+        handleCommand: async (received) => {
+          const eventId = (received as Readonly<{ id: string }>).id;
+          const result = await fixture.service.ask({
+            eventId,
+            guildId: 'guild-1',
+            conversationId: 'channel-1',
+            channelId: 'channel-1',
+            userId: 'user-1',
+            prompt: 'status report',
+          });
+          statuses.push(result.status);
+        },
+      }),
+    );
+
+    await handlers.onInteractionCreate(interaction);
+    await handlers.onInteractionCreate(interaction);
+
+    expect(statuses).toEqual(['success', 'duplicate']);
+    expect(fixture.ai.requests).toHaveLength(1);
+  });
+
   it('ignores non-command interactions', async () => {
     let handled = 0;
 
@@ -213,30 +273,88 @@ type Reply = ReplyPayload;
 function dependencies(
   overrides: Partial<{
     ask: MessageHandlerDependencies['conversationService']['ask'];
+    conversationService: MessageHandlerDependencies['conversationService'];
     handleCommand: MessageHandlerDependencies['handleCommand'];
   }> = {},
 ): MessageHandlerDependencies {
-  const seen = new Set<string>();
   return {
     botUserId: 'bot-1',
     allowedChannelIds: new Set(['channel-1']),
-    conversationService: {
+    conversationService: overrides.conversationService ?? {
       ask:
         overrides.ask ??
-        (async () => ({ status: 'success', text: 'Acknowledged.' })),
-    },
-    deduplicator: {
-      accept: (eventId) => {
-        if (seen.has(eventId)) {
-          return false;
-        }
-        seen.add(eventId);
-        return true;
-      },
-      release: (eventId) => {
-        seen.delete(eventId);
-      },
+        (async () => ({ status: 'success' as const, text: 'Acknowledged.' })),
     },
     handleCommand: overrides.handleCommand ?? (async () => {}),
   };
+}
+
+async function createConversationFixture(): Promise<{
+  readonly ai: HandlerAI;
+  readonly service: ConversationService;
+}> {
+  const ai = new HandlerAI();
+  const deduplicator = new EventDeduplicator(60_000, 100);
+  const service = new ConversationService({
+    store: new HandlerStore(),
+    ai,
+    rateLimiter: new RateLimiter(10, 60_000),
+    deduplicator,
+    persona: await loadPersona('config/jarvis-persona.md'),
+    allowedChannelIds: new Set(['channel-1']),
+    restrainedChannelIds: new Set(),
+    maxInputChars: 12_000,
+    maxHistoryMessages: 20,
+    safetyIdentifierSecret: 'test-secret',
+  });
+
+  return { ai, service };
+}
+
+class HandlerStore implements ConversationStore {
+  async append(messageToAppend: NewConversationMessage): Promise<void> {
+    void messageToAppend;
+  }
+
+  async getRecent(
+    guildId: string,
+    conversationId: string,
+    limit: number,
+  ): Promise<ConversationMessage[]> {
+    void guildId;
+    void conversationId;
+    void limit;
+    return [];
+  }
+
+  async clear(guildId: string, conversationId: string): Promise<number> {
+    void guildId;
+    void conversationId;
+    return 0;
+  }
+
+  async cleanup(before: Date): Promise<number> {
+    void before;
+    return 0;
+  }
+
+  async healthCheck(): Promise<boolean> {
+    return true;
+  }
+
+  async close(): Promise<void> {}
+}
+
+class HandlerAI implements AIService {
+  readonly requests: AIRequest[] = [];
+  error: Error | undefined;
+
+  async respond(request: AIRequest): Promise<AIResponse> {
+    this.requests.push(request);
+    if (this.error !== undefined) {
+      throw this.error;
+    }
+
+    return { text: 'Acknowledged.' };
+  }
 }
