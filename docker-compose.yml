@@ -1,0 +1,26 @@
+services:
+  jarvis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jarvis-discord-bot:local
+    env_file:
+      - .env
+    environment:
+      DATABASE_PATH: /app/data/discord-bot.db
+      NODE_ENV: production
+    read_only: true
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    volumes:
+      - jarvis-data:/app/data
+    stop_grace_period: 30s
+
+volumes:
+  jarvis-data:
