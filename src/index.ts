@@ -177,6 +177,19 @@ export const createApplication = async (
       maxHistoryMessages: config.storage.maxHistoryMessages,
       safetyIdentifierSecret: config.openai.apiKey,
     });
+    const cleanup = async (): Promise<void> => {
+      try {
+        await initializedStore.cleanup(
+          new Date(
+            Date.now() - config.storage.historyRetentionDays * 24 * 60 * 60 * 1_000,
+          ),
+        );
+      } catch (error) {
+        logger?.warn({ error }, 'Conversation retention cleanup failed.');
+      }
+    };
+    await cleanup();
+
     const handlerState: {
       handlers: ReturnType<typeof createDiscordHandlers> | undefined;
     } = { handlers: undefined };
@@ -212,18 +225,6 @@ export const createApplication = async (
         }),
     });
 
-    const cleanup = async (): Promise<void> => {
-      try {
-        await initializedStore.cleanup(
-          new Date(
-            Date.now() - config.storage.historyRetentionDays * 24 * 60 * 60 * 1_000,
-          ),
-        );
-      } catch (error) {
-        logger?.warn({ error }, 'Conversation retention cleanup failed.');
-      }
-    };
-    await cleanup();
     cleanupTimer = timers.setInterval(() => {
       void cleanup();
     }, cleanupIntervalMs);

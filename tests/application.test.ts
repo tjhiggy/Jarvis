@@ -108,14 +108,16 @@ describe('createApplication', () => {
     expect(replyCalls).toBe(0);
   });
 
-  it('binds gated listeners before login and enables them only after startup', async () => {
+  it('finishes startup cleanup before login and accepts events immediately after ready', async () => {
     const listeners = new Map<string, (...args: unknown[]) => unknown>();
-    let releaseLogin = (): void => undefined;
-    let signalLoginStarted = (): void => undefined;
-    const loginStarted = new Promise<void>((resolve) => {
-      signalLoginStarted = resolve;
+    let releaseCleanup = (): void => undefined;
+    let signalCleanupStarted = (): void => undefined;
+    const cleanupStarted = new Promise<void>((resolve) => {
+      signalCleanupStarted = resolve;
     });
     let clientUser: Readonly<{ id: string }> | null = null;
+    let loginCalls = 0;
+    let listenersBoundBeforeLogin = false;
     let replyCalls = 0;
     const message = {
       id: 'message-id',
@@ -140,7 +142,13 @@ describe('createApplication', () => {
         append: async () => undefined,
         getRecent: async () => [],
         clear: async () => 0,
-        cleanup: async () => 0,
+        cleanup: async () => {
+          signalCleanupStarted();
+          await new Promise<void>((resolve) => {
+            releaseCleanup = resolve;
+          });
+          return 0;
+        },
         healthCheck: async () => true,
         close: async () => undefined,
       }),
@@ -153,25 +161,22 @@ describe('createApplication', () => {
           listeners.set(event, listener);
         },
         login: async () => {
-          signalLoginStarted();
-          await new Promise<void>((resolve) => {
-            releaseLogin = resolve;
-          });
+          loginCalls += 1;
+          listenersBoundBeforeLogin = listeners.has('messageCreate');
           clientUser = { id: 'bot-id' };
         },
         destroy: () => undefined,
       }),
     });
 
-    await loginStarted;
+    await cleanupStarted;
+    expect(loginCalls).toBe(0);
+    releaseCleanup();
+    const application = await starting;
+    expect(loginCalls).toBe(1);
+    expect(listenersBoundBeforeLogin).toBe(true);
     const messageHandler = listeners.get('messageCreate');
     expect(messageHandler).toBeDefined();
-    expect(listeners.has('interactionCreate')).toBe(true);
-    await messageHandler?.(message);
-    expect(replyCalls).toBe(0);
-
-    releaseLogin();
-    const application = await starting;
     await messageHandler?.(message);
     expect(replyCalls).toBe(1);
     await application.shutdown();
