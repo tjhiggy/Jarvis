@@ -16,6 +16,15 @@ describe('EventDeduplicator', () => {
     expect(deduplicator.accept('event-1', 10_999)).toBe(false);
   });
 
+  it('releases an accepted event ID so a failed operation can be retried', () => {
+    const deduplicator = new EventDeduplicator(1_000, 10);
+
+    deduplicator.accept('event-1', 10_000);
+    deduplicator.release('event-1');
+
+    expect(deduplicator.accept('event-1', 10_001)).toBe(true);
+  });
+
   it('accepts an event ID again once its TTL reaches the expiry boundary', () => {
     const deduplicator = new EventDeduplicator(1_000, 10);
 

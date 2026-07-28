@@ -33,6 +33,10 @@ export class EventDeduplicator {
     return true;
   }
 
+  public release(eventId: string): void {
+    this.acceptedAtByEventId.delete(eventId);
+  }
+
   public prune(now = Date.now()): void {
     const cutoff = now - this.ttlMs;
 

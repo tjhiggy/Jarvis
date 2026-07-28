@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { loadPersona } from '../src/config/persona.js';
 import { OpenAIServiceError } from '../src/openai/openai-errors.js';
 import type {
@@ -134,6 +134,54 @@ describe('ConversationService', () => {
     expect(fixture.store.appended[0]).toMatchObject({ role: 'user' });
   });
 
+  it('releases a failed AI event reservation so the same event can recover on retry', async () => {
+    const fixture = await createFixture();
+    fixture.ai.error = new Error('temporary upstream failure');
+
+    await expect(fixture.service.ask(request())).resolves.toMatchObject({
+      status: 'ai_error',
+    });
+
+    fixture.ai.error = undefined;
+
+    await expect(fixture.service.ask(request())).resolves.toMatchObject({
+      status: 'success',
+    });
+  });
+
+  it('releases a failed storage event reservation so the same event can recover on retry', async () => {
+    const fixture = await createFixture();
+    fixture.store.appendError = new Error('temporary database failure');
+
+    await expect(fixture.service.ask(request())).resolves.toMatchObject({
+      status: 'ai_error',
+    });
+
+    fixture.store.appendError = undefined;
+
+    await expect(fixture.service.ask(request())).resolves.toMatchObject({
+      status: 'success',
+    });
+  });
+
+  it('keeps an in-progress event reservation to suppress concurrent duplicates', async () => {
+    const fixture = await createFixture();
+    const responseGate = deferred<void>();
+    const aiStarted = deferred<void>();
+    fixture.ai.responseGate = responseGate.promise;
+    fixture.ai.onRequest = aiStarted.resolve;
+
+    const first = fixture.service.ask(request());
+    await aiStarted.promise;
+
+    await expect(fixture.service.ask(request())).resolves.toMatchObject({
+      status: 'duplicate',
+    });
+
+    responseGate.resolve();
+    await expect(first).resolves.toMatchObject({ status: 'success' });
+  });
+
   it('uses a stable SHA-256 safety identifier based on IDs and the local secret, never a username', async () => {
     const fixture = await createFixture({
       safetyIdentifierSecret: 'local-key',
@@ -176,6 +224,31 @@ describe('ConversationService', () => {
     ).resolves.toMatchObject({ status: 'rate_limited' });
   });
 
+  it('releases a rate-limited reservation so the same event can retry after the window', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-28T12:00:00.000Z'));
+
+    try {
+      const fixture = await createFixture({
+        rateLimitRequests: 1,
+        deduplicatorTtlMs: 120_000,
+      });
+      await fixture.service.ask(request({ eventId: 'event-previous' }));
+
+      await expect(
+        fixture.service.ask(request({ eventId: 'event-retry' })),
+      ).resolves.toMatchObject({ status: 'rate_limited' });
+
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      await expect(
+        fixture.service.ask(request({ eventId: 'event-retry' })),
+      ).resolves.toMatchObject({ status: 'success' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('suppresses duplicate events without storing or calling AI again', async () => {
     const fixture = await createFixture();
     const first = request();
@@ -216,6 +289,7 @@ describe('ConversationService', () => {
 
 interface FixtureOptions {
   readonly allowedChannelIds?: ReadonlySet<string>;
+  readonly deduplicatorTtlMs?: number;
   readonly maxHistoryMessages?: number;
   readonly maxInputChars?: number;
   readonly rateLimitRequests?: number;
@@ -228,7 +302,10 @@ async function createFixture(options: FixtureOptions = {}) {
   const store = new InMemoryStore(operations);
   const ai = new StubAIService(operations);
   const rateLimiter = new RateLimiter(options.rateLimitRequests ?? 10, 60_000);
-  const deduplicator = new EventDeduplicator(60_000, 100);
+  const deduplicator = new EventDeduplicator(
+    options.deduplicatorTtlMs ?? 60_000,
+    100,
+  );
   const persona = await loadPersona('config/jarvis-persona.md');
   const service = new ConversationService({
     store,
@@ -249,12 +326,16 @@ async function createFixture(options: FixtureOptions = {}) {
 class InMemoryStore implements ConversationStore {
   readonly appended: NewConversationMessage[] = [];
   readonly getRecentCalls: [string, string, number][] = [];
+  appendError: Error | undefined;
   history: ConversationMessage[] = [];
 
   constructor(readonly operations: string[]) {}
 
   async append(messageToAppend: NewConversationMessage): Promise<void> {
     this.operations.push(`append:${messageToAppend.role}`);
+    if (this.appendError !== undefined) {
+      throw this.appendError;
+    }
     this.appended.push(messageToAppend);
   }
 
@@ -287,18 +368,38 @@ class StubAIService implements AIService {
   readonly requests: AIRequest[] = [];
   error: Error | undefined;
   nextResponse: AIResponse = { text: 'Acknowledged.' };
+  onRequest: (() => void) | undefined;
+  responseGate: Promise<void> | undefined;
 
   constructor(private readonly operations: string[]) {}
 
   async respond(requestToRespond: AIRequest): Promise<AIResponse> {
     this.operations.push('ai');
     this.requests.push(requestToRespond);
+    this.onRequest?.();
+    await this.responseGate;
     if (this.error !== undefined) {
       throw this.error;
     }
 
     return this.nextResponse;
   }
+}
+
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve: ((value: T | PromiseLike<T>) => void) | undefined;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+
+  if (resolve === undefined) {
+    throw new Error('Deferred promise initialization failed.');
+  }
+
+  return { promise, resolve };
 }
 
 function message(

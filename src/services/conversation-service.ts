@@ -102,6 +102,7 @@ export class ConversationService {
       JSON.stringify([normalized.guildId, normalized.userId]),
     );
     if (!rateLimit.allowed) {
+      this.options.deduplicator.release(normalized.eventId);
       return {
         status: 'rate_limited',
         message: rateLimitedMessage,
@@ -169,6 +170,7 @@ export class ConversationService {
           : { responseId: response.responseId }),
       };
     } catch {
+      this.options.deduplicator.release(normalized.eventId);
       return { status: 'ai_error', message: serviceErrorMessage };
     }
   }
