@@ -188,13 +188,16 @@ review the code and deliberately change the route in
 `scripts/register-commands.ts` from:
 
 ```ts
-Routes.applicationGuildCommands(clientId, guildId);
+Routes.applicationGuildCommands(
+  config.discord.clientId,
+  config.discord.guildId,
+);
 ```
 
 to:
 
 ```ts
-Routes.applicationCommands(clientId);
+Routes.applicationCommands(config.discord.clientId);
 ```
 
 Then test and register once. Global commands reach every server that installed
