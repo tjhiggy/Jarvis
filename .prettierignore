@@ -2,4 +2,5 @@ dist/
 coverage/
 node_modules/
 data/
+.superpowers/
 package-lock.json
