@@ -163,7 +163,7 @@ gate reduce risk but cannot make language-model output infallible; use
 | `/search query:<question>`    | Requires Tavily and forces current web grounding before the selected AI provider answers.                                                           |
 | `/forget`                     | Deletes Jarvis-owned conversation history for the current guild channel or thread.                                                                  |
 | `/faq`                        | Lists the approved local FAQ questions publicly without calling AI, Tavily, or SQLite.                                                              |
-| `/faq topic:<approved topic>` | Posts the selected approved local answer publicly without provider usage cost or stored conversation history.                                       |
+| `/faq topic:<approved topic>` | Posts the selected answer from the active approved local catalog publicly without provider usage cost or stored conversation history.               |
 | `/help`                       | Lists the available commands and safety boundary.                                                                                                   |
 | `/status`                     | Reports Discord configuration, SQLite health, selected provider configuration, web-search configuration, and FAQ readiness without a model request. |
 
@@ -174,16 +174,18 @@ same mention-neutralizing delivery boundary as other replies.
 
 ### Approved FAQ catalog
 
-`FAQ_CATALOG_PATH` selects the operator-controlled JSON catalog and defaults to
-`./config/faq.json`. Jarvis validates and loads 1 to 25 entries before Discord
-login. The registration script validates the same file before building the
-topic choices. Missing or invalid content stops startup or registration instead
-of falling back to an invented answer.
+`FAQ_CATALOG_PATH` selects the active operator-approved JSON catalog and
+defaults to the checked-in `./config/faq.json`. Jarvis validates and loads 1 to
+25 entries before Discord login. The registration script validates the same
+active file before building the topic choices. Missing or invalid content stops
+startup or registration instead of falling back to an invented answer.
 
-The catalog is checked-in local content. Discord input can select only a
-registered topic ID, never a file path, and Jarvis never edits the catalog.
-Serving `/faq` does not call Ollama, OpenAI, Tavily, or SQLite, so approved
-answers add no AI or search-provider usage cost.
+Discord input can select only a registered topic ID, never a file path, and
+Jarvis never edits the active catalog. Serving `/faq` does not call Ollama,
+OpenAI, Tavily, or SQLite, so approved answers add no AI or search-provider
+usage cost. Replies come from the selected catalog entry and remain subject to
+the mention-neutralizing safe-delivery boundary, so unsafe mention tokens may
+be transformed before Discord receives the text.
 
 ## Docker
 

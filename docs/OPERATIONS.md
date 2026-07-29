@@ -50,8 +50,12 @@ catalog first, so it is a deployment action, not a health probe.
 After registration and startup, manually verify `/faq`, one selected approved
 answer, the omitted-topic question listing, a request from a disallowed
 channel, and `/status`. Confirm replies are public where expected, the selected
-answer matches `config/faq.json` exactly, and no uncontrolled mention fires.
-These checks do not authorize broader Discord permissions.
+answer corresponds to the entry in the active catalog selected by
+`FAQ_CATALOG_PATH`, and no uncontrolled mention fires. `config/faq.json` is the
+default catalog, not the comparison source when an override is configured.
+Account for intentional mention neutralization when comparing delivered text
+with the active catalog. These checks do not authorize broader Discord
+permissions.
 
 Stop native Jarvis with `Ctrl+C` in the owning console or a normal `SIGINT` or
 `SIGTERM`. Stop the container with `docker compose stop jarvis`. Wait for the

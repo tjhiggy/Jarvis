@@ -10,7 +10,7 @@ Jarvis is a single Node.js process. It receives Discord gateway events, applies 
 | Configuration           | Parses and validates environment settings into immutable configuration objects.                                                                                                                                  | `src/config/config.ts`                                                                                          |
 | Discord adapter         | Accepts guild mentions and chat-input commands, checks message permissions, derives channel or thread context, neutralizes reply mentions, and chunks replies.                                                   | `src/discord/handlers.ts`, `src/commands/handlers.ts`, `src/discord/delivery.ts`, `src/utils/chunk-response.ts` |
 | Command definitions     | Defines `/ask`, `/search`, `/forget`, `/faq`, `/help`, and `/status` for guild registration.                                                                                                                     | `src/commands/definitions.ts`                                                                                   |
-| FAQ catalog             | Validates and freezes 1 to 25 approved local entries, provides ID lookup, and rejects invalid content with a sanitized configuration error.                                                                      | `src/faq/faq-catalog.ts`, `config/faq.json`                                                                     |
+| FAQ catalog             | Validates and freezes 1 to 25 entries from the active approved local catalog, provides ID lookup, and rejects invalid content with a sanitized configuration error.                                              | `src/faq/faq-catalog.ts`, default `config/faq.json`                                                             |
 | Conversation service    | Owns shared prompt normalization, input validation, channel access, event de-duplication, per-guild/user rate limits, unsupported-action UX responses, persona mode, history reads, and coordinated persistence. | `src/services/conversation-service.ts`, `src/security/unsupported-action-classifier.ts`                         |
 | AI providers            | Implements the shared AI boundary for OpenAI Responses and Ollama chat. Each runtime response is capped at 1,000 output tokens by application composition.                                                       | `src/openai/openai-service.ts`, `src/ollama/ollama-service.ts`, `src/index.ts`                                  |
 | Web grounding           | Uses Tavily only when configured and either forced by `/search` or selected by the balanced evidence-routing heuristic.                                                                                          | `src/search/web-search.ts`                                                                                      |
@@ -53,9 +53,11 @@ Storage transitions for a guild plus conversation are coordinated and serialized
 
 `/faq` deliberately bypasses the conversational flow after the existing guild
 and channel checks. An omitted topic lists approved questions; a registered
-topic ID returns the exact checked-in answer. Both are public replies through
-the existing safe-delivery boundary. The handler does not call the AI service,
-Tavily, or the conversation store, and it does not modify the catalog.
+topic ID selects its answer from the active approved catalog chosen by
+`FAQ_CATALOG_PATH`. Both are public replies through the existing safe-delivery
+boundary, which may neutralize unsafe mention tokens before delivery. The
+handler does not call the AI service, Tavily, or the conversation store, and it
+does not modify the catalog.
 
 ## Web-grounding boundary
 

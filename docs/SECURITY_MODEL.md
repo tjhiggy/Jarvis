@@ -78,10 +78,12 @@ invalid content fails closed with a sanitized error that names
 - **Mass-mention protection.** Replies set Discord `allowedMentions` to an
   empty parse list with `repliedUser: false`, and text is neutralized before
   delivery. Jarvis cannot turn an answer into an `@everyone` incident.
-- **Approved FAQ boundary.** `/faq` returns exact checked-in content through
-  the existing safe-delivery path. The catalog is immutable in process and
-  read-only to Discord. Listing or selecting a topic makes no AI, Tavily, or
-  conversation-storage call; it only sends the requested public reply.
+- **Approved FAQ boundary.** `/faq` selects content from the active approved
+  catalog configured by `FAQ_CATALOG_PATH`; `config/faq.json` is only the
+  default. The catalog is immutable in process and read-only to Discord.
+  Replies pass through mention-neutralizing safe delivery, so unsafe mention
+  tokens may be transformed. Listing or selecting a topic makes no AI, Tavily,
+  or conversation-storage call; it only sends the requested public reply.
 - **Credential redaction.** Structured logs recursively redact values under
   keys named `token`, `apiKey`, or `authorization` (case-insensitive), including
   those keys in nested headers. This is not a general secret detector for
