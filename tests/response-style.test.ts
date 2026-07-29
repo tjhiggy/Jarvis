@@ -14,6 +14,10 @@ describe('classifyResponseStyle', () => {
     "So what's new with you today?",
     "What's new with you?",
     'Anything new with you today?',
+    'So how are you feeling today?',
+    'Well, how are you feeling today?',
+    'Okay, how are you feeling today?',
+    'Hey, how are you feeling today?',
   ])('classifies casual conversation: %s', (prompt) => {
     expect(classifyResponseStyle(prompt)).toBe('concise-casual');
   });
@@ -23,6 +27,8 @@ describe('classifyResponseStyle', () => {
     "What's the latest ARC Raiders update?",
     'What is the current Bitcoin price?',
     'Explain this in detail: how are you feeling today?',
+    'So what is the weather today?',
+    "Hey, what's the latest ARC Raiders update?",
   ])('keeps factual or detailed requests standard: %s', (prompt) => {
     expect(classifyResponseStyle(prompt)).toBe('standard');
   });
