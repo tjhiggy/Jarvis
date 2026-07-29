@@ -1,7 +1,13 @@
 import { GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
+import type { PollController } from '../polls/poll-controller.js';
 import { isAllowedChannel } from './access.js';
-import { replySafely, type ReplyPayload } from './delivery.js';
+import {
+  replySafely,
+  type ReplyPayload,
+  type ReplyTarget,
+} from './delivery.js';
 import type { ConversationResult } from '../services/conversation-service.js';
+import { EventDeduplicator } from '../security/event-deduplicator.js';
 import { chunkDiscordResponse } from '../utils/chunk-response.js';
 import {
   neutralizeDiscordMentions,
@@ -36,6 +42,27 @@ export interface DiscordMessage {
 
 export interface DiscordInteraction {
   isChatInputCommand(): boolean;
+  isButton(): boolean;
+}
+
+interface DiscordButtonInteraction extends DiscordInteraction, ReplyTarget {
+  readonly id: string;
+  readonly customId: string;
+  readonly guildId: string | null;
+  readonly channelId: string;
+  readonly channel: Readonly<{
+    parentId: string | null;
+    isThread?(): boolean;
+  }> | null;
+  readonly user: Readonly<{ id: string }>;
+  readonly message: Readonly<{
+    id: string;
+    guildId: string | null;
+    channelId: string;
+    author: Readonly<{ id: string }>;
+  }>;
+  deferReply(payload: ReplyPayload): Promise<unknown>;
+  editReply(payload: ReplyPayload): Promise<unknown>;
 }
 
 export interface MessageHandlerDependencies {
@@ -53,6 +80,7 @@ export interface MessageHandlerDependencies {
     }): Promise<ConversationResult>;
   }>;
   readonly handleCommand: (interaction: unknown) => Promise<void>;
+  readonly pollController?: PollController;
 }
 
 export interface DiscordHandlers {
@@ -70,28 +98,110 @@ const operationalErrorMessage =
 
 export const createDiscordHandlers = (
   dependencies: MessageHandlerDependencies,
-): DiscordHandlers => ({
-  onMessageCreate: async (message) => {
-    const normalized = normalizeMention(message, dependencies);
-    if (normalized === undefined) {
-      return;
-    }
+): DiscordHandlers => {
+  const pollButtonDeduplicator = new EventDeduplicator(10 * 60 * 1_000, 10_000);
+  return {
+    onMessageCreate: async (message) => {
+      const normalized = normalizeMention(message, dependencies);
+      if (normalized === undefined) {
+        return;
+      }
 
-    try {
-      const result = await dependencies.conversationService.ask(normalized);
-      await replyInChunks(message, resultMessage(result));
-    } catch {
-      await replyInChunks(message, operationalErrorMessage);
-    }
-  },
-  onInteractionCreate: async (interaction) => {
-    if (!interaction.isChatInputCommand()) {
-      return;
-    }
+      try {
+        const result = await dependencies.conversationService.ask(normalized);
+        await replyInChunks(message, resultMessage(result));
+      } catch {
+        await replyInChunks(message, operationalErrorMessage);
+      }
+    },
+    onInteractionCreate: async (interaction) => {
+      if (interaction.isChatInputCommand()) {
+        await dependencies.handleCommand(interaction);
+        return;
+      }
+      if (!interaction.isButton()) {
+        return;
+      }
+      const button = interaction as DiscordButtonInteraction;
+      const eventId = button.id.trim();
+      if (eventId === '' || !pollButtonDeduplicator.accept(eventId)) {
+        return;
+      }
+      try {
+        await handlePollButton(button, dependencies);
+      } catch (error) {
+        pollButtonDeduplicator.release(eventId);
+        throw error;
+      }
+    },
+  };
+};
 
-    await dependencies.handleCommand(interaction);
-  },
-});
+export const parsePollCustomId = (
+  customId: string,
+): { readonly pollId: string; readonly optionIndex: number } | undefined => {
+  const match = /^poll:v1:([a-z2-7]{12}):([0-4])$/.exec(customId.trim());
+  return match === null
+    ? undefined
+    : { pollId: match[1]!, optionIndex: Number(match[2]) };
+};
+
+const handlePollButton = async (
+  interaction: DiscordButtonInteraction,
+  dependencies: MessageHandlerDependencies,
+): Promise<void> => {
+  const parsed = parsePollCustomId(interaction.customId);
+  if (parsed === undefined) {
+    if (interaction.customId.trim().startsWith('poll:v1')) {
+      await replySafely(interaction, 'This poll control is unavailable.', true);
+    }
+    return;
+  }
+  if (dependencies.pollController === undefined) {
+    await replySafely(
+      interaction,
+      'Poll systems are not configured on the MuthaShip.',
+      true,
+    );
+    return;
+  }
+  const guildId = interaction.guildId?.trim();
+  const channelId = interaction.channelId.trim();
+  const parentChannelId =
+    interaction.channel?.isThread?.() === true
+      ? interaction.channel.parentId?.trim()
+      : undefined;
+  if (
+    guildId === undefined ||
+    guildId === '' ||
+    channelId === '' ||
+    interaction.message.id.trim() === '' ||
+    interaction.user.id.trim() === '' ||
+    interaction.message.guildId?.trim() !== guildId ||
+    interaction.message.channelId.trim() !== channelId ||
+    interaction.message.author.id.trim() !== dependencies.botUserId.trim() ||
+    !isAllowedChannel(
+      channelId,
+      parentChannelId,
+      dependencies.allowedChannelIds,
+    )
+  ) {
+    await replySafely(interaction, 'This poll control is unavailable.', true);
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  await dependencies.pollController.vote({
+    pollId: parsed.pollId,
+    guildId,
+    voterUserId: interaction.user.id,
+    optionIndex: parsed.optionIndex,
+    acknowledge: async (message) =>
+      interaction.editReply({
+        content: neutralizeDiscordMentions(message),
+        allowedMentions: { parse: [], repliedUser: false },
+      }),
+  });
+};
 
 interface NormalizedMention {
   readonly eventId: string;
