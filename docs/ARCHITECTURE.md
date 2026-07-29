@@ -69,13 +69,21 @@ The normalized prompt is Tavily's query. Tavily returns a bounded result set;
 the service retains only nonempty summaries with HTTP(S) URLs, bounds title and
 summary lengths, caches equivalent normalized queries in process memory, and
 passes the sanitized evidence plus the current date to the selected AI provider.
-The provider is instructed to prefer primary sources when available, separate
-sourced facts from labelled inference, qualify conflicts or gaps, and never
-infer a relationship merely from co-occurrence or similarity. Jarvis removes
-model-invented links and appends only sanitized Tavily source links. If no
-usable results survive, it sends an inability-to-verify instruction that tells
-the model not to guess a factual connection. That is an instruction-level
-safeguard, not a guarantee of model compliance.
+Before the provider is called, a deterministic evidence gate rejects empty
+results, named-entity relationship results that do not explicitly connect both
+subjects, conflicting relationship evidence, and government claims without an
+official `.gov` or `.mil` source. The provider is still instructed to prefer
+primary sources, separate sourced facts from labelled inference, qualify gaps,
+and avoid completion by guesswork.
+
+After generation, the wrapper removes model-invented links and validates
+evidence-sensitive output against the accepted result text. It withholds the
+entire answer when the model introduces unsupported numbers, named entities,
+quotations, laws, causal language, or too much novel factual vocabulary.
+Successful grounded answers receive only the sanitized links for the evidence
+that passed the gate. This deliberately favors a visible abstention over a
+polished fabrication. It reduces hallucination risk but is not a general
+semantic fact checker.
 
 Known limitation: the rule-based exclusions can produce a narrow false negative
 when an explicitly fictional compound prompt has a clearly separated real-world

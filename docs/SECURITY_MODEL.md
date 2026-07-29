@@ -58,14 +58,15 @@ deployment should use the platform's approved secret-management boundary.
   retries. OpenAI requests set `store: false`; provider errors map to generic
   user-facing failures.
 - **Web-grounding safeguards.** Automatic routing is a heuristic for evidence,
-  provider usage, and latency. It is neither authorization nor a guarantee that
-  the selected evidence is accurate or sufficient. Search-result text cannot
-  change instructions; the provider is told to use it only as evidence, not to
-  infer relationships from co-occurrence or similarity, and to qualify gaps or
-  conflicts. If no usable result survives, the provider receives an explicit
-  inability-to-verify instruction telling it not to guess the requested facts
-  or relationship. This is a model-level safeguard, not a guarantee of
-  compliance.
+  provider usage, and latency. It is neither authorization nor proof that a
+  selected result is true. Search-result text cannot change instructions. A
+  deterministic pre-generation gate rejects empty or inadequate relationship
+  evidence, conflicting relationship sources, and government claims without an
+  official source. A post-generation gate withholds evidence-sensitive answers
+  that introduce unsupported objective claims or insufficiently grounded
+  factual vocabulary. These controls deliberately fail closed, but lexical
+  validation is not full semantic entailment and cannot eliminate every
+  hallucination.
 - **Mass-mention protection.** Replies set Discord `allowedMentions` to an
   empty parse list with `repliedUser: false`, and text is neutralized before
   delivery. Jarvis cannot turn an answer into an `@everyone` incident.

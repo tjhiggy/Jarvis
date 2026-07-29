@@ -45,6 +45,16 @@ interface CacheEntry {
 const maxCacheEntries = 200;
 const maxSourceContentChars = 1_200;
 const maxSourceTitleChars = 200;
+const relationshipAbstentionMessage =
+  'No verified direct relationship was found in the available sources. I will not invent one.';
+const authorityAbstentionMessage =
+  'The available sources do not provide enough authoritative evidence to answer that safely. I will not guess.';
+const conflictAbstentionMessage =
+  'The available sources conflict on the requested claim or relationship. I will not manufacture certainty.';
+const unsupportedAnswerMessage =
+  'The generated answer introduced claims that were not supported by the retrieved evidence, so I withheld it rather than guess.';
+const genericAbstentionMessage =
+  'The available sources do not provide enough reliable evidence to answer that safely. I will not guess.';
 const explicitFreshnessSignal =
   /\b(latest|today|tonight|currently|recent|recently|newest|news|this (?:week|month|year)|next (?:event|game|match|release))\b/i;
 const currentQuestionSignal =
@@ -61,6 +71,8 @@ const namedEntityRelationshipSignal =
   /\b(?:relationship|relation|connection|partnership|affiliation|ownership|ties?)\s+between\s+(.{1,60}?)\s+and\s+(.{1,60}?)(?:[?.!,]|$)/i;
 const possessiveNamedEntityRelationshipSignal =
   /\b([A-Z][\p{L}\p{N}&.-]*(?:\s+[A-Z][\p{L}\p{N}&.-]*){0,3})['’]s\s+(?:relationship|relation|connection|partnership|affiliation|ownership|ties?)\s+(?:with|to)\s+([A-Z][\p{L}\p{N}&.-]*(?:\s+[A-Z][\p{L}\p{N}&.-]*){0,3})(?:[?.!,]|$)/u;
+const sharedSubjectRelationshipSignal =
+  /(?:tell\s+(?:us|me)\s+about\s+)?(.{2,100}?)\s+and\s+(?:its|their)\s+(?:relationship|relation|connection|partnership|affiliation|ownership|ties?)\s+(?:with|to)\s+(.{2,100}?)(?:[?.!]|$)/i;
 const datedStatisticPriceRankingOrQuotationSignal =
   /(?:\b(?:percentage|percent|rate|share|statistic|statistics|price|cost|ranking|ranked)\b.{0,80}\b(?:19|20)\d{2}\b)|(?:\b(?:19|20)\d{2}\b.{0,80}\b(?:percentage|percent|rate|share|statistic|statistics|price|cost|ranking|ranked)\b)|(?:\bwho said\b.{0,160}(?:["“”']|\bquote\b)|(?:["“”'][^"“”']{3,160}["“”']).{0,80}\b(?:who said|when)\b)/i;
 const medicalClaimSignal =
@@ -182,18 +194,14 @@ export class WebGroundedAIService implements AIService {
     }
 
     const search = await this.options.search.search(request.prompt);
-    if (search.results.length === 0) {
-      return this.options.ai.respond({
-        ...request,
-        prompt:
-          `${request.prompt}\n\n` +
-          'No usable sources verified the requested facts or relationship. State that verified intelligence is unavailable and do not guess or infer a connection.',
-      });
+    const evidence = assessEvidence(request.prompt, search.results);
+    if (evidence.kind === 'abstain') {
+      return { text: evidence.message };
     }
 
     const groundedPrompt = buildGroundedPrompt(
       request.prompt,
-      search.results,
+      evidence.results,
       this.now(),
     );
     const response = await this.options.ai.respond({
@@ -213,11 +221,16 @@ export class WebGroundedAIService implements AIService {
       ].join('\n'),
       prompt: groundedPrompt,
     });
+    const strippedAnswer = stripUnverifiedLinks(response.text);
+    if (
+      requiresEvidenceValidation(request.prompt) &&
+      !isAnswerSupported(strippedAnswer, evidence.results)
+    ) {
+      return { text: unsupportedAnswerMessage };
+    }
     return {
       ...response,
-      text: `${stripUnverifiedLinks(response.text)}\n\n${formatSources(
-        search.results,
-      )}`,
+      text: `${strippedAnswer}\n\n${formatSources(evidence.results)}`,
     };
   }
 }
@@ -254,17 +267,7 @@ function looksLikeNamedEntity(value: string): boolean {
 }
 
 function hasNamedEntityRelationship(prompt: string): boolean {
-  return [
-    namedEntityRelationshipSignal,
-    possessiveNamedEntityRelationshipSignal,
-  ].some((signal) => {
-    const match = signal.exec(prompt);
-    return (
-      match !== null &&
-      looksLikeNamedEntity(match[1] ?? '') &&
-      looksLikeNamedEntity(match[2] ?? '')
-    );
-  });
+  return extractRelationshipSubjects(prompt) !== undefined;
 }
 
 export const requiresWebGrounding = (prompt: string): boolean => {
@@ -359,6 +362,266 @@ function buildGroundedPrompt(
     sources,
     '</search-results>',
   ].join('\n');
+}
+
+type EvidenceAssessment =
+  | Readonly<{
+      kind: 'accept';
+      results: readonly SearchResult[];
+    }>
+  | Readonly<{
+      kind: 'abstain';
+      message: string;
+    }>;
+
+interface RelationshipSubjects {
+  readonly left: string;
+  readonly right: string;
+}
+
+const evidenceStopWords = new Set([
+  'about',
+  'after',
+  'also',
+  'american',
+  'and',
+  'answer',
+  'are',
+  'because',
+  'before',
+  'between',
+  'could',
+  'does',
+  'from',
+  'have',
+  'into',
+  'more',
+  'other',
+  'product',
+  'products',
+  'relation',
+  'relationship',
+  'tell',
+  'than',
+  'that',
+  'their',
+  'there',
+  'these',
+  'they',
+  'this',
+  'through',
+  'with',
+  'would',
+  'your',
+]);
+const explicitNegativeRelationshipSignal =
+  /\b(?:no\s+(?:direct\s+)?(?:relationship|connection|ties?)|not\s+(?:directly\s+)?related|unrelated|separate|distinct)\b/i;
+const explicitPositiveRelationshipSignal =
+  /\b(?:directly\s+related|connected\s+through|same\s+(?:federal\s+)?program|shared\s+(?:origin|ownership)|(?:relationship|connection|ties?)\s+(?:exists?|is|are|through|with))\b/i;
+const explicitRelationshipEvidenceSignal =
+  /\b(?:relationship|related|connection|connected|ties?|separate|distinct|same|different|unrelated)\b/i;
+const objectiveNumberSignal = /\b\d[\d,.%/-]*\b/g;
+const quotedClaimSignal = /["“]([^"”]{3,})["”]/g;
+const namedClaimSignal =
+  /\b(?:[A-Z][\p{L}'-]+|[A-Z]{2,})(?:\s+(?:[A-Z][\p{L}'-]+|[A-Z]{2,})){1,3}\b/gu;
+const causalClaimSignal =
+  /\b(?:caus(?:e|ed|es|ing)|led\s+to|result(?:ed|s)?\s+in|because\s+of|due\s+to)\b/i;
+
+function assessEvidence(
+  prompt: string,
+  results: readonly SearchResult[],
+): EvidenceAssessment {
+  const relationship = extractRelationshipSubjects(prompt);
+  if (results.length === 0) {
+    return {
+      kind: 'abstain',
+      message:
+        relationship === undefined
+          ? genericAbstentionMessage
+          : relationshipAbstentionMessage,
+    };
+  }
+
+  let acceptedResults = results;
+  if (relationship !== undefined) {
+    acceptedResults = results.filter((result) =>
+      explicitlyConnectsSubjects(result, relationship),
+    );
+    if (acceptedResults.length === 0) {
+      return { kind: 'abstain', message: relationshipAbstentionMessage };
+    }
+    if (hasConflictingRelationshipEvidence(acceptedResults)) {
+      return { kind: 'abstain', message: conflictAbstentionMessage };
+    }
+  }
+
+  if (
+    governmentLawOrPublicProgramSignal.test(prompt) &&
+    !acceptedResults.some((result) => isOfficialGovernmentSource(result.url))
+  ) {
+    return { kind: 'abstain', message: authorityAbstentionMessage };
+  }
+
+  return { kind: 'accept', results: acceptedResults };
+}
+
+function extractRelationshipSubjects(
+  prompt: string,
+): RelationshipSubjects | undefined {
+  for (const signal of [
+    namedEntityRelationshipSignal,
+    possessiveNamedEntityRelationshipSignal,
+    sharedSubjectRelationshipSignal,
+  ]) {
+    const match = signal.exec(prompt);
+    const left = match?.[1]?.trim();
+    const right = match?.[2]?.trim();
+    if (
+      left !== undefined &&
+      right !== undefined &&
+      looksLikeNamedEntity(left) &&
+      (looksLikeNamedEntity(right) ||
+        governmentLawOrPublicProgramSignal.test(right))
+    ) {
+      return { left, right };
+    }
+  }
+  return undefined;
+}
+
+function explicitlyConnectsSubjects(
+  result: SearchResult,
+  subjects: RelationshipSubjects,
+): boolean {
+  const evidence = `${result.title} ${result.content}`;
+  return (
+    containsSubject(evidence, subjects.left) &&
+    containsSubject(evidence, subjects.right) &&
+    explicitRelationshipEvidenceSignal.test(evidence)
+  );
+}
+
+function containsSubject(evidence: string, subject: string): boolean {
+  const evidenceTokens = new Set(tokenizeEvidence(evidence));
+  const subjectTokens = tokenizeEvidence(subject);
+  return (
+    subjectTokens.length > 0 &&
+    subjectTokens.every((token) => evidenceTokens.has(token))
+  );
+}
+
+function hasConflictingRelationshipEvidence(
+  results: readonly SearchResult[],
+): boolean {
+  let hasPositive = false;
+  let hasNegative = false;
+  for (const result of results) {
+    const evidence = `${result.title} ${result.content}`;
+    if (explicitNegativeRelationshipSignal.test(evidence)) {
+      hasNegative = true;
+    } else if (explicitPositiveRelationshipSignal.test(evidence)) {
+      hasPositive = true;
+    }
+  }
+  return hasPositive && hasNegative;
+}
+
+function isOfficialGovernmentSource(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLocaleLowerCase();
+    return hostname.endsWith('.gov') || hostname.endsWith('.mil');
+  } catch {
+    return false;
+  }
+}
+
+function requiresEvidenceValidation(prompt: string): boolean {
+  return (
+    extractRelationshipSubjects(prompt) !== undefined ||
+    [
+      historyOrOriginSignal,
+      governmentLawOrPublicProgramSignal,
+      datedStatisticPriceRankingOrQuotationSignal,
+      medicalClaimSignal,
+      legalClaimSignal,
+      financialClaimSignal,
+      evidenceDependentScientificClaimSignal,
+    ].some((signal) => signal.test(prompt))
+  );
+}
+
+function isAnswerSupported(
+  answer: string,
+  results: readonly SearchResult[],
+): boolean {
+  const evidenceText = results
+    .map((result) => `${result.title} ${result.content}`)
+    .join(' ');
+  if (hasUnsupportedObjectiveClaim(answer, evidenceText)) {
+    return false;
+  }
+  const answerTokens = tokenizeEvidence(answer);
+  if (answerTokens.length === 0) {
+    return false;
+  }
+  return results.some((result) => {
+    const sourceTokens = new Set(
+      tokenizeEvidence(`${result.title} ${result.content}`),
+    );
+    const supportedTokens = answerTokens.filter((token) =>
+      sourceTokens.has(token),
+    ).length;
+    return supportedTokens >= 2 && supportedTokens / answerTokens.length >= 0.6;
+  });
+}
+
+function hasUnsupportedObjectiveClaim(
+  answer: string,
+  evidence: string,
+): boolean {
+  const normalizedEvidence = normalizeEvidenceText(evidence);
+  const numbers = answer.match(objectiveNumberSignal) ?? [];
+  if (
+    numbers.some(
+      (number) => !normalizedEvidence.includes(normalizeEvidenceText(number)),
+    )
+  ) {
+    return true;
+  }
+
+  for (const match of answer.matchAll(quotedClaimSignal)) {
+    const quotation = normalizeEvidenceText(match[1] ?? '');
+    if (quotation !== '' && !normalizedEvidence.includes(quotation)) {
+      return true;
+    }
+  }
+
+  for (const match of answer.matchAll(namedClaimSignal)) {
+    const name = normalizeEvidenceText(match[0]);
+    if (name !== '' && !normalizedEvidence.includes(name)) {
+      return true;
+    }
+  }
+
+  return causalClaimSignal.test(answer) && !causalClaimSignal.test(evidence);
+}
+
+function normalizeEvidenceText(value: string): string {
+  return value
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function tokenizeEvidence(value: string): string[] {
+  return (
+    value
+      .toLocaleLowerCase()
+      .match(/[\p{L}\p{N}]+/gu)
+      ?.filter((token) => token.length >= 3 && !evidenceStopWords.has(token)) ??
+    []
+  );
 }
 
 function formatSources(results: readonly SearchResult[]): string {
