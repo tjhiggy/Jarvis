@@ -79,6 +79,7 @@ export class DiscordPollController implements PollController {
         await this.failActivation(reserved, messageId, error);
         return;
       }
+      await this.synchronize(active);
       this.log('poll_create', 'success', { pollId: active.id });
     } catch (error) {
       if (reserved !== undefined) {
@@ -119,7 +120,13 @@ export class DiscordPollController implements PollController {
 
   async synchronize(poll: PollView): Promise<void> {
     await this.renderCoordinator.run(poll.id, async () => {
-      const current = await this.dependencies.service.get(poll.id);
+      let current: PollView | undefined;
+      try {
+        current = await this.dependencies.service.get(poll.id);
+      } catch (error) {
+        await this.handleSynchronizationFailure(poll, error);
+        return;
+      }
       if (current === undefined) {
         return;
       }
@@ -133,28 +140,35 @@ export class DiscordPollController implements PollController {
       await this.dependencies.service.markSynced(poll.id);
       this.log('poll_sync', 'synced', { pollId: poll.id });
     } catch (error) {
-      if (isUnknownMessage(error)) {
-        await this.safeMarkOrphaned(poll.id, error);
-        return;
-      }
-      if (poll.syncAttempts >= retryDelaysMs.length) {
-        await this.safeMarkOrphaned(poll.id, error);
-        return;
-      }
-      const delay = retryDelaysMs[poll.syncAttempts]!;
-      const retryAt = validNow(this.now());
-      retryAt.setTime(retryAt.getTime() + delay);
-      try {
-        await this.dependencies.service.markPendingSync(poll.id, retryAt);
-        this.log('poll_sync', 'pending', {
-          pollId: poll.id,
-          retryDelaySeconds: delay / 1_000,
-        });
-      } catch (markError) {
-        this.logFailure('poll_sync', markError, { pollId: poll.id });
-      }
-      this.logFailure('poll_sync', error, { pollId: poll.id });
+      await this.handleSynchronizationFailure(poll, error);
     }
+  }
+
+  private async handleSynchronizationFailure(
+    poll: PollView,
+    error: unknown,
+  ): Promise<void> {
+    if (isUnknownMessage(error)) {
+      await this.safeMarkOrphaned(poll.id, error);
+      return;
+    }
+    if (poll.syncAttempts >= retryDelaysMs.length) {
+      await this.safeMarkOrphaned(poll.id, error);
+      return;
+    }
+    const delay = retryDelaysMs[poll.syncAttempts]!;
+    const retryAt = validNow(this.now());
+    retryAt.setTime(retryAt.getTime() + delay);
+    try {
+      await this.dependencies.service.markPendingSync(poll.id, retryAt);
+      this.log('poll_sync', 'pending', {
+        pollId: poll.id,
+        retryDelaySeconds: delay / 1_000,
+      });
+    } catch (markError) {
+      this.logFailure('poll_sync', markError, { pollId: poll.id });
+    }
+    this.logFailure('poll_sync', error, { pollId: poll.id });
   }
 
   private async failReservation(pollId: string, cause: unknown): Promise<void> {
