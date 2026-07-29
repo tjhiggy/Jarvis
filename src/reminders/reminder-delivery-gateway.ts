@@ -75,9 +75,11 @@ export class DiscordReminderDeliveryGateway implements ReminderDeliveryGateway {
       return { kind: 'delivered' };
     } catch (error) {
       const category = categorizeKnownFailure(error);
-      return category === undefined
-        ? { kind: 'uncertain' }
-        : failureOutcome(category);
+      return category === 'unknown-channel' ||
+        category === 'permission' ||
+        category === 'rate-limit'
+        ? failureOutcome(category)
+        : { kind: 'uncertain' };
     }
   }
 }

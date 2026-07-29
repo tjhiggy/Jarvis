@@ -204,24 +204,34 @@ describe('DiscordReminderDeliveryGateway', () => {
       Object.assign(new Error('hidden'), { status: 429 }),
       { kind: 'transient-failure', category: 'rate-limit' },
     ],
-    [
-      'network',
-      Object.assign(new Error('hidden'), { code: 'ECONNRESET' }),
-      { kind: 'transient-failure', category: 'network' },
-    ],
-    [
-      'service',
-      Object.assign(new Error('hidden'), { status: 500 }),
-      { kind: 'transient-failure', category: 'service' },
-    ],
   ] as const)(
-    'categorizes a known pre-response %s send failure',
+    'categorizes a known Discord %s send rejection',
     async (_name, error, expected) => {
       const gateway = gatewayFor(
         channel({ send: async () => Promise.reject(error) }),
       );
 
       await expect(gateway.deliver(reminder(), now)).resolves.toEqual(expected);
+    },
+  );
+
+  it.each([
+    ['ECONNRESET', Object.assign(new Error('hidden'), { code: 'ECONNRESET' })],
+    ['EPIPE', Object.assign(new Error('hidden'), { code: 'EPIPE' })],
+    ['ETIMEDOUT', Object.assign(new Error('hidden'), { code: 'ETIMEDOUT' })],
+    ['AbortError', Object.assign(new Error('hidden'), { name: 'AbortError' })],
+    ['FetchError', Object.assign(new Error('hidden'), { name: 'FetchError' })],
+    ['service response', Object.assign(new Error('hidden'), { status: 500 })],
+  ] as const)(
+    'marks a post-send %s rejection uncertain because Discord may have accepted it',
+    async (_name, error) => {
+      const gateway = gatewayFor(
+        channel({ send: async () => Promise.reject(error) }),
+      );
+
+      await expect(gateway.deliver(reminder(), now)).resolves.toEqual({
+        kind: 'uncertain',
+      });
     },
   );
 
