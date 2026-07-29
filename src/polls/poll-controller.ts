@@ -12,6 +12,7 @@ import {
   PollServiceError,
 } from './poll-service.js';
 import type { PollView } from './poll-types.js';
+import { PollCoordinator } from './poll-coordinator.js';
 import {
   projectOperationalError,
   type OperationalLogger,
@@ -53,6 +54,7 @@ const noOpLogger: OperationalLogger = {
 export class DiscordPollController implements PollController {
   private readonly now: () => Date;
   private readonly logger: OperationalLogger;
+  private readonly renderCoordinator = new PollCoordinator();
 
   constructor(private readonly dependencies: PollControllerDependencies) {
     this.now = dependencies.now ?? (() => new Date());
@@ -116,6 +118,16 @@ export class DiscordPollController implements PollController {
   }
 
   async synchronize(poll: PollView): Promise<void> {
+    await this.renderCoordinator.run(poll.id, async () => {
+      const current = await this.dependencies.service.get(poll.id);
+      if (current === undefined) {
+        return;
+      }
+      await this.synchronizeCurrent(current);
+    });
+  }
+
+  private async synchronizeCurrent(poll: PollView): Promise<void> {
     try {
       await this.dependencies.gateway.update(poll);
       await this.dependencies.service.markSynced(poll.id);

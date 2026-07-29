@@ -912,6 +912,62 @@ describe('handleCommand', () => {
     ]);
   });
 
+  it('reports poll storage and scheduler health without exposing poll configuration', async () => {
+    const fake = interaction({ commandName: 'status' });
+    let pollDatabaseChecks = 0;
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        pollEnabled: true,
+        pollAdminUserIds: new Set(['admin-1']),
+        pollController: inertPollController(),
+        pollHealth: {
+          store: {
+            healthCheck: async () => {
+              pollDatabaseChecks += 1;
+              return false;
+            },
+          },
+          scheduler: { healthy: false },
+        },
+      }),
+    );
+
+    expect(pollDatabaseChecks).toBe(1);
+    expect(fake.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(
+          /Polls: configured[\s\S]*Poll database: unhealthy[\s\S]*Poll scheduler: degraded/i,
+        ),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+    expect(JSON.stringify(fake.replies)).not.toMatch(/admin-1|secret/i);
+  });
+
+  it('reports configured polls as unavailable when lifecycle health is absent', async () => {
+    const fake = interaction({ commandName: 'status' });
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        pollEnabled: true,
+        pollAdminUserIds: new Set(['admin-1']),
+        pollController: inertPollController(),
+      }),
+    );
+
+    expect(fake.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/Polls: unavailable/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+  });
+
   it('returns a safe ephemeral response for an unknown command', async () => {
     const fake = interaction({ commandName: 'eject-crew' });
 
@@ -1011,6 +1067,7 @@ function dependencies(
     pollEnabled: boolean;
     pollAdminUserIds: ReadonlySet<string>;
     pollController: PollController;
+    pollHealth: NonNullable<CommandDependencies['pollHealth']>;
   }> = {},
 ): CommandDependencies {
   return {
@@ -1062,6 +1119,9 @@ function dependencies(
     ...(overrides.pollController === undefined
       ? {}
       : { pollController: overrides.pollController }),
+    ...(overrides.pollHealth === undefined
+      ? {}
+      : { pollHealth: overrides.pollHealth }),
   };
 }
 
@@ -1073,6 +1133,15 @@ function faqCatalog(entries: readonly FaqEntry[]): FaqCatalog {
   return {
     entries,
     get: (id) => entriesById.get(id.trim().toLowerCase()),
+  };
+}
+
+function inertPollController(): PollController {
+  return {
+    create: async () => undefined,
+    vote: async () => undefined,
+    close: async () => undefined,
+    synchronize: async () => undefined,
   };
 }
 

@@ -144,7 +144,9 @@ describe('DiscordPollController', () => {
     await unknownController.synchronize(poll());
     expect(unknownService.orphaned).toEqual(['abcde234567a']);
 
-    const cappedService = createService();
+    const cappedService = createService({
+      get: async () => poll({ syncAttempts: 5 }),
+    });
     const cappedController = new DiscordPollController({
       service: cappedService,
       gateway: createGateway({
@@ -156,6 +158,42 @@ describe('DiscordPollController', () => {
     await cappedController.synchronize(poll({ syncAttempts: 5 }));
     expect(cappedService.pending).toEqual([]);
     expect(cappedService.orphaned).toEqual(['abcde234567a']);
+  });
+
+  it('serializes rendering so a delayed active snapshot cannot overwrite closed results', async () => {
+    const renderedStatuses: string[] = [];
+    const activeUpdateStarted = deferred<void>();
+    let releaseActiveUpdate = (): void => undefined;
+    let latestStatus: PollView['status'] = 'active';
+    const activeUpdateReleased = new Promise<void>((resolve) => {
+      releaseActiveUpdate = resolve;
+    });
+    const controller = new DiscordPollController({
+      service: createService({
+        get: async (pollId) =>
+          pollId === 'abcde234567a'
+            ? poll({ status: latestStatus })
+            : undefined,
+      }),
+      gateway: createGateway({
+        update: async (value) => {
+          if (value.status === 'active') {
+            activeUpdateStarted.resolve();
+            await activeUpdateReleased;
+          }
+          renderedStatuses.push(value.status);
+        },
+      }),
+    });
+
+    const activeSync = controller.synchronize(poll());
+    await activeUpdateStarted.promise;
+    latestStatus = 'closed';
+    const closedSync = controller.synchronize(poll({ status: 'closed' }));
+    releaseActiveUpdate();
+    await Promise.all([activeSync, closedSync]);
+
+    expect(renderedStatuses).toEqual(['active', 'closed']);
   });
 
   it('maps a persisted vote-target rejection to a private safe acknowledgement', async () => {
@@ -191,6 +229,7 @@ describe('DiscordPollController', () => {
         calls.push('close');
         return poll({ status: 'closed' });
       },
+      get: async () => poll({ status: 'closed' }),
       markSynced: async () => {
         calls.push('synced');
       },
@@ -254,6 +293,7 @@ function createService(overrides: Partial<PollService> = {}): PollService & {
     close: async () => poll({ status: 'closed' }),
     closeExpired: async () => [],
     cleanup: async () => 0,
+    get: async (pollId) => (pollId === 'abcde234567a' ? poll() : undefined),
     markSynced: async () => undefined,
     markPendingSync: async (pollId, retryAt) => {
       pending.push([pollId, retryAt]);
@@ -274,4 +314,18 @@ function createGateway(
     markUnavailable: async () => undefined,
     ...overrides,
   };
+}
+
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve: ((value: T | PromiseLike<T>) => void) | undefined;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  if (resolve === undefined) {
+    throw new Error('Deferred promise initialization failed.');
+  }
+  return { promise, resolve };
 }

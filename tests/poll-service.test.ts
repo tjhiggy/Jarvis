@@ -274,8 +274,10 @@ function createStore(
         closesAt: input.closesAt,
       });
     },
+    get: async () => undefined,
     activate: async (pollId, messageId) => view({ id: pollId, messageId }),
     markFailed: async () => undefined,
+    recoverCreating: async () => 0,
     recordVote: async (input) => {
       const previous = votesByKey.get(input.voterKey);
       votesByKey.set(input.voterKey, input.optionIndex);

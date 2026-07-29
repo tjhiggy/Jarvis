@@ -304,6 +304,7 @@ export const createApplication = async (
       pollStore =
         dependencies.createPollStore?.(config.storage.databasePath) ??
         new SQLitePollStore(config.storage.databasePath);
+      await pollStore.recoverCreating();
     }
 
     const conversationService = new ConversationService({
@@ -424,6 +425,14 @@ export const createApplication = async (
           store: initializedStore,
           faq,
           ...(pollController === undefined ? {} : { pollController }),
+          ...(pollStore === undefined || pollScheduler === undefined
+            ? {}
+            : {
+                pollHealth: {
+                  store: pollStore,
+                  scheduler: pollScheduler,
+                },
+              }),
         }),
       ...(pollController === undefined ? {} : { pollController }),
     });

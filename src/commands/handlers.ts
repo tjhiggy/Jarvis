@@ -3,6 +3,8 @@ import type { ConversationStore } from '../storage/conversation-store.js';
 import type { FaqCatalog } from '../faq/faq-catalog.js';
 import type { PollController } from '../polls/poll-controller.js';
 import type { PollDurationValue } from '../polls/poll-duration.js';
+import type { PollScheduler } from '../polls/poll-scheduler.js';
+import type { PollStore } from '../polls/poll-store.js';
 import { isAllowedChannel } from '../discord/access.js';
 import {
   editDeferredReplySafely,
@@ -70,6 +72,10 @@ export interface CommandDependencies {
   readonly store: Pick<ConversationStore, 'healthCheck'>;
   readonly faq: FaqCatalog;
   readonly pollController?: PollController;
+  readonly pollHealth?: Readonly<{
+    store: Pick<PollStore, 'healthCheck'>;
+    scheduler: Pick<PollScheduler, 'healthy'>;
+  }>;
 }
 
 const dmMessage = 'This command is available only in a server channel.';
@@ -459,6 +465,7 @@ const handleStatus = async (
       ? dependencies.config.openai.apiKey.trim() !== ''
       : dependencies.config.ollama.baseUrl.trim() !== '' &&
         dependencies.config.ollama.model.trim() !== '';
+  const pollStatus = await getPollStatus(dependencies);
 
   await replySafely(
     interaction,
@@ -473,10 +480,32 @@ const handleStatus = async (
           : 'not configured'
       }`,
       'FAQ catalog: loaded',
-      `Polls: ${pollsEnabled(dependencies) ? 'configured' : 'not configured'}`,
+      ...pollStatus,
     ].join('\n'),
     true,
   );
+};
+
+const getPollStatus = async (
+  dependencies: CommandDependencies,
+): Promise<readonly string[]> => {
+  if (!dependencies.config.polls?.enabled) {
+    return ['Polls: not configured'];
+  }
+  if (
+    dependencies.pollController === undefined ||
+    dependencies.pollHealth === undefined
+  ) {
+    return ['Polls: unavailable'];
+  }
+  const databaseHealthy = await dependencies.pollHealth.store
+    .healthCheck()
+    .catch(() => false);
+  return [
+    'Polls: configured',
+    `Poll database: ${databaseHealthy ? 'healthy' : 'unhealthy'}`,
+    `Poll scheduler: ${dependencies.pollHealth.scheduler.healthy ? 'healthy' : 'degraded'}`,
+  ];
 };
 
 const resultMessage = (result: ConversationResult): string =>

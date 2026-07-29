@@ -63,6 +63,7 @@ export class PollServiceError extends Error {
 
 export interface PollService {
   reserve(request: CreatePollRequest): Promise<PollView>;
+  get(pollId: string): Promise<PollView | undefined>;
   activate(pollId: string, messageId: string): Promise<PollView>;
   fail(pollId: string): Promise<void>;
   vote(request: VoteRequest): Promise<VoteResult>;
@@ -176,6 +177,17 @@ export class DurablePollService implements PollService {
         if (error instanceof PollReservationConflictError) {
           throw new PollServiceError('creator_poll_exists');
         }
+        throw toServiceError(error);
+      }
+    });
+  }
+
+  async get(pollId: string): Promise<PollView | undefined> {
+    const id = normalizePollId(pollId);
+    return this.run(id, async () => {
+      try {
+        return await this.dependencies.store.get(id);
+      } catch (error) {
         throw toServiceError(error);
       }
     });

@@ -204,6 +204,43 @@ describe('createApplication', () => {
     expect(pollStoreClosed).toBe(1);
   });
 
+  it('reconciles stranded poll reservations before Discord login without touching messages', async () => {
+    const events: string[] = [];
+    const enabledConfig: AppConfig = {
+      ...config,
+      polls: {
+        ...config.polls,
+        enabled: true,
+        adminUserIds: new Set(['12345678901234567']),
+        voterSecret: 'a'.repeat(32),
+      },
+    };
+    const application = await createTestApplication({
+      loadConfig: () => enabledConfig,
+      loadPersona: async () => ({}) as TrustedPersona,
+      createStore: () => conversationStore(),
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createPollStore: () => ({
+        ...pollStore(),
+        recoverCreating: async () => {
+          events.push('recover-creating');
+          return 1;
+        },
+      }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: () => undefined,
+        login: async () => {
+          events.push('login');
+        },
+        destroy: () => undefined,
+      }),
+    });
+
+    expect(events).toEqual(['recover-creating', 'login']);
+    await application.shutdown();
+  });
+
   it('finishes loading the configured FAQ catalog before starting resources or Discord login', async () => {
     const events: string[] = [];
     const catalogStarted = deferred<void>();
@@ -826,6 +863,7 @@ function pollStore(): PollStore {
     reserve: async () => {
       throw new Error('unused');
     },
+    get: async () => undefined,
     activate: async () => {
       throw new Error('unused');
     },
@@ -841,6 +879,7 @@ function pollStore(): PollStore {
     markSynced: async () => undefined,
     markOrphaned: async () => undefined,
     listPendingSync: async () => [],
+    recoverCreating: async () => 0,
     countCapacityOccupying: async () => 0,
     hasActiveByCreatorInConversation: async () => false,
     cleanup: async () => 0,

@@ -30,8 +30,11 @@ export interface ReservePollInput {
 
 export interface PollStore {
   reserve(input: ReservePollInput): Promise<PollView>;
+  get(pollId: string): Promise<PollView | undefined>;
   activate(pollId: string, messageId: string): Promise<PollView>;
   markFailed(pollId: string): Promise<void>;
+  /** Marks interrupted pre-message reservations as failed during startup. */
+  recoverCreating(): Promise<number>;
   recordVote(input: {
     readonly pollId: string;
     readonly guildId: string;

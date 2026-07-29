@@ -96,6 +96,11 @@ export class SQLitePollStore implements PollStore {
     }
   }
 
+  async get(pollId: string): Promise<PollView | undefined> {
+    this.ensureOpen();
+    return this.getPoll(pollId);
+  }
+
   async activate(pollId: string, messageId: string): Promise<PollView> {
     this.ensureOpen();
     const activate = this.database.transaction(
@@ -126,6 +131,17 @@ export class SQLitePollStore implements PollStore {
          WHERE id = ? AND status = 'creating'`,
       )
       .run(Date.now(), pollId);
+  }
+
+  async recoverCreating(): Promise<number> {
+    this.ensureOpen();
+    return this.database
+      .prepare(
+        `UPDATE polls
+         SET status = 'failed', next_sync_at = NULL, updated_at = ?
+         WHERE status = 'creating'`,
+      )
+      .run(Date.now()).changes;
   }
 
   async recordVote(input: {

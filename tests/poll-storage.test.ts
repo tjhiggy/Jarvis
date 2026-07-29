@@ -97,6 +97,21 @@ describe('SQLitePollStore', () => {
     ).resolves.toBe(true);
   });
 
+  it('reconciles a creating poll after restart without attempting Discord delivery', async () => {
+    await store.reserve(poll());
+    await store.closeConnection();
+    store = new SQLitePollStore(databasePath);
+
+    await expect(store.recoverCreating()).resolves.toBe(1);
+    await expect(store.countCapacityOccupying()).resolves.toBe(0);
+    await expect(
+      store.hasActiveByCreatorInConversation('creator-1', 'conversation-1'),
+    ).resolves.toBe(false);
+    await expect(store.get('poll00000001')).resolves.toMatchObject({
+      status: 'failed',
+    });
+  });
+
   it('atomically allows only one creating or active poll per creator conversation', async () => {
     const secondStore = new SQLitePollStore(databasePath);
     try {
