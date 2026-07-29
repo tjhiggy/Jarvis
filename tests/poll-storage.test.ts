@@ -79,6 +79,7 @@ describe('SQLitePollStore', () => {
         { index: 1, label: 'No -- never', voteCount: 0 },
       ],
     });
+    await expect(store.countCapacityOccupying()).resolves.toBe(1);
 
     const active = await store.activate('poll00000001', 'message-1');
     expect(active).toMatchObject({
@@ -87,7 +88,7 @@ describe('SQLitePollStore', () => {
       syncState: 'synced',
       closesAt: date(60),
     });
-    await expect(store.countActive()).resolves.toBe(1);
+    await expect(store.countCapacityOccupying()).resolves.toBe(1);
     await expect(
       store.hasActiveByCreatorInConversation('creator-1', 'conversation-1'),
     ).resolves.toBe(true);
@@ -227,7 +228,7 @@ describe('SQLitePollStore', () => {
     await store.markSynced('poll00000001');
     await expect(store.listPendingSync(date(30), 10)).resolves.toEqual([]);
     await store.markOrphaned('poll00000001');
-    await expect(store.countActive()).resolves.toBe(0);
+    await expect(store.countCapacityOccupying()).resolves.toBe(0);
     await expect(store.cleanup(new Date(Date.now() + 1_000))).resolves.toBe(1);
     const database = new Database(databasePath, { readonly: true });
     expect(database.prepare('SELECT * FROM poll_options').all()).toEqual([]);

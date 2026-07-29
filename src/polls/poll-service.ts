@@ -152,7 +152,8 @@ export class DurablePollService implements PollService {
     };
     return this.coordinator.run(globalReservationCoordinatorKey, async () => {
       if (
-        (await this.dependencies.store.countActive()) >= this.activePollLimit
+        (await this.dependencies.store.countCapacityOccupying()) >=
+        this.activePollLimit
       ) {
         throw new PollServiceError('capacity_reached');
       }

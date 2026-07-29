@@ -281,10 +281,12 @@ export class SQLitePollStore implements PollStore {
     return ids.map(({ id }) => this.requirePoll(id));
   }
 
-  async countActive(): Promise<number> {
+  async countCapacityOccupying(): Promise<number> {
     this.ensureOpen();
     const result = this.database
-      .prepare("SELECT COUNT(*) AS count FROM polls WHERE status = 'active'")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM polls WHERE status IN ('creating', 'active')",
+      )
       .get() as { count: number };
     return result.count;
   }

@@ -39,7 +39,8 @@ export interface PollStore {
   markSynced(pollId: string): Promise<void>;
   markOrphaned(pollId: string): Promise<void>;
   listPendingSync(now: Date, limit: number): Promise<readonly PollView[]>;
-  countActive(): Promise<number>;
+  /** Counts reservations which occupy one of the global active-poll slots. */
+  countCapacityOccupying(): Promise<number>;
   hasActiveByCreatorInConversation(
     creatorUserId: string,
     conversationId: string,

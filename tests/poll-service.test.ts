@@ -58,7 +58,7 @@ describe('DurablePollService', () => {
     const store = createStore();
     let activePolls = 99;
     const reserve = store.reserve;
-    store.countActive = async () => activePolls;
+    store.countCapacityOccupying = async () => activePolls;
     store.reserve = async (input) => {
       activePolls += 1;
       return reserve(input);
@@ -256,6 +256,8 @@ function createStore(
       return view({
         id: input.id,
         question: input.question,
+        status: 'creating',
+        syncState: 'pending',
         options: input.options.map((label, index) => ({
           index,
           label,
@@ -292,7 +294,7 @@ function createStore(
     markSynced: async () => undefined,
     markOrphaned: async () => undefined,
     listPendingSync: async () => [],
-    countActive: async () => options.activeCount ?? 0,
+    countCapacityOccupying: async () => options.activeCount ?? 0,
     hasActiveByCreatorInConversation: async () => options.hasExisting ?? false,
     cleanup: async (cutoff) => {
       cleanupCutoffs.push(cutoff);
