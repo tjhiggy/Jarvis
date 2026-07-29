@@ -14,6 +14,13 @@ $stderrLog = Join-Path $env:TEMP 'jarvis-native.err.log'
 $ollamaStdoutLog = Join-Path $env:TEMP 'jarvis-ollama.out.log'
 $ollamaStderrLog = Join-Path $env:TEMP 'jarvis-ollama.err.log'
 $ollamaHealthUrl = 'http://127.0.0.1:11434/api/tags'
+$nodeArguments = @("""$entryPoint""")
+$windowsEntryPoint = $entryPoint.Replace('/', '\')
+$portableEntryPoint = $entryPoint.Replace('\', '/')
+$processEntryPointPatterns = @(
+    "*""$windowsEntryPoint""*"
+    "*""$portableEntryPoint""*"
+)
 
 if ($DryRun) {
     [PSCustomObject]@{
@@ -21,6 +28,8 @@ if ($DryRun) {
         NodePath = $nodePath
         OllamaPath = $ollamaPath
         EntryPoint = $entryPoint
+        NodeArguments = $nodeArguments
+        ProcessEntryPointPatterns = $processEntryPointPatterns
         UsesDocker = $false
         PreventsDuplicateJarvis = $true
         WaitsForOllama = $true
@@ -36,8 +45,11 @@ foreach ($requiredPath in @($projectPath, $nodePath, $ollamaPath, $entryPoint)) 
 
 $existingJarvis = Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
     Where-Object {
-        $_.CommandLine -like '*dist/src/index.js*' -and
-        $_.CommandLine -like "*$projectPath*"
+        $commandLine = $_.CommandLine
+        @(
+            $processEntryPointPatterns |
+                Where-Object { $commandLine -like $_ }
+        ).Count -gt 0
     }
 
 if ($null -ne $existingJarvis) {
@@ -80,7 +92,7 @@ if (-not (Test-OllamaReady)) {
 
 Start-Process `
     -FilePath $nodePath `
-    -ArgumentList @($entryPoint) `
+    -ArgumentList $nodeArguments `
     -WorkingDirectory $projectPath `
     -RedirectStandardOutput $stdoutLog `
     -RedirectStandardError $stderrLog `

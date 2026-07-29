@@ -18,6 +18,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Expanded automatic Tavily grounding from freshness-only prompts to a balanced policy for current and evidence-sensitive factual claims, while keeping basic definitions and ordinary drafting local.
 - Grounded answers now prohibit relationship claims based only on co-occurrence or similarity and direct the model to admit when usable evidence cannot verify the requested facts.
 - Added deterministic pre- and post-generation evidence gates that abstain on weak, conflicting, non-authoritative, or unsupported evidence-sensitive answers instead of trusting model compliance alone.
+- Fixed the native Windows startup helper so repository paths containing spaces remain one quoted Node argument and duplicate-process checks recognize both Windows and portable separators.
 
 ## [0.1.0] - 2026-07-28
 

@@ -49,16 +49,10 @@ Node at `C:\Program Files\nodejs\node.exe`, Ollama at the current user's
 Read and verify the helper before considering it for a particular workstation.
 Its current limitations are material:
 
-- It passes the entry-point argument to `Start-Process` without adding
-  command-line quotes. A repository path containing spaces can therefore be
-  split into the wrong Node arguments.
-- Its duplicate-process search requires literal `dist/src/index.js` text plus
-  the project path. Different slash separators or command-line representations
-  can bypass that separator-sensitive match.
-- `-DryRun` only prints configured paths and boolean claims. It does not test
-  those paths, duplicate detection, process identity, or Ollama readiness, so
-  its `PreventsDuplicateJarvis` and `WaitsForOllama` fields are unverified
-  claims rather than a readiness check.
+- `-DryRun` prints the quoted Node argument and both Windows and portable
+  duplicate-process patterns, but it does not execute those paths, inspect
+  process identity, or test Ollama readiness. Its boolean fields remain
+  configuration claims rather than a readiness check.
 - It requires the fixed Ollama executable and local tags endpoint even when
   `.env` selects `AI_PROVIDER=openai`.
 - It launches a detached Node process without retaining a process identifier or
@@ -71,9 +65,12 @@ not be treated as verification:
 .\scripts\start-jarvis.ps1 -DryRun
 ```
 
-Do not rely on this helper to prevent a second instance or to stop one cleanly.
-Use the manual native flow above unless an operator has separately reviewed,
-adapted, and validated a workstation-specific service-control solution.
+The helper quotes repository paths containing spaces and recognizes the
+compiled entry point with either Windows or portable path separators. Its
+duplicate guard is still a workstation convenience, not distributed locking,
+and it does not stop a process cleanly. Use the manual native flow above unless
+an operator has separately reviewed and validated the helper for that
+workstation.
 
 When used, the helper redirects output to these per-user temporary files:
 
