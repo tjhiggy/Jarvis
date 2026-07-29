@@ -23,6 +23,20 @@ workstation-specific limitations are documented in
 secret source, rebuild if needed, and restart one process. OpenAI requires a
 non-empty project key; Ollama requires a configured base URL and model.
 
+## Poll configuration or commands are unavailable
+
+**Likely cause.** Both poll credentials are blank, exactly one is configured,
+an administrator ID is not a 17-to-20 digit Discord user ID, or the voter
+secret is shorter than 32 characters.
+
+**Safe diagnosis.** Read only the startup error's named environment variable
+and `/status` readiness. Do not paste administrator IDs, the voter secret, poll
+text, or voter data into logs or tickets.
+
+**Resolution.** Leave both credentials blank to disable polls, or configure
+both through the approved secret boundary, restart Jarvis, and run
+`npm run register-commands` once in the intended development guild.
+
 ## FAQ catalog validation fails
 
 **Likely cause.** `FAQ_CATALOG_PATH` is missing, unreadable, malformed, empty,
@@ -127,6 +141,36 @@ five-second busy timeout and WAL mode, not magical powers.
 directory, and restart gracefully. In Compose, retain the named `jarvis-data`
 volume at `/app/data`; do not make the whole container writable. Restore a
 stopped bot from a known-good backup only when recovery is authorized.
+
+## Poll buttons are expired, unavailable, or do not update
+
+**Likely cause.** The poll closed or expired, Jarvis lost access to its own
+message, the message was removed, Discord returned a transient failure, or a
+second process is competing for the database.
+
+**Safe diagnosis.** Check `/status`, the deployment mode, and content-free poll
+operation logs. Do not query, export, or paste poll text, options, or voter
+tokens. A closed poll intentionally disables buttons.
+
+**Resolution.** For a transient synchronization failure, leave one running
+process online for the scheduler's bounded retry cycle. If the message is gone
+or inaccessible, the poll becomes orphaned and stops retrying; restore minimum
+channel access if appropriate, then create a new poll. Do not modify or delete
+other Discord messages as a repair tactic.
+
+## Poll SQLite lock or scheduler retries persist
+
+**Likely cause.** Two Jarvis instances share `DATABASE_PATH`, storage is not
+writable, or the host is resource constrained.
+
+**Safe diagnosis.** Verify one process, directory access, free storage, and
+safe scheduler error categories without opening poll tables or extracting
+voter data.
+
+**Resolution.** Gracefully stop duplicate instances, restore local database
+access, and restart one process. If a poll was orphaned after bounded retries,
+preserve the database for authorized recovery and use a new poll instead of
+manual row edits.
 
 ## Responses are long or arrive in several messages
 
