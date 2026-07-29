@@ -87,9 +87,6 @@ describe('command definitions', () => {
         { name: 'question', required: true, max_length: 200 },
         { name: 'option1', required: true, max_length: 80 },
         { name: 'option2', required: true, max_length: 80 },
-        { name: 'option3', required: false, max_length: 80 },
-        { name: 'option4', required: false, max_length: 80 },
-        { name: 'option5', required: false, max_length: 80 },
         {
           name: 'duration',
           required: true,
@@ -102,12 +99,39 @@ describe('command definitions', () => {
             { name: '7 days', value: '7d' },
           ],
         },
+        { name: 'option3', required: false, max_length: 80 },
+        { name: 'option4', required: false, max_length: 80 },
+        { name: 'option5', required: false, max_length: 80 },
       ],
     });
     expect(definitions[7]).toMatchObject({
       name: 'poll-close',
       options: [{ name: 'poll_id', required: true, max_length: 12 }],
     });
+  });
+
+  it('places every required option before optional options', () => {
+    const definitions = createCommandDefinitions(
+      123,
+      [faqEntry('capabilities', 'Jarvis capabilities')],
+      true,
+    );
+
+    for (const definition of definitions) {
+      const options = definition.options ?? [];
+      const firstOptionalOption = options.findIndex(
+        (option) => !option.required,
+      );
+
+      if (firstOptionalOption === -1) {
+        continue;
+      }
+
+      expect(
+        options.slice(firstOptionalOption).find((option) => option.required),
+        `${definition.name} has a required option after an optional option`,
+      ).toBeUndefined();
+    }
   });
 
   it.each([

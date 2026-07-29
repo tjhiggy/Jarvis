@@ -180,6 +180,13 @@ export const createCommandDefinitions = (
           },
           {
             type: 3,
+            name: 'duration',
+            description: 'How long the poll remains open.',
+            required: true,
+            choices: pollDurationChoices,
+          },
+          {
+            type: 3,
             name: 'option3',
             description: 'An optional third poll option.',
             required: false,
@@ -198,13 +205,6 @@ export const createCommandDefinitions = (
             description: 'An optional fifth poll option.',
             required: false,
             max_length: 80,
-          },
-          {
-            type: 3,
-            name: 'duration',
-            description: 'How long the poll remains open.',
-            required: true,
-            choices: pollDurationChoices,
           },
         ],
       },
