@@ -846,7 +846,9 @@ function faqDependencies(
 ): CommandDependencies {
   return dependencies({
     faq,
-    allowedChannelIds: overrides.allowedChannelIds,
+    ...(overrides.allowedChannelIds === undefined
+      ? {}
+      : { allowedChannelIds: overrides.allowedChannelIds }),
     ask: vi.fn(async () => {
       throw new Error('/faq must not call conversationService.ask');
     }),

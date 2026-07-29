@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import type { Logger } from 'pino';
 import type { AppConfig } from '../src/config/config.js';
 import { loadPersona, type TrustedPersona } from '../src/config/persona.js';
-import { createApplication, reportStartupFailure } from '../src/index.js';
+import type { FaqCatalog } from '../src/faq/faq-catalog.js';
+import {
+  createApplication,
+  reportStartupFailure,
+  type Application,
+  type ApplicationDependencies,
+} from '../src/index.js';
 
 const config: AppConfig = {
   ai: { provider: 'openai' },
@@ -45,8 +51,37 @@ const config: AppConfig = {
     restrainedChannelIds: new Set(),
     promptPath: 'trusted-persona.md',
   },
+  faq: { catalogPath: 'faq.json' },
   logging: { level: 'silent' },
 };
+
+const testFaqCatalog: FaqCatalog = Object.freeze({
+  entries: Object.freeze([
+    Object.freeze({
+      id: 'capabilities',
+      label: 'Jarvis capabilities',
+      question: 'What can Jarvis do?',
+      answer: 'Jarvis answers approved questions.',
+    }),
+  ]),
+  get: (id: string) =>
+    id.trim().toLowerCase() === 'capabilities'
+      ? {
+          id: 'capabilities',
+          label: 'Jarvis capabilities',
+          question: 'What can Jarvis do?',
+          answer: 'Jarvis answers approved questions.',
+        }
+      : undefined,
+});
+
+const createTestApplication = (
+  dependencies: ApplicationDependencies = {},
+): Promise<Application> =>
+  createApplication({
+    loadFaqCatalog: async () => testFaqCatalog,
+    ...dependencies,
+  });
 
 describe('reportStartupFailure', () => {
   it('surfaces safe configuration names and suppresses arbitrary error details', () => {
@@ -75,6 +110,132 @@ describe('reportStartupFailure', () => {
 });
 
 describe('createApplication', () => {
+  it('finishes loading the configured FAQ catalog before starting resources or Discord login', async () => {
+    const events: string[] = [];
+    const catalogStarted = deferred<void>();
+    const releaseCatalog = deferred<void>();
+
+    const starting = createTestApplication({
+      loadConfig: () => config,
+      loadPersona: async (path) => {
+        events.push(`persona:${path}`);
+        return {} as TrustedPersona;
+      },
+      loadFaqCatalog: async (path) => {
+        events.push(`faq:${path}:started`);
+        catalogStarted.resolve();
+        await releaseCatalog.promise;
+        events.push('faq:completed');
+        return testFaqCatalog;
+      },
+      createStore: () => {
+        events.push('store');
+        return {
+          append: async () => undefined,
+          getRecent: async () => [],
+          clear: async () => 0,
+          cleanup: async () => {
+            events.push('cleanup');
+            return 0;
+          },
+          healthCheck: async () => true,
+          close: async () => undefined,
+        };
+      },
+      createAIService: () => {
+        events.push('ai');
+        return { respond: async () => ({ text: 'unused' }) };
+      },
+      createDiscordClient: () => {
+        events.push('client');
+        return {
+          user: { id: 'bot-id' },
+          on: () => undefined,
+          login: async () => {
+            events.push('login');
+          },
+          destroy: () => undefined,
+        };
+      },
+    });
+
+    await catalogStarted.promise;
+    expect(events).toEqual([
+      'persona:trusted-persona.md',
+      'faq:faq.json:started',
+    ]);
+
+    releaseCatalog.resolve();
+    const application = await starting;
+    expect(events).toEqual([
+      'persona:trusted-persona.md',
+      'faq:faq.json:started',
+      'faq:completed',
+      'store',
+      'ai',
+      'client',
+      'cleanup',
+      'login',
+    ]);
+    await application.shutdown();
+  });
+
+  it('stops startup safely when the trusted FAQ catalog cannot be loaded', async () => {
+    const faqError = new Error(
+      'Invalid FAQ catalog configuration: FAQ_CATALOG_PATH',
+    );
+    const messages: string[] = [];
+    let storeFactoryCalls = 0;
+    let aiFactoryCalls = 0;
+    let clientFactoryCalls = 0;
+    let loginCalls = 0;
+    let exitCode: number | undefined;
+
+    await expect(
+      createTestApplication({
+        loadConfig: () => config,
+        loadPersona: async () => ({}) as TrustedPersona,
+        loadFaqCatalog: async () => {
+          throw faqError;
+        },
+        createStore: () => {
+          storeFactoryCalls += 1;
+          throw new Error('store factory must not run');
+        },
+        createAIService: () => {
+          aiFactoryCalls += 1;
+          throw new Error('AI factory must not run');
+        },
+        createDiscordClient: () => {
+          clientFactoryCalls += 1;
+          return {
+            user: { id: 'bot-id' },
+            on: () => undefined,
+            login: async () => {
+              loginCalls += 1;
+            },
+            destroy: () => undefined,
+          };
+        },
+        setExitCode: (code) => {
+          exitCode = code;
+        },
+      }),
+    ).rejects.toBe(faqError);
+
+    reportStartupFailure(faqError, (message) => {
+      messages.push(message);
+    });
+    expect(storeFactoryCalls).toBe(0);
+    expect(aiFactoryCalls).toBe(0);
+    expect(clientFactoryCalls).toBe(0);
+    expect(loginCalls).toBe(0);
+    expect(exitCode).toBe(1);
+    expect(messages).toEqual([
+      'Invalid FAQ catalog configuration: FAQ_CATALOG_PATH',
+    ]);
+  });
+
   it('shuts down once, stopping event work before closing dependencies', async () => {
     const listeners = new Map<string, (...args: unknown[]) => unknown>();
     let closeCalls = 0;
@@ -84,7 +245,7 @@ describe('createApplication', () => {
     let clearedTimer: unknown;
     const signalHandlers: Array<() => void | Promise<void>> = [];
 
-    const application = await createApplication({
+    const application = await createTestApplication({
       loadConfig: () => config,
       loadPersona: async (path) => {
         expect(path).toBe('trusted-persona.md');
@@ -185,7 +346,7 @@ describe('createApplication', () => {
       },
     };
 
-    const starting = createApplication({
+    const starting = createTestApplication({
       loadConfig: () => config,
       loadPersona: async () => ({}) as TrustedPersona,
       createStore: () => ({
@@ -241,7 +402,7 @@ describe('createApplication', () => {
       releaseWarning = resolve;
     });
 
-    const application = await createApplication({
+    const application = await createTestApplication({
       loadConfig: () => config,
       loadPersona: async () => ({}) as TrustedPersona,
       createStore: () => ({
@@ -320,7 +481,7 @@ describe('createApplication', () => {
     const firstEdit = deferred<void>();
     const secondEdit = deferred<void>();
 
-    const application = await createApplication({
+    const application = await createTestApplication({
       loadConfig: () => config,
       loadPersona: async () => loadPersona('config/jarvis-persona.md'),
       createStore: () => ({
@@ -394,7 +555,7 @@ describe('createApplication', () => {
     let exitCode: number | undefined;
 
     await expect(
-      createApplication({
+      createTestApplication({
         loadConfig: () => config,
         loadPersona: async () => ({}) as TrustedPersona,
         createStore: () => ({
@@ -441,7 +602,7 @@ describe('createApplication', () => {
     );
 
     await expect(
-      createApplication({
+      createTestApplication({
         loadConfig: () => config,
         loadPersona: async () => ({}) as TrustedPersona,
         createStore: () => ({
