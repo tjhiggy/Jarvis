@@ -13,11 +13,13 @@ import {
   type ReplyPayload,
 } from '../src/commands/handlers.js';
 import { isAllowedChannel } from '../src/discord/access.js';
+import { ReminderServiceError } from '../src/reminders/reminder-service.js';
+import type { ReminderView } from '../src/reminders/reminder-types.js';
 
 const safeMentions = { parse: [], repliedUser: false };
 
 describe('command definitions', () => {
-  it('retains six commands when poll registration is disabled', () => {
+  it('always registers the exact personal reminder subcommands', () => {
     const definitions = createCommandDefinitions(123, [
       faqEntry('capabilities', 'Jarvis capabilities'),
       faqEntry('runtime', 'Jarvis runtime'),
@@ -30,6 +32,7 @@ describe('command definitions', () => {
       'help',
       'status',
       'faq',
+      'reminder',
     ]);
     expect(definitions[0]).toMatchObject({
       name: 'ask',
@@ -62,6 +65,53 @@ describe('command definitions', () => {
         },
       ],
     });
+    expect(definitions[6]).toEqual({
+      type: 1,
+      name: 'reminder',
+      description: 'Manage your personal reminders.',
+      options: [
+        {
+          type: 1,
+          name: 'set',
+          description: 'Create a personal reminder.',
+          options: [
+            {
+              type: 3,
+              name: 'in',
+              description: 'Delay such as 10 minutes, 2 hours, or 3 days.',
+              required: true,
+              max_length: 64,
+            },
+            {
+              type: 3,
+              name: 'message',
+              description: 'What to remind you about.',
+              required: true,
+              max_length: 500,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'list',
+          description: 'List your retained reminders.',
+        },
+        {
+          type: 1,
+          name: 'cancel',
+          description: 'Cancel one of your reminders.',
+          options: [
+            {
+              type: 3,
+              name: 'id',
+              description: 'The 12-character reminder ID.',
+              required: true,
+              max_length: 12,
+            },
+          ],
+        },
+      ],
+    });
   });
 
   it('adds exact poll command contracts when poll registration is enabled', () => {
@@ -78,10 +128,11 @@ describe('command definitions', () => {
       'help',
       'status',
       'faq',
+      'reminder',
       'poll',
       'poll-close',
     ]);
-    expect(definitions[6]).toMatchObject({
+    expect(definitions[7]).toMatchObject({
       name: 'poll',
       options: [
         { name: 'question', required: true, max_length: 200 },
@@ -104,7 +155,7 @@ describe('command definitions', () => {
         { name: 'option5', required: false, max_length: 80 },
       ],
     });
-    expect(definitions[7]).toMatchObject({
+    expect(definitions[8]).toMatchObject({
       name: 'poll-close',
       options: [{ name: 'poll_id', required: true, max_length: 12 }],
     });
@@ -118,7 +169,9 @@ describe('command definitions', () => {
     );
 
     for (const definition of definitions) {
-      const options = definition.options ?? [];
+      const options = (definition.options ?? []).filter(
+        (option) => option.type === 3,
+      );
       const firstOptionalOption = options.findIndex(
         (option) => !option.required,
       );
@@ -219,6 +272,283 @@ describe('isAllowedChannel', () => {
 });
 
 describe('handleCommand', () => {
+  it.each(['set', 'list', 'cancel'] as const)(
+    'rejects /reminder %s in DMs and disallowed channels ephemerally',
+    async (subcommand) => {
+      const dm = interaction({
+        commandName: 'reminder',
+        subcommand,
+        guildId: null,
+      });
+      const disallowed = interaction({
+        commandName: 'reminder',
+        subcommand,
+        channelId: 'off-limits',
+      });
+      const commandDependencies = dependencies({
+        allowedChannelIds: new Set(['allowed']),
+      });
+
+      await handleCommand(dm.interaction, commandDependencies);
+      await handleCommand(disallowed.interaction, commandDependencies);
+
+      for (const fake of [dm, disallowed]) {
+        expect(fake.deferred).toEqual([]);
+        expect(fake.replies).toEqual([
+          expect.objectContaining({ ephemeral: true }),
+        ]);
+      }
+    },
+  );
+
+  it('defers /reminder set privately and passes the exact scoped request without using AI', async () => {
+    const fake = interaction({
+      commandName: 'reminder',
+      subcommand: 'set',
+      channelId: 'thread-1',
+      parentId: 'allowed-parent',
+      isThread: true,
+      values: {
+        in: '2 hours',
+        message: ' Check the oven ',
+      },
+    });
+    const setRequests: unknown[] = [];
+    let aiRequests = 0;
+    const created = reminder({
+      channelId: 'thread-1',
+      parentChannelId: 'allowed-parent',
+      message: 'Check the oven',
+    });
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        allowedChannelIds: new Set(['allowed-parent']),
+        ask: async () => {
+          aiRequests += 1;
+          return { status: 'success', text: 'Wrong subsystem.' };
+        },
+        reminderService: {
+          ...inertReminderService(),
+          set: async (request) => {
+            setRequests.push(request);
+            return created;
+          },
+        },
+      }),
+    );
+
+    expect(fake.deferred).toEqual([{ ephemeral: true }]);
+    expect(setRequests).toEqual([
+      {
+        guildId: 'guild-1',
+        channelId: 'thread-1',
+        parentChannelId: 'allowed-parent',
+        ownerUserId: 'user-1',
+        duration: '2 hours',
+        message: ' Check the oven ',
+      },
+    ]);
+    expect(aiRequests).toBe(0);
+    expect(fake.edits).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(
+          /abcdef234567[\s\S]*<t:1785337200:F>[\s\S]*<#thread-1>[\s\S]*retaining access/i,
+        ),
+        allowedMentions: safeMentions,
+      }),
+    ]);
+  });
+
+  it('defers /reminder list and cancel privately with guild-and-owner scoping', async () => {
+    const list = interaction({
+      commandName: 'reminder',
+      subcommand: 'list',
+    });
+    const cancel = interaction({
+      commandName: 'reminder',
+      subcommand: 'cancel',
+      values: { id: 'abcdef234567' },
+    });
+    const listRequests: unknown[] = [];
+    const cancelRequests: unknown[] = [];
+    const commandDependencies = dependencies({
+      reminderService: {
+        set: inertReminderService().set,
+        list: async (request) => {
+          listRequests.push(request);
+          return [reminder()];
+        },
+        cancel: async (request) => {
+          cancelRequests.push(request);
+          return reminder({ status: 'cancelled' });
+        },
+      },
+    });
+
+    await handleCommand(list.interaction, commandDependencies);
+    await handleCommand(cancel.interaction, commandDependencies);
+
+    expect(list.deferred).toEqual([{ ephemeral: true }]);
+    expect(cancel.deferred).toEqual([{ ephemeral: true }]);
+    expect(listRequests).toEqual([
+      { guildId: 'guild-1', ownerUserId: 'user-1' },
+    ]);
+    expect(cancelRequests).toEqual([
+      {
+        guildId: 'guild-1',
+        ownerUserId: 'user-1',
+        reminderId: 'abcdef234567',
+      },
+    ]);
+    expect(list.edits[0]?.content).toMatch(
+      /abcdef234567[\s\S]*<t:1785337200:F>[\s\S]*<#channel-1>[\s\S]*pending[\s\S]*Check the oven/i,
+    );
+    expect(cancel.edits[0]?.content).toMatch(/abcdef234567[\s\S]*cancelled/i);
+  });
+
+  it('rejects malformed reminder IDs privately before cancellation', async () => {
+    const fake = interaction({
+      commandName: 'reminder',
+      subcommand: 'cancel',
+      values: { id: 'not-an-id' },
+    });
+    let cancellations = 0;
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        reminderService: {
+          ...inertReminderService(),
+          cancel: async () => {
+            cancellations += 1;
+            return undefined;
+          },
+        },
+      }),
+    );
+
+    expect(fake.deferred).toEqual([{ ephemeral: true }]);
+    expect(cancellations).toBe(0);
+    expect(fake.edits[0]?.content).toMatch(/valid 12-character reminder id/i);
+  });
+
+  it.each([
+    ['invalid-request', /valid duration and message/i],
+    ['active-limit', /10 active reminders/i],
+    ['rate-limit', /too many reminder requests/i],
+  ] as const)(
+    'maps the %s reminder service error to private safe copy',
+    async (code, expected) => {
+      const fake = interaction({
+        commandName: 'reminder',
+        subcommand: 'set',
+        values: { in: '2 hours', message: 'Check the oven' },
+      });
+
+      await handleCommand(
+        fake.interaction,
+        dependencies({
+          reminderService: {
+            ...inertReminderService(),
+            set: async () => {
+              throw new ReminderServiceError(code, 12_345);
+            },
+          },
+        }),
+      );
+
+      expect(fake.deferred).toEqual([{ ephemeral: true }]);
+      expect(fake.edits[0]?.content).toMatch(expected);
+      expect(JSON.stringify(fake.edits)).not.toContain('12_345');
+    },
+  );
+
+  it('maps owner mismatch, unknown IDs, and storage failures to safe private copy', async () => {
+    const missing = interaction({
+      commandName: 'reminder',
+      subcommand: 'cancel',
+      values: { id: 'abcdef234567' },
+    });
+    const failed = interaction({
+      commandName: 'reminder',
+      subcommand: 'list',
+    });
+    const internalDetail = 'C:\\secret\\reminders.db token=oops';
+
+    await handleCommand(
+      missing.interaction,
+      dependencies({
+        reminderService: {
+          ...inertReminderService(),
+          cancel: async () => undefined,
+        },
+      }),
+    );
+    await handleCommand(
+      failed.interaction,
+      dependencies({
+        reminderService: {
+          ...inertReminderService(),
+          list: async () => {
+            throw new Error(internalDetail);
+          },
+        },
+      }),
+    );
+
+    expect(missing.edits[0]?.content).toMatch(/not found|do not own/i);
+    expect(failed.edits[0]?.content).toMatch(/try again later/i);
+    expect(JSON.stringify([...missing.edits, ...failed.edits])).not.toContain(
+      internalDetail,
+    );
+  });
+
+  it('safely chunks retained reminders and filters any cross-owner result', async () => {
+    const fake = interaction({
+      commandName: 'reminder',
+      subcommand: 'list',
+    });
+    const owned = Array.from({ length: 30 }, (_, index) =>
+      reminder({
+        id: `abcde${String(index).padStart(7, '2')}`.replace(/0/g, '2'),
+        message: `Item ${index + 1}: ${'x'.repeat(500)}`,
+      }),
+    );
+    const leakedText = 'TOP SECRET OTHER USER';
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        reminderService: {
+          ...inertReminderService(),
+          list: async () => [
+            ...owned,
+            reminder({ ownerUserId: 'user-2', message: leakedText }),
+          ],
+        },
+      }),
+    );
+
+    const payloads = [...fake.edits, ...fake.followUps];
+    expect(fake.deferred).toEqual([{ ephemeral: true }]);
+    expect(payloads.length).toBeGreaterThan(1);
+    expect(payloads.map((payload) => payload.content).join('')).not.toContain(
+      leakedText,
+    );
+    expect(payloads.map((payload) => payload.content).join('')).not.toContain(
+      'x'.repeat(100),
+    );
+    for (const payload of payloads) {
+      expect(payload.content?.length).toBeLessThanOrEqual(2_000);
+      expect(payload.allowedMentions).toEqual(safeMentions);
+    }
+    for (const payload of fake.followUps) {
+      expect(payload.ephemeral).toBe(true);
+    }
+  });
+
   it('rejects /poll when polls are disabled without deferring', async () => {
     const fake = interaction({ commandName: 'poll' });
 
@@ -876,6 +1206,12 @@ describe('handleCommand', () => {
     expect(content).toContain('/help');
     expect(content).toContain('/status');
     expect(content).toContain('/faq');
+    expect(content).toContain('/reminder set');
+    expect(content).toContain('/reminder list');
+    expect(content).toContain('/reminder cancel');
+    expect(content).toMatch(
+      /1 minute[\s\S]*30 days[\s\S]*500[\s\S]*10 active/i,
+    );
     expect(content).not.toMatch(/moderate|ban|kick|role/i);
     expect(content).toMatch(/cannot.*(?:administer|modify).*server/i);
     expect(content).toMatch(/cannot.*(?:tool|external action)/i);
@@ -992,6 +1328,73 @@ describe('handleCommand', () => {
     ]);
   });
 
+  it('reports reminder readiness and only safe aggregate counts', async () => {
+    const fake = interaction({ commandName: 'status' });
+    let storeChecks = 0;
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        reminderHealth: {
+          store: {
+            healthCheck: async () => {
+              storeChecks += 1;
+              return true;
+            },
+            statusCounts: async () => ({
+              pending: 2,
+              retryPending: 3,
+              deliveryUncertain: 4,
+              failed: 5,
+            }),
+          },
+          scheduler: { healthy: true },
+        },
+      }),
+    );
+
+    expect(storeChecks).toBe(1);
+    expect(fake.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(
+          /Reminder store: healthy[\s\S]*Reminder scheduler: healthy[\s\S]*pending 2[\s\S]*retry pending 3[\s\S]*delivery uncertain 4[\s\S]*failed 5/i,
+        ),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+    expect(JSON.stringify(fake.replies)).not.toMatch(
+      /reminder text|ownerUserId|channelId/i,
+    );
+  });
+
+  it('reports reminder diagnostics as degraded without exposing failures', async () => {
+    const fake = interaction({ commandName: 'status' });
+    const internalDetail = 'database=C:\\private\\reminders.db token=secret';
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        reminderHealth: {
+          store: {
+            healthCheck: async () => {
+              throw new Error(internalDetail);
+            },
+            statusCounts: async () => {
+              throw new Error(internalDetail);
+            },
+          },
+          scheduler: { healthy: false },
+        },
+      }),
+    );
+
+    expect(fake.replies[0]?.content).toMatch(
+      /Reminder store: degraded[\s\S]*Reminder scheduler: degraded[\s\S]*Reminder counts: unavailable/i,
+    );
+    expect(JSON.stringify(fake.replies)).not.toContain(internalDetail);
+  });
+
   it('returns a safe ephemeral response for an unknown command', async () => {
     const fake = interaction({ commandName: 'eject-crew' });
 
@@ -1018,6 +1421,7 @@ function interaction(
     topic: string | null;
     userId: string;
     values: Readonly<Record<string, string | null>>;
+    subcommand: 'set' | 'list' | 'cancel';
   }> = {},
 ): {
   readonly interaction: CommandInteraction;
@@ -1050,6 +1454,7 @@ function interaction(
       },
       user: { id: overrides.userId ?? 'user-1' },
       options: {
+        getSubcommand: () => overrides.subcommand ?? 'list',
         getString: (name) => {
           if (overrides.values !== undefined && name in overrides.values) {
             return overrides.values[name] ?? null;
@@ -1092,6 +1497,8 @@ function dependencies(
     pollAdminUserIds: ReadonlySet<string>;
     pollController: PollController;
     pollHealth: NonNullable<CommandDependencies['pollHealth']>;
+    reminderService: CommandDependencies['reminderService'];
+    reminderHealth: CommandDependencies['reminderHealth'];
   }> = {},
 ): CommandDependencies {
   return {
@@ -1130,6 +1537,21 @@ function dependencies(
     store: {
       healthCheck: overrides.healthCheck ?? (async () => true),
     },
+    reminderService: overrides.reminderService ?? inertReminderService(),
+    reminderHealth:
+      overrides.reminderHealth ??
+      ({
+        store: {
+          healthCheck: async () => true,
+          statusCounts: async () => ({
+            pending: 0,
+            retryPending: 0,
+            deliveryUncertain: 0,
+            failed: 0,
+          }),
+        },
+        scheduler: { healthy: true },
+      } as CommandDependencies['reminderHealth']),
     faq:
       overrides.faq ??
       faqCatalog([
@@ -1166,6 +1588,29 @@ function inertPollController(): PollController {
     vote: async () => undefined,
     close: async () => undefined,
     synchronize: async () => undefined,
+  };
+}
+
+function inertReminderService(): CommandDependencies['reminderService'] {
+  return {
+    set: async () => reminder(),
+    list: async () => [],
+    cancel: async () => undefined,
+  };
+}
+
+function reminder(overrides: Partial<ReminderView> = {}): ReminderView {
+  return {
+    id: 'abcdef234567',
+    guildId: 'guild-1',
+    channelId: 'channel-1',
+    ownerUserId: 'user-1',
+    message: 'Check the oven',
+    dueAt: new Date('2026-07-29T15:00:00.000Z'),
+    status: 'pending',
+    attemptCount: 0,
+    createdAt: new Date('2026-07-29T13:00:00.000Z'),
+    ...overrides,
   };
 }
 

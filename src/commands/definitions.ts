@@ -45,12 +45,28 @@ interface PollDurationOptionDefinition {
   readonly choices: typeof pollDurationChoices;
 }
 
+interface ReminderStringOptionDefinition {
+  readonly type: 3;
+  readonly name: 'in' | 'message' | 'id';
+  readonly description: string;
+  readonly required: true;
+  readonly max_length: number;
+}
+
+interface ReminderSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'set' | 'list' | 'cancel';
+  readonly description: string;
+  readonly options?: readonly ReminderStringOptionDefinition[];
+}
+
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
   | FaqTopicOptionDefinition
   | RequiredStringOptionDefinition
   | OptionalPollOptionDefinition
-  | PollDurationOptionDefinition;
+  | PollDurationOptionDefinition
+  | ReminderSubcommandDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -61,6 +77,7 @@ export interface CommandDefinition {
     | 'help'
     | 'status'
     | 'faq'
+    | 'reminder'
     | 'poll'
     | 'poll-close';
   readonly description: string;
@@ -145,6 +162,53 @@ export const createCommandDefinitions = (
             name: label,
             value: id,
           })),
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'reminder',
+      description: 'Manage your personal reminders.',
+      options: [
+        {
+          type: 1,
+          name: 'set',
+          description: 'Create a personal reminder.',
+          options: [
+            {
+              type: 3,
+              name: 'in',
+              description: 'Delay such as 10 minutes, 2 hours, or 3 days.',
+              required: true,
+              max_length: 64,
+            },
+            {
+              type: 3,
+              name: 'message',
+              description: 'What to remind you about.',
+              required: true,
+              max_length: 500,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'list',
+          description: 'List your retained reminders.',
+        },
+        {
+          type: 1,
+          name: 'cancel',
+          description: 'Cancel one of your reminders.',
+          options: [
+            {
+              type: 3,
+              name: 'id',
+              description: 'The 12-character reminder ID.',
+              required: true,
+              max_length: 12,
+            },
+          ],
         },
       ],
     },

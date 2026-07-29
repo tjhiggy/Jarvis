@@ -5,8 +5,16 @@ import type { PollController } from '../polls/poll-controller.js';
 import type { PollDurationValue } from '../polls/poll-duration.js';
 import type { PollScheduler } from '../polls/poll-scheduler.js';
 import type { PollStore } from '../polls/poll-store.js';
+import {
+  ReminderServiceError,
+  type ReminderService,
+} from '../reminders/reminder-service.js';
+import type { ReminderScheduler } from '../reminders/reminder-scheduler.js';
+import type { ReminderStore } from '../reminders/reminder-store.js';
+import type { ReminderView } from '../reminders/reminder-types.js';
 import { isAllowedChannel } from '../discord/access.js';
 import {
+  allowedMentions,
   editDeferredReplySafely,
   replyImmediatelyInChunksSafely,
   replySafely,
@@ -14,6 +22,8 @@ import {
   type ReplyPayload,
   type ReplyTarget,
 } from '../discord/delivery.js';
+import { chunkDiscordResponse } from '../utils/chunk-response.js';
+import { neutralizeDiscordMentions } from '../utils/mentions.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -28,6 +38,7 @@ export interface CommandInteraction extends ReplyTarget, DeferredReplyTarget {
   }> | null;
   readonly user: Readonly<{ id: string }>;
   readonly options: Readonly<{
+    getSubcommand(): string;
     getString(name: string): string | null;
   }>;
   deferReply(payload: ReplyPayload): Promise<unknown>;
@@ -70,6 +81,11 @@ export interface CommandDependencies {
     }): Promise<number>;
   }>;
   readonly store: Pick<ConversationStore, 'healthCheck'>;
+  readonly reminderService: Pick<ReminderService, 'set' | 'list' | 'cancel'>;
+  readonly reminderHealth: Readonly<{
+    store: Pick<ReminderStore, 'healthCheck' | 'statusCounts'>;
+    scheduler: Pick<ReminderScheduler, 'healthy'>;
+  }>;
   readonly faq: FaqCatalog;
   readonly pollController?: PollController;
   readonly pollHealth?: Readonly<{
@@ -93,12 +109,25 @@ const pollAdministratorMessage =
   'Poll creation and early closure are restricted to configured MuthaShip administrators.';
 const pollInputMessage =
   'Please provide a valid poll question, options, and duration.';
+const reminderInputMessage =
+  'Please provide a valid duration and message (1 minute to 30 days, up to 500 characters).';
+const reminderIdMessage = 'Please provide a valid 12-character reminder ID.';
+const reminderActiveLimitMessage =
+  'You already have 10 active reminders in this server. Cancel one before creating another.';
+const reminderRateLimitMessage =
+  'Too many reminder requests. Please try again shortly.';
+const reminderNotFoundMessage =
+  'That reminder was not found or you do not own it.';
 const helpMessage = (pollsEnabled: boolean): string =>
   [
     '/ask prompt:<question> asks Jarvis a question.',
     '/search query:<question> searches current web sources before Jarvis answers.',
     '/forget clears Jarvis history in this channel or thread.',
     '/faq topic:<approved topic> browses approved Jarvis information.',
+    '/reminder set in:<duration> message:<text> creates a private personal reminder request.',
+    '/reminder list shows your retained reminders in this server.',
+    '/reminder cancel id:<id> cancels one of your reminders.',
+    'Reminder limits: 1 minute to 30 days, 500 characters, and 10 active reminders per server.',
     '/help lists the available commands.',
     '/status reports safe service configuration and database health.',
     ...(pollsEnabled
@@ -127,6 +156,9 @@ export const handleCommand = async (
       return;
     case 'faq':
       await handleFaq(interaction, dependencies);
+      return;
+    case 'reminder':
+      await handleReminder(interaction, dependencies);
       return;
     case 'poll':
       await handlePoll(interaction, dependencies);
@@ -273,6 +305,177 @@ const handlePoll = async (
   } catch {
     await editDeferredReplySafely(interaction, operationalErrorMessage);
   }
+};
+
+const handleReminder = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  const scope = await authorizedReminderScope(interaction, dependencies);
+  if (scope === undefined) {
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  const subcommand = interaction.options.getSubcommand();
+  try {
+    switch (subcommand) {
+      case 'set': {
+        const reminder = await dependencies.reminderService.set({
+          guildId: scope.guildId,
+          channelId: scope.channelId,
+          ownerUserId: interaction.user.id,
+          duration: interaction.options.getString('in') ?? '',
+          message: interaction.options.getString('message') ?? '',
+          ...(scope.parentChannelId === undefined
+            ? {}
+            : { parentChannelId: scope.parentChannelId }),
+        });
+        await editDeferredReplySafely(
+          interaction,
+          `Reminder \`${reminder.id}\` set for ${discordTimestamp(reminder.dueAt)} in ${reminderDestination(reminder)}. Delivery depends on Jarvis retaining access to that location.`,
+        );
+        return;
+      }
+      case 'list': {
+        const reminders = (
+          await dependencies.reminderService.list({
+            guildId: scope.guildId,
+            ownerUserId: interaction.user.id,
+          })
+        ).filter(
+          (reminder) =>
+            reminder.guildId === scope.guildId &&
+            reminder.ownerUserId === interaction.user.id,
+        );
+        await editPrivateDeferredReplyInChunksSafely(
+          interaction,
+          renderReminderList(reminders),
+        );
+        return;
+      }
+      case 'cancel': {
+        const reminderId = interaction.options.getString('id')?.trim();
+        if (reminderId === undefined || !/^[a-z2-7]{12}$/.test(reminderId)) {
+          await editDeferredReplySafely(interaction, reminderIdMessage);
+          return;
+        }
+        const reminder = await dependencies.reminderService.cancel({
+          guildId: scope.guildId,
+          ownerUserId: interaction.user.id,
+          reminderId,
+        });
+        await editDeferredReplySafely(
+          interaction,
+          reminder === undefined
+            ? reminderNotFoundMessage
+            : `Reminder \`${reminder.id}\` status: ${reminderStatus(reminder)}.`,
+        );
+        return;
+      }
+      default:
+        await editDeferredReplySafely(interaction, reminderInputMessage);
+    }
+  } catch (error) {
+    await editDeferredReplySafely(interaction, reminderErrorMessage(error));
+  }
+};
+
+const authorizedReminderScope = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<
+  | Readonly<{ guildId: string; channelId: string; parentChannelId?: string }>
+  | undefined
+> => {
+  const guildId = interaction.guildId?.trim();
+  if (guildId === undefined || guildId === '') {
+    await replySafely(interaction, dmMessage, true);
+    return undefined;
+  }
+  const channelId = interaction.channelId.trim();
+  const parentChannelId = threadParentId(interaction);
+  if (
+    channelId === '' ||
+    !isAllowedChannel(
+      channelId,
+      parentChannelId,
+      dependencies.config.security.allowedChannelIds,
+    )
+  ) {
+    await replySafely(interaction, disallowedMessage, true);
+    return undefined;
+  }
+  return {
+    guildId,
+    channelId,
+    ...(parentChannelId === undefined ? {} : { parentChannelId }),
+  };
+};
+
+const reminderErrorMessage = (error: unknown): string => {
+  if (!(error instanceof ReminderServiceError)) {
+    return operationalErrorMessage;
+  }
+  switch (error.code) {
+    case 'invalid-request':
+      return reminderInputMessage;
+    case 'active-limit':
+      return reminderActiveLimitMessage;
+    case 'rate-limit':
+      return reminderRateLimitMessage;
+  }
+};
+
+const renderReminderList = (reminders: readonly ReminderView[]): string => {
+  if (reminders.length === 0) {
+    return 'You have no retained reminders in this server.';
+  }
+  return [
+    'Your retained reminders:',
+    ...reminders.map(
+      (reminder) =>
+        `- \`${reminder.id}\` | ${discordTimestamp(reminder.dueAt)} | ${reminderDestination(reminder)} | ${reminderStatus(reminder)} | ${shortReminderText(reminder.message)}`,
+    ),
+  ].join('\n');
+};
+
+const editPrivateDeferredReplyInChunksSafely = async (
+  interaction: CommandInteraction,
+  content: string,
+): Promise<void> => {
+  const safeContent =
+    neutralizeDiscordMentions(content).trim() || 'No response was available.';
+  const chunks = chunkDiscordResponse(safeContent);
+  await interaction.editReply({
+    content: chunks[0] ?? 'No response was available.',
+    allowedMentions,
+  });
+  for (const chunk of chunks.slice(1)) {
+    await interaction.followUp({
+      content: chunk,
+      ephemeral: true,
+      allowedMentions,
+    });
+  }
+};
+
+const discordTimestamp = (date: Date): string => {
+  const seconds = Math.floor(date.getTime() / 1_000);
+  return Number.isFinite(seconds) ? `<t:${seconds}:F>` : 'unknown time';
+};
+
+const reminderDestination = (reminder: ReminderView): string =>
+  `<#${reminder.channelId}>`;
+
+const reminderStatus = (reminder: ReminderView): string =>
+  reminder.status.replaceAll('_', ' ');
+
+const shortReminderText = (message: string): string => {
+  const characters = Array.from(message.trim());
+  return characters.length <= 96
+    ? characters.join('')
+    : `${characters.slice(0, 95).join('')}…`;
 };
 
 const handlePollClose = async (
@@ -466,6 +669,7 @@ const handleStatus = async (
       : dependencies.config.ollama.baseUrl.trim() !== '' &&
         dependencies.config.ollama.model.trim() !== '';
   const pollStatus = await getPollStatus(dependencies);
+  const reminderStatus = await getReminderStatus(dependencies);
 
   await replySafely(
     interaction,
@@ -480,10 +684,27 @@ const handleStatus = async (
           : 'not configured'
       }`,
       'FAQ catalog: loaded',
+      ...reminderStatus,
       ...pollStatus,
     ].join('\n'),
     true,
   );
+};
+
+const getReminderStatus = async (
+  dependencies: CommandDependencies,
+): Promise<readonly string[]> => {
+  const [storeHealthy, counts] = await Promise.all([
+    dependencies.reminderHealth.store.healthCheck().catch(() => false),
+    dependencies.reminderHealth.store.statusCounts().catch(() => undefined),
+  ]);
+  return [
+    `Reminder store: ${storeHealthy ? 'healthy' : 'degraded'}`,
+    `Reminder scheduler: ${dependencies.reminderHealth.scheduler.healthy ? 'healthy' : 'degraded'}`,
+    counts === undefined
+      ? 'Reminder counts: unavailable'
+      : `Reminder counts: pending ${counts.pending}, retry pending ${counts.retryPending}, delivery uncertain ${counts.deliveryUncertain}, failed ${counts.failed}`,
+  ];
 };
 
 const getPollStatus = async (
