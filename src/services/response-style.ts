@@ -12,7 +12,7 @@ const jokeSignal =
 const emotionalCheckInSignal =
   /^(?:how are you|how are you feeling|how do you feel)(?:\s+(?:today|right now))?[!.?]*$/i;
 const smallTalkSignal =
-  /^(?:what(?:['’]s| is) up|how(?:['’]s| is) it going|how(?:['’]s| is) your day going)[!.?]*$/i;
+  /^(?:what(?:['’]s| is) up|how(?:['’]s| is) it going|how(?:['’]s| is) your day going|(?:so\s+)?what(?:['’]s| is) new with you(?:\s+(?:today|right now))?|anything new with you(?:\s+(?:today|right now))?)[!.?]*$/i;
 
 export const isCasualConversationPrompt = (prompt: string): boolean => {
   const normalized = prompt

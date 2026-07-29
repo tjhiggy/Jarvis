@@ -11,6 +11,9 @@ describe('classifyResponseStyle', () => {
     "What's up?",
     "How's it going?",
     'How is your day going?',
+    "So what's new with you today?",
+    "What's new with you?",
+    'Anything new with you today?',
   ])('classifies casual conversation: %s', (prompt) => {
     expect(classifyResponseStyle(prompt)).toBe('concise-casual');
   });
