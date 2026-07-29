@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createCommandDefinitions } from '../src/commands/definitions.js';
+import type { FaqEntry } from '../src/faq/faq-catalog.js';
 import {
   handleCommand,
   type CommandDependencies,
@@ -11,8 +12,11 @@ import { isAllowedChannel } from '../src/discord/access.js';
 const safeMentions = { parse: [], repliedUser: false };
 
 describe('command definitions', () => {
-  it('publishes the supported commands with configured question limits', () => {
-    const definitions = createCommandDefinitions(123);
+  it('publishes the supported commands with configured question limits and approved FAQ topics', () => {
+    const definitions = createCommandDefinitions(123, [
+      faqEntry('capabilities', 'Jarvis capabilities'),
+      faqEntry('runtime', 'Jarvis runtime'),
+    ]);
 
     expect(definitions.map((definition) => definition.name)).toEqual([
       'ask',
@@ -20,6 +24,7 @@ describe('command definitions', () => {
       'forget',
       'help',
       'status',
+      'faq',
     ]);
     expect(definitions[0]).toMatchObject({
       name: 'ask',
@@ -35,14 +40,81 @@ describe('command definitions', () => {
       name: 'search',
       options: [{ name: 'query', required: true, max_length: 123 }],
     });
+    expect(definitions[5]).toEqual({
+      type: 1,
+      name: 'faq',
+      description: 'Browse approved Jarvis information.',
+      options: [
+        {
+          type: 3,
+          name: 'topic',
+          description: 'Choose an approved Jarvis topic.',
+          required: false,
+          choices: [
+            { name: 'Jarvis capabilities', value: 'capabilities' },
+            { name: 'Jarvis runtime', value: 'runtime' },
+          ],
+        },
+      ],
+    });
   });
 
   it('caps the slash-command prompt at Discord string-option limits', () => {
-    const definitions = createCommandDefinitions(12_000);
+    const definitions = createCommandDefinitions(12_000, [
+      faqEntry('capabilities', 'Jarvis capabilities'),
+    ]);
 
-    expect(definitions[0]?.options?.[0]?.max_length).toBe(6_000);
+    expect(
+      (definitions[0]?.options?.[0] as { max_length?: number }).max_length,
+    ).toBe(6_000);
   });
+
+  it('accepts Discord’s 25-choice FAQ boundary', () => {
+    const definitions = createCommandDefinitions(
+      123,
+      Array.from({ length: 25 }, (_, index) =>
+        faqEntry(`topic-${index + 1}`, `Topic ${index + 1}`),
+      ),
+    );
+
+    expect(definitions[5]?.options?.[0]).toMatchObject({
+      name: 'topic',
+      choices: expect.arrayContaining([
+        { name: 'Topic 1', value: 'topic-1' },
+        { name: 'Topic 25', value: 'topic-25' },
+      ]),
+    });
+    expect(
+      (definitions[5]?.options?.[0] as { choices?: readonly unknown[] })
+        .choices,
+    ).toHaveLength(25);
+  });
+
+  it.each([
+    [[]],
+    [
+      Array.from({ length: 26 }, (_, index) =>
+        faqEntry(`topic-${index + 1}`, `Topic ${index + 1}`),
+      ),
+    ],
+  ])(
+    'rejects FAQ command definitions outside Discord choice limits',
+    (faqEntries) => {
+      expect(() => createCommandDefinitions(123, faqEntries)).toThrow(
+        'FAQ command choices must contain between 1 and 25 entries.',
+      );
+    },
+  );
 });
+
+function faqEntry(id: string, label: string): FaqEntry {
+  return {
+    id,
+    label,
+    question: `What is ${label}?`,
+    answer: `${label} answer.`,
+  };
+}
 
 describe('isAllowedChannel', () => {
   it('accepts a thread whose parent is allowlisted', () => {
