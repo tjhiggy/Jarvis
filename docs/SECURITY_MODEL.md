@@ -11,6 +11,7 @@ describe implemented source behavior; proposals are labelled as planned.
 - Bot-owned SQLite conversation history, including prompts and successful
   assistant responses, plus backups of that database.
 - Trusted operator configuration and persona content.
+- Approved FAQ catalog content and topic-to-answer integrity.
 - Provider account availability, budget, rate limits, and model access.
 - The integrity of Jarvis's deployment, source revision, and command set.
 
@@ -31,6 +32,13 @@ the full normalized user prompt leaves the process as Tavily's search query.
 Tavily results are bounded, sanitized, untrusted evidence, not instructions.
 Docker administrators can inspect container environment values, so a production
 deployment should use the platform's approved secret-management boundary.
+
+The FAQ catalog is another trusted, operator-controlled local input.
+`FAQ_CATALOG_PATH` is read from the deployment environment, never from Discord.
+Startup and command registration validate 1 to 25 strictly shaped entries;
+Discord users can only select registered topic IDs. Missing, unreadable, or
+invalid content fails closed with a sanitized error that names
+`FAQ_CATALOG_PATH` without exposing an absolute path or catalog content.
 
 ## Implemented controls
 
@@ -70,6 +78,12 @@ deployment should use the platform's approved secret-management boundary.
 - **Mass-mention protection.** Replies set Discord `allowedMentions` to an
   empty parse list with `repliedUser: false`, and text is neutralized before
   delivery. Jarvis cannot turn an answer into an `@everyone` incident.
+- **Approved FAQ boundary.** `/faq` selects content from the active approved
+  catalog configured by `FAQ_CATALOG_PATH`; `config/faq.json` is only the
+  default. The catalog is immutable in process and read-only to Discord.
+  Replies pass through mention-neutralizing safe delivery, so unsafe mention
+  tokens may be transformed. Listing or selecting a topic makes no AI, Tavily,
+  or conversation-storage call; it only sends the requested public reply.
 - **Credential redaction.** Structured logs recursively redact values under
   keys named `token`, `apiKey`, or `authorization` (case-insensitive), including
   those keys in nested headers. This is not a general secret detector for

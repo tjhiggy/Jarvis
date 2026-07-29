@@ -7,7 +7,7 @@ dates, promises, or claims that an interface declaration is a working feature.
 
 - Single-process Node.js 22 Discord bot with outbound Gateway connectivity and
   no inbound web port.
-- `/ask`, `/search`, `/forget`, `/help`, and `/status` commands plus
+- `/ask`, `/search`, `/forget`, `/faq`, `/help`, and `/status` commands plus
   direct mention handling in server channels.
 - Channel allowlists, parent-thread handling, minimum reply permissions,
   per-guild/user rate limiting, event de-duplication, input bounds, and safe

@@ -1,0 +1,56 @@
+[
+  {
+    "id": "capabilities",
+    "label": "Jarvis capabilities",
+    "question": "What can Jarvis do?",
+    "answer": "Jarvis answers approved questions, responds to direct mentions, and can search current web sources when you use /search. It is the MuthaShip's advisory AI, not a command deck."
+  },
+  {
+    "id": "ask",
+    "label": "Ask Jarvis a question",
+    "question": "How do I ask Jarvis something?",
+    "answer": "Mention Jarvis with your question, or use /ask prompt:<question>. Keep the mission clear and include the context that matters."
+  },
+  {
+    "id": "search",
+    "label": "Use /search",
+    "question": "When should I use /search?",
+    "answer": "Use /search for current, source-sensitive, or fast-changing information. Jarvis will search current web sources before answering."
+  },
+  {
+    "id": "memory",
+    "label": "Jarvis conversation memory",
+    "question": "What does Jarvis remember?",
+    "answer": "Jarvis keeps only its own bounded conversation history for the current channel or thread. It does not create a permanent crew dossier."
+  },
+  {
+    "id": "forget",
+    "label": "Clear conversation history",
+    "question": "How do I clear conversation history?",
+    "answer": "Use /forget in the current channel or thread. Jarvis removes the conversation history it owns there."
+  },
+  {
+    "id": "runtime",
+    "label": "Jarvis runtime",
+    "question": "Where does Jarvis run?",
+    "answer": "Jarvis runs as one local Shipboard Core process connected to Discord. It has no public web server and no autonomous bridge to the wider galaxy."
+  },
+  {
+    "id": "discord-boundary",
+    "label": "Discord server changes",
+    "question": "Can Jarvis modify the Discord server?",
+    "answer": "No. Jarvis cannot modify Discord roles, channels, permissions, members, messages owned by others, or server settings."
+  },
+  {
+    "id": "refusals",
+    "label": "Why Jarvis may refuse",
+    "question": "Why did Jarvis refuse or withhold an answer?",
+    "answer": "Jarvis refuses requests outside its advisory role, unsafe requests, and questions without enough reliable support. A confident guess is not a mission parameter."
+  },
+  {
+    "id": "offline",
+    "label": "Shipboard Core offline",
+    "question": "What happens when the Shipboard Core is offline?",
+    "answer": "Jarvis cannot operate while the local Shipboard Core is offline. Bring the local service back online before expecting a reply."
+  }
+]

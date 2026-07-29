@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createCommandDefinitions } from '../src/commands/definitions.js';
+import type { FaqCatalog, FaqEntry } from '../src/faq/faq-catalog.js';
 import {
   handleCommand,
   type CommandDependencies,
@@ -11,8 +12,11 @@ import { isAllowedChannel } from '../src/discord/access.js';
 const safeMentions = { parse: [], repliedUser: false };
 
 describe('command definitions', () => {
-  it('publishes the supported commands with configured question limits', () => {
-    const definitions = createCommandDefinitions(123);
+  it('publishes the supported commands with configured question limits and approved FAQ topics', () => {
+    const definitions = createCommandDefinitions(123, [
+      faqEntry('capabilities', 'Jarvis capabilities'),
+      faqEntry('runtime', 'Jarvis runtime'),
+    ]);
 
     expect(definitions.map((definition) => definition.name)).toEqual([
       'ask',
@@ -20,6 +24,7 @@ describe('command definitions', () => {
       'forget',
       'help',
       'status',
+      'faq',
     ]);
     expect(definitions[0]).toMatchObject({
       name: 'ask',
@@ -35,14 +40,81 @@ describe('command definitions', () => {
       name: 'search',
       options: [{ name: 'query', required: true, max_length: 123 }],
     });
+    expect(definitions[5]).toEqual({
+      type: 1,
+      name: 'faq',
+      description: 'Browse approved Jarvis information.',
+      options: [
+        {
+          type: 3,
+          name: 'topic',
+          description: 'Choose an approved Jarvis topic.',
+          required: false,
+          choices: [
+            { name: 'Jarvis capabilities', value: 'capabilities' },
+            { name: 'Jarvis runtime', value: 'runtime' },
+          ],
+        },
+      ],
+    });
   });
 
   it('caps the slash-command prompt at Discord string-option limits', () => {
-    const definitions = createCommandDefinitions(12_000);
+    const definitions = createCommandDefinitions(12_000, [
+      faqEntry('capabilities', 'Jarvis capabilities'),
+    ]);
 
-    expect(definitions[0]?.options?.[0]?.max_length).toBe(6_000);
+    expect(
+      (definitions[0]?.options?.[0] as { max_length?: number }).max_length,
+    ).toBe(6_000);
   });
+
+  it('accepts Discord’s 25-choice FAQ boundary', () => {
+    const definitions = createCommandDefinitions(
+      123,
+      Array.from({ length: 25 }, (_, index) =>
+        faqEntry(`topic-${index + 1}`, `Topic ${index + 1}`),
+      ),
+    );
+
+    expect(definitions[5]?.options?.[0]).toMatchObject({
+      name: 'topic',
+      choices: expect.arrayContaining([
+        { name: 'Topic 1', value: 'topic-1' },
+        { name: 'Topic 25', value: 'topic-25' },
+      ]),
+    });
+    expect(
+      (definitions[5]?.options?.[0] as { choices?: readonly unknown[] })
+        .choices,
+    ).toHaveLength(25);
+  });
+
+  it.each([
+    [[]],
+    [
+      Array.from({ length: 26 }, (_, index) =>
+        faqEntry(`topic-${index + 1}`, `Topic ${index + 1}`),
+      ),
+    ],
+  ])(
+    'rejects FAQ command definitions outside Discord choice limits',
+    (faqEntries) => {
+      expect(() => createCommandDefinitions(123, faqEntries)).toThrow(
+        'FAQ command choices must contain between 1 and 25 entries.',
+      );
+    },
+  );
 });
+
+function faqEntry(id: string, label: string): FaqEntry {
+  return {
+    id,
+    label,
+    question: `What is ${label}?`,
+    answer: `${label} answer.`,
+  };
+}
 
 describe('isAllowedChannel', () => {
   it('accepts a thread whose parent is allowlisted', () => {
@@ -332,6 +404,270 @@ describe('handleCommand', () => {
     expect(fake.edits[0]?.content).not.toContain(internalDetail);
   });
 
+  it('returns only the approved public answer for an exact /faq topic without side effects', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'capabilities' });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'capabilities',
+            label: 'Jarvis capabilities',
+            question: 'What can Jarvis do?',
+            answer: 'Jarvis is an advisory AI, not a command deck.',
+          },
+        ]),
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      {
+        content: 'Jarvis is an advisory AI, not a command deck.',
+        ephemeral: false,
+        allowedMentions: safeMentions,
+      },
+    ]);
+  });
+
+  it('lists approved FAQ questions publicly when /faq omits a topic without side effects', async () => {
+    const fake = interaction({ commandName: 'faq', topic: null });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'capabilities',
+            label: 'Jarvis capabilities',
+            question: 'What can Jarvis do?',
+            answer: 'Jarvis is an advisory AI, not a command deck.',
+          },
+          {
+            id: 'runtime',
+            label: 'Jarvis runtime',
+            question: 'Where does Jarvis run?',
+            answer: 'Jarvis runs locally.',
+          },
+        ]),
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      {
+        content:
+          'Choose an approved FAQ topic:\n- What can Jarvis do?\n- Where does Jarvis run?',
+        ephemeral: false,
+        allowedMentions: safeMentions,
+      },
+    ]);
+  });
+
+  it('guides unknown /faq topics to the approved public questions without side effects', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'self-destruct' });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'capabilities',
+            label: 'Jarvis capabilities',
+            question: 'What can Jarvis do?',
+            answer: 'Jarvis is an advisory AI, not a command deck.',
+          },
+          {
+            id: 'runtime',
+            label: 'Jarvis runtime',
+            question: 'Where does Jarvis run?',
+            answer: 'Jarvis runs locally.',
+          },
+        ]),
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      {
+        content:
+          'That FAQ topic is not available. Choose an approved FAQ topic:\n- Jarvis capabilities\n- Jarvis runtime',
+        ephemeral: false,
+        allowedMentions: safeMentions,
+      },
+    ]);
+  });
+
+  it('rejects /faq from a DM without side effects', async () => {
+    const fake = interaction({
+      commandName: 'faq',
+      guildId: null,
+      topic: 'capabilities',
+    });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'capabilities',
+            label: 'Jarvis capabilities',
+            question: 'What can Jarvis do?',
+            answer: 'Jarvis is an advisory AI, not a command deck.',
+          },
+        ]),
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/server/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+  });
+
+  it('rejects /faq outside the direct channel allowlist without side effects', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'capabilities' });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'capabilities',
+            label: 'Jarvis capabilities',
+            question: 'What can Jarvis do?',
+            answer: 'Jarvis is an advisory AI, not a command deck.',
+          },
+        ]),
+        { allowedChannelIds: new Set(['another-channel']) },
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/not available/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+  });
+
+  it('accepts /faq in a thread whose parent is allowlisted without side effects', async () => {
+    const fake = interaction({
+      commandName: 'faq',
+      channelId: 'thread-1',
+      parentId: 'allowed-parent',
+      isThread: true,
+      topic: 'runtime',
+    });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'runtime',
+            label: 'Jarvis runtime',
+            question: 'Where does Jarvis run?',
+            answer: 'Jarvis runs locally.',
+          },
+        ]),
+        { allowedChannelIds: new Set(['allowed-parent']) },
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      {
+        content: 'Jarvis runs locally.',
+        ephemeral: false,
+        allowedMentions: safeMentions,
+      },
+    ]);
+  });
+
+  it('neutralizes mass mentions in approved /faq answers without side effects', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'mentions' });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'mentions',
+            label: 'Mention safety',
+            question: 'How are mentions handled?',
+            answer: '@everyone, remain calm.',
+          },
+        ]),
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      {
+        content: '@\u200beveryone, remain calm.',
+        ephemeral: false,
+        allowedMentions: safeMentions,
+      },
+    ]);
+  });
+
+  it('chunks the maximum valid /faq question listing into safe public replies', async () => {
+    const fake = interaction({ commandName: 'faq', topic: null });
+    const entries = maximumFaqEntries();
+    const expectedContent = `Choose an approved FAQ topic:\n${entries
+      .map((entry) => `- ${entry.question}`)
+      .join('\n')}`;
+
+    await handleCommand(fake.interaction, faqDependencies(faqCatalog(entries)));
+
+    expectSafePublicChunks(fake, expectedContent);
+  });
+
+  it('chunks maximum valid /faq label guidance into safe public replies', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'not-a-topic' });
+    const entries = maximumFaqEntries();
+    const expectedContent =
+      'That FAQ topic is not available. Choose an approved FAQ topic:\n' +
+      entries.map((entry) => `- ${entry.label}`).join('\n');
+
+    await handleCommand(fake.interaction, faqDependencies(faqCatalog(entries)));
+
+    expectSafePublicChunks(fake, expectedContent);
+  });
+
+  it('chunks an 1800-character /faq answer after mention neutralization expands it', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'mentions' });
+    const answer = '<@123>'.repeat(300);
+    const expectedContent = '<@\u200b123>'.repeat(300);
+
+    expect(answer).toHaveLength(1_800);
+    expect(expectedContent.length).toBeGreaterThan(2_000);
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'mentions',
+            label: 'Mention safety',
+            question: 'How are mentions handled?',
+            answer,
+          },
+        ]),
+      ),
+    );
+
+    expectSafePublicChunks(fake, expectedContent);
+  });
+
   it('lists every supported command and no imaginary server controls in /help', async () => {
     const fake = interaction({ commandName: 'help' });
 
@@ -348,6 +684,7 @@ describe('handleCommand', () => {
     expect(content).toContain('/search');
     expect(content).toContain('/help');
     expect(content).toContain('/status');
+    expect(content).toContain('/faq');
     expect(content).not.toMatch(/moderate|ban|kick|role/i);
     expect(content).toMatch(/cannot.*(?:administer|modify).*server/i);
     expect(content).toMatch(/cannot.*(?:tool|external action)/i);
@@ -400,7 +737,7 @@ describe('handleCommand', () => {
     expect(fake.replies).toEqual([
       expect.objectContaining({
         content: expect.stringMatching(
-          /Discord: configured[\s\S]*Database: healthy[\s\S]*AI provider: Ollama[\s\S]*AI configuration: configured[\s\S]*Web search: configured/i,
+          /Discord: configured[\s\S]*Database: healthy[\s\S]*AI provider: Ollama[\s\S]*AI configuration: configured[\s\S]*Web search: configured[\s\S]*FAQ catalog: loaded/i,
         ),
         ephemeral: true,
         allowedMentions: safeMentions,
@@ -431,6 +768,7 @@ function interaction(
     parentId: string | null;
     isThread: boolean;
     prompt: string;
+    topic: string | null;
   }> = {},
 ): {
   readonly interaction: CommandInteraction;
@@ -445,6 +783,7 @@ function interaction(
   const followUps: ReplyPayload[] = [];
   const commandName = overrides.commandName ?? 'help';
   const prompt = overrides.prompt ?? 'What is the plan?';
+  const topic = overrides.topic ?? null;
 
   return {
     deferred,
@@ -462,10 +801,14 @@ function interaction(
       },
       user: { id: 'user-1' },
       options: {
-        getString: (name) =>
-          name === (commandName === 'search' ? 'query' : 'prompt')
+        getString: (name) => {
+          if (commandName === 'faq' && name === 'topic') {
+            return topic;
+          }
+          return name === (commandName === 'search' ? 'query' : 'prompt')
             ? prompt
-            : null,
+            : null;
+        },
       },
       deferReply: async (payload) => {
         deferred.push(payload);
@@ -491,6 +834,7 @@ function dependencies(
     clear: CommandDependencies['conversationService']['clear'];
     healthCheck: CommandDependencies['store']['healthCheck'];
     tavilyApiKey: string;
+    faq: FaqCatalog;
   }> = {},
 ): CommandDependencies {
   return {
@@ -521,5 +865,86 @@ function dependencies(
     store: {
       healthCheck: overrides.healthCheck ?? (async () => true),
     },
+    faq:
+      overrides.faq ??
+      faqCatalog([
+        {
+          id: 'capabilities',
+          label: 'Jarvis capabilities',
+          question: 'What can Jarvis do?',
+          answer: 'Jarvis is an advisory AI, not a command deck.',
+        },
+      ]),
   };
+}
+
+function faqCatalog(entries: readonly FaqEntry[]): FaqCatalog {
+  const entriesById = new Map(
+    entries.map((entry) => [entry.id.trim().toLowerCase(), entry]),
+  );
+
+  return {
+    entries,
+    get: (id) => entriesById.get(id.trim().toLowerCase()),
+  };
+}
+
+function maximumFaqEntries(): readonly FaqEntry[] {
+  return Array.from({ length: 25 }, (_, index) => {
+    const number = String(index + 1);
+    const labelPrefix = `Topic ${number} `;
+    const questionPrefix = `Question ${number} `;
+
+    return {
+      id: `topic-${number}`,
+      label: labelPrefix + 'l'.repeat(100 - labelPrefix.length),
+      question: questionPrefix + 'q'.repeat(200 - questionPrefix.length),
+      answer: `Approved answer ${number}.`,
+    };
+  });
+}
+
+function expectSafePublicChunks(
+  fake: Readonly<{
+    replies: readonly ReplyPayload[];
+    followUps: readonly ReplyPayload[];
+  }>,
+  expectedContent: string,
+): void {
+  expect(fake.replies).toHaveLength(1);
+  expect(fake.followUps.length).toBeGreaterThan(0);
+  const payloads = [...fake.replies, ...fake.followUps];
+
+  expect(payloads.map((payload) => payload.content).join('')).toBe(
+    expectedContent,
+  );
+  for (const payload of payloads) {
+    expect(payload).toEqual({
+      content: expect.any(String),
+      ephemeral: false,
+      allowedMentions: safeMentions,
+    });
+    expect(payload.content?.length).toBeLessThanOrEqual(2_000);
+  }
+}
+
+function faqDependencies(
+  faq: FaqCatalog,
+  overrides: Readonly<{ allowedChannelIds?: ReadonlySet<string> }> = {},
+): CommandDependencies {
+  return dependencies({
+    faq,
+    ...(overrides.allowedChannelIds === undefined
+      ? {}
+      : { allowedChannelIds: overrides.allowedChannelIds }),
+    ask: vi.fn(async () => {
+      throw new Error('/faq must not call conversationService.ask');
+    }),
+    clear: vi.fn(async () => {
+      throw new Error('/faq must not call conversationService.clear');
+    }),
+    healthCheck: vi.fn(async () => {
+      throw new Error('/faq must not call store.healthCheck');
+    }),
+  });
 }

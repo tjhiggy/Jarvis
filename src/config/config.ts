@@ -46,6 +46,9 @@ export interface AppConfig {
     restrainedChannelIds: ReadonlySet<string>;
     promptPath: string;
   }>;
+  readonly faq: Readonly<{
+    catalogPath: string;
+  }>;
   readonly logging: Readonly<{
     level: LogLevel;
   }>;
@@ -56,6 +59,7 @@ export interface DiscordRegistrationConfig {
   readonly clientId: string;
   readonly guildId: string;
   readonly maxInputChars: number;
+  readonly faqCatalogPath: string;
 }
 
 const requiredString = z.string().trim().min(1);
@@ -123,6 +127,7 @@ const baseEnvironmentSchema = z.object({
   RATE_LIMIT_WINDOW_MS: integer(60000, 1),
   HISTORY_RETENTION_DAYS: integer(30, 1),
   PERSONA_PROMPT_PATH: optionalString('./config/jarvis-persona.md'),
+  FAQ_CATALOG_PATH: optionalString('./config/faq.json'),
   ALLOWED_CHANNEL_IDS: channelIds,
   RESTRAINED_CHANNEL_IDS: channelIds,
 });
@@ -144,6 +149,7 @@ const discordRegistrationSchema = baseEnvironmentSchema.pick({
   DISCORD_CLIENT_ID: true,
   DISCORD_GUILD_ID: true,
   MAX_INPUT_CHARS: true,
+  FAQ_CATALOG_PATH: true,
 });
 
 const readonlySet = (values: string[]): ReadonlySet<string> => {
@@ -210,6 +216,7 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
       restrainedChannelIds: readonlySet(parsed.RESTRAINED_CHANNEL_IDS),
       promptPath: parsed.PERSONA_PROMPT_PATH,
     }),
+    faq: Object.freeze({ catalogPath: parsed.FAQ_CATALOG_PATH }),
     logging: Object.freeze({ level: parsed.LOG_LEVEL }),
   });
 };
@@ -223,6 +230,7 @@ export const loadDiscordRegistrationConfig = (
     clientId: parsed.DISCORD_CLIENT_ID,
     guildId: parsed.DISCORD_GUILD_ID,
     maxInputChars: parsed.MAX_INPUT_CHARS,
+    faqCatalogPath: parsed.FAQ_CATALOG_PATH,
   });
 };
 

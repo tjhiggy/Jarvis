@@ -16,6 +16,10 @@ export interface ReplyTarget {
   reply(payload: ReplyPayload): Promise<unknown>;
 }
 
+export interface ImmediateReplyTarget extends ReplyTarget {
+  followUp(payload: ReplyPayload): Promise<unknown>;
+}
+
 export interface DeferredReplyTarget {
   editReply(payload: ReplyPayload): Promise<unknown>;
   followUp(payload: ReplyPayload): Promise<unknown>;
@@ -43,11 +47,33 @@ export const replySafely = async (
   });
 };
 
+export const replyImmediatelyInChunksSafely = async (
+  target: ImmediateReplyTarget,
+  content: string,
+  ephemeral = false,
+): Promise<void> => {
+  const chunks = safeChunks(content);
+  const firstChunk = chunks[0] ?? 'No response was available.';
+
+  await target.reply({
+    content: firstChunk,
+    ephemeral,
+    allowedMentions,
+  });
+  for (const chunk of chunks.slice(1)) {
+    await target.followUp({
+      content: chunk,
+      ephemeral,
+      allowedMentions,
+    });
+  }
+};
+
 export const editDeferredReplySafely = async (
   target: DeferredReplyTarget,
   content: string,
 ): Promise<void> => {
-  const chunks = chunkDiscordResponse(safeContent(content));
+  const chunks = safeChunks(content);
   const firstChunk = chunks[0] ?? 'No response was available.';
 
   await target.editReply({ content: firstChunk, allowedMentions });
@@ -55,3 +81,6 @@ export const editDeferredReplySafely = async (
     await target.followUp({ content: chunk, allowedMentions });
   }
 };
+
+const safeChunks = (content: string): string[] =>
+  chunkDiscordResponse(safeContent(content));

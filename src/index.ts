@@ -13,6 +13,7 @@ import {
   type DiscordInteraction,
   type DiscordMessage,
 } from './discord/handlers.js';
+import { loadFaqCatalog, type FaqCatalog } from './faq/faq-catalog.js';
 import {
   OpenAIResponsesService,
   type AIService,
@@ -32,6 +33,8 @@ import { createLogger, projectOperationalError } from './utils/logger.js';
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
   /^Invalid environment configuration: (?:[A-Z][A-Z0-9_]*|unknown)(?:, (?:[A-Z][A-Z0-9_]*|unknown))*$/;
+const safeFaqConfigurationErrorMessage =
+  'Invalid FAQ catalog configuration: FAQ_CATALOG_PATH';
 let dotenvLoaded = false;
 
 interface RuntimeDiscordClient {
@@ -50,6 +53,7 @@ export interface ApplicationDependencies {
   readonly loadEnvironment?: () => unknown;
   readonly loadConfig?: (env: NodeJS.ProcessEnv) => AppConfig;
   readonly loadPersona?: (path: string) => Promise<TrustedPersona>;
+  readonly loadFaqCatalog?: (path: string) => Promise<FaqCatalog>;
   readonly createStore?: (
     databasePath: string,
     maxStoredMessages: number,
@@ -144,6 +148,7 @@ export const createApplication = async (
   const loadEnvironment = dependencies.loadEnvironment ?? loadEnvironmentOnce;
   const configLoader = dependencies.loadConfig ?? loadConfig;
   const personaLoader = dependencies.loadPersona ?? loadPersona;
+  const faqCatalogLoader = dependencies.loadFaqCatalog ?? loadFaqCatalog;
   const storeFactory =
     dependencies.createStore ??
     ((path, maxStoredMessages) =>
@@ -204,6 +209,7 @@ export const createApplication = async (
     const config = configLoader(process.env);
     logger = loggerFactory(config.logging.level);
     const persona = await personaLoader(config.persona.promptPath);
+    const faq = await faqCatalogLoader(config.faq.catalogPath);
     store = storeFactory(
       config.storage.databasePath,
       config.storage.maxStoredMessages,
@@ -288,6 +294,7 @@ export const createApplication = async (
           config,
           conversationService,
           store: initializedStore,
+          faq,
         }),
     });
 
@@ -335,7 +342,9 @@ export const reportStartupFailure = (
   },
 ): void => {
   const message =
-    error instanceof Error && safeConfigurationError.test(error.message)
+    error instanceof Error &&
+    (safeConfigurationError.test(error.message) ||
+      error.message === safeFaqConfigurationErrorMessage)
       ? error.message
       : 'Application startup failed.';
   write(message);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { registerCommands } from '../scripts/register-commands.js';
+import type { FaqCatalog } from '../src/faq/faq-catalog.js';
 
 describe('registerCommands', () => {
   it('bulk-overwrites only the configured guild command route without OpenAI configuration', async () => {
@@ -8,6 +9,7 @@ describe('registerCommands', () => {
       options: Readonly<{ body: readonly unknown[] }>;
     }> = [];
     const tokens: string[] = [];
+    const events: string[] = [];
     let environmentLoads = 0;
 
     await registerCommands({
@@ -20,10 +22,15 @@ describe('registerCommands', () => {
       loadEnvironment: () => {
         environmentLoads += 1;
       },
+      loadFaqCatalog: async (path) => {
+        events.push(`load:${path}`);
+        return faqCatalog();
+      },
       createClient: (token) => {
         tokens.push(token);
         return {
           put: async (route, options) => {
+            events.push('put');
             calls.push({ route, options });
           },
         };
@@ -32,6 +39,7 @@ describe('registerCommands', () => {
 
     expect(environmentLoads).toBe(1);
     expect(tokens).toEqual(['discord-token']);
+    expect(events).toEqual(['load:./config/faq.json', 'put']);
     expect(calls).toHaveLength(1);
     expect(calls[0]?.route).toBe(
       '/applications/client-id/guilds/guild-id/commands',
@@ -44,6 +52,20 @@ describe('registerCommands', () => {
           ? definition.name
           : undefined,
       ),
-    ).toEqual(['ask', 'search', 'forget', 'help', 'status']);
+    ).toEqual(['ask', 'search', 'forget', 'help', 'status', 'faq']);
   });
 });
+
+function faqCatalog(): FaqCatalog {
+  const entry = {
+    id: 'capabilities',
+    label: 'Jarvis capabilities',
+    question: 'What can Jarvis do?',
+    answer: 'Jarvis answers approved questions.',
+  };
+
+  return {
+    entries: [entry],
+    get: (id) => (id === entry.id ? entry : undefined),
+  };
+}

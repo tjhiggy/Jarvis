@@ -34,6 +34,14 @@ describe('loadConfig', () => {
     expect(config.storage.maxStoredMessages).toBe(10_000);
   });
 
+  it('loads the FAQ catalog path with a default and override', () => {
+    expect(loadConfig(validEnv).faq.catalogPath).toBe('./config/faq.json');
+    expect(
+      loadConfig({ ...validEnv, FAQ_CATALOG_PATH: './config/custom-faq.json' })
+        .faq.catalogPath,
+    ).toBe('./config/custom-faq.json');
+  });
+
   it('rejects invalid limits', () => {
     expect(() =>
       loadConfig({ ...validEnv, MAX_HISTORY_MESSAGES: '0' }),
@@ -137,6 +145,18 @@ describe('loadDiscordRegistrationConfig', () => {
       clientId: 'client-id',
       guildId: 'guild-id',
       maxInputChars: 123,
+      faqCatalogPath: './config/faq.json',
     });
+  });
+
+  it('loads an FAQ catalog path override without requiring OpenAI', () => {
+    expect(
+      loadDiscordRegistrationConfig({
+        DISCORD_TOKEN: 'discord-token',
+        DISCORD_CLIENT_ID: 'client-id',
+        DISCORD_GUILD_ID: 'guild-id',
+        FAQ_CATALOG_PATH: './config/registration-faq.json',
+      }).faqCatalogPath,
+    ).toBe('./config/registration-faq.json');
   });
 });

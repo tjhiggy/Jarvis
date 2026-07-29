@@ -1,8 +1,10 @@
 import type { ConversationResult } from '../services/conversation-service.js';
 import type { ConversationStore } from '../storage/conversation-store.js';
+import type { FaqCatalog } from '../faq/faq-catalog.js';
 import { isAllowedChannel } from '../discord/access.js';
 import {
   editDeferredReplySafely,
+  replyImmediatelyInChunksSafely,
   replySafely,
   type DeferredReplyTarget,
   type ReplyPayload,
@@ -59,6 +61,7 @@ export interface CommandDependencies {
     }): Promise<number>;
   }>;
   readonly store: Pick<ConversationStore, 'healthCheck'>;
+  readonly faq: FaqCatalog;
 }
 
 const dmMessage = 'This command is available only in a server channel.';
@@ -74,6 +77,7 @@ const helpMessage = [
   '/ask prompt:<question> asks Jarvis a question.',
   '/search query:<question> searches current web sources before Jarvis answers.',
   '/forget clears Jarvis history in this channel or thread.',
+  '/faq topic:<approved topic> browses approved Jarvis information.',
   '/help lists the available commands.',
   '/status reports safe service configuration and database health.',
   'Safety: Jarvis cannot administer or modify the server, cannot use tools or take external actions, and keeps history only for the current channel or thread.',
@@ -92,6 +96,9 @@ export const handleCommand = async (
       return;
     case 'forget':
       await handleForget(interaction, dependencies);
+      return;
+    case 'faq':
+      await handleFaq(interaction, dependencies);
       return;
     case 'help':
       if (await rejectDirectMessage(interaction)) {
@@ -228,6 +235,55 @@ const handleForget = async (
   );
 };
 
+const handleFaq = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) {
+    return;
+  }
+
+  const channelId = interaction.channelId.trim();
+  const parentChannelId = threadParentId(interaction);
+  if (
+    channelId === '' ||
+    !isAllowedChannel(
+      channelId,
+      parentChannelId,
+      dependencies.config.security.allowedChannelIds,
+    )
+  ) {
+    await replySafely(interaction, disallowedMessage, true);
+    return;
+  }
+
+  const topic = interaction.options.getString('topic')?.trim();
+  if (topic === undefined || topic === '') {
+    await replyImmediatelyInChunksSafely(
+      interaction,
+      `Choose an approved FAQ topic:\n${faqQuestions(dependencies.faq)}`,
+    );
+    return;
+  }
+
+  const entry = dependencies.faq.get(topic);
+  if (entry === undefined) {
+    await replyImmediatelyInChunksSafely(
+      interaction,
+      `That FAQ topic is not available. Choose an approved FAQ topic:\n${faqLabels(dependencies.faq)}`,
+    );
+    return;
+  }
+
+  await replyImmediatelyInChunksSafely(interaction, entry.answer);
+};
+
+const faqQuestions = (faq: FaqCatalog): string =>
+  faq.entries.map((entry) => `- ${entry.question}`).join('\n');
+
+const faqLabels = (faq: FaqCatalog): string =>
+  faq.entries.map((entry) => `- ${entry.label}`).join('\n');
+
 const handleStatus = async (
   interaction: CommandInteraction,
   dependencies: CommandDependencies,
@@ -259,6 +315,7 @@ const handleStatus = async (
           ? 'configured'
           : 'not configured'
       }`,
+      'FAQ catalog: loaded',
     ].join('\n'),
     true,
   );

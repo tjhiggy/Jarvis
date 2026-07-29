@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { REST, Routes } from 'discord.js';
 import { createCommandDefinitions } from '../src/commands/definitions.js';
 import { loadDiscordRegistrationConfig } from '../src/config/config.js';
+import { loadFaqCatalog, type FaqCatalog } from '../src/faq/faq-catalog.js';
 
 interface RegistrationClient {
   put(
@@ -16,6 +17,7 @@ export interface RegisterCommandsDependencies {
   readonly env?: NodeJS.ProcessEnv;
   readonly loadEnvironment?: () => unknown;
   readonly createClient?: (token: string) => RegistrationClient;
+  readonly loadFaqCatalog?: (path: string) => Promise<FaqCatalog>;
 }
 
 export const registerCommands = async (
@@ -23,13 +25,16 @@ export const registerCommands = async (
 ): Promise<void> => {
   (dependencies.loadEnvironment ?? (() => dotenv.config()))();
   const config = loadDiscordRegistrationConfig(dependencies.env ?? process.env);
+  const catalog = await (dependencies.loadFaqCatalog ?? loadFaqCatalog)(
+    config.faqCatalogPath,
+  );
   const rest =
     dependencies.createClient?.(config.token) ??
     new REST({ version: '10' }).setToken(config.token);
 
   await rest.put(
     Routes.applicationGuildCommands(config.clientId, config.guildId),
-    { body: createCommandDefinitions(config.maxInputChars) },
+    { body: createCommandDefinitions(config.maxInputChars, catalog.entries) },
   );
 };
 
