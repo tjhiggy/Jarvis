@@ -13,6 +13,7 @@ const emotionalCheckInSignal =
   /^(?:how are you|how are you feeling|how do you feel)(?:\s+(?:today|right now))?[!.?]*$/i;
 const smallTalkSignal =
   /^(?:what(?:['’]s| is) up|how(?:['’]s| is) it going|how(?:['’]s| is) your day going|(?:so\s+)?what(?:['’]s| is) new with you(?:\s+(?:today|right now))?|anything new with you(?:\s+(?:today|right now))?)[!.?]*$/i;
+const socialLeadInSignal = /^(?:(?:so|well|okay|ok|hey)\s*[,.:;-]?\s+)+/i;
 
 export const isCasualConversationPrompt = (prompt: string): boolean => {
   const normalized = prompt
@@ -26,13 +27,14 @@ export const isCasualConversationPrompt = (prompt: string): boolean => {
   ) {
     return false;
   }
+  const socialPrompt = normalized.replace(socialLeadInSignal, '');
   return [
     greetingSignal,
     thanksSignal,
     jokeSignal,
     emotionalCheckInSignal,
     smallTalkSignal,
-  ].some((signal) => signal.test(normalized));
+  ].some((signal) => signal.test(normalized) || signal.test(socialPrompt));
 };
 
 export const classifyResponseStyle = (prompt: string): ResponseStyle =>

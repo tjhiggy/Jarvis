@@ -13,7 +13,10 @@ describe('requiresWebGrounding', () => {
     ["How's it going?", false],
     ["So what's new with you today?", false],
     ['Anything new with you today?', false],
+    ['So how are you feeling today?', false],
+    ['Well, how are you feeling today?', false],
     ['What is the weather today?', true],
+    ['So what is the weather today?', true],
     ["What's the latest ARC Raiders update?", true],
   ])('routes %s to web grounding: %s', (prompt, expected) => {
     expect(requiresWebGrounding(prompt)).toBe(expected);
