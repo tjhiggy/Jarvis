@@ -28,7 +28,8 @@ full limitations.
 
 After start, use `/status` in a server channel. It returns an ephemeral report
 of Discord configuration, SQLite health, selected AI provider and its
-configuration, web-search configuration, and whether the FAQ catalog loaded.
+configuration, web-search configuration, FAQ readiness, and whether optional
+polls are configured.
 It does **not** make a model request or prove that Ollama has a loaded model. A
 successful `/ask` with a non-sensitive test prompt is the controlled
 end-to-end provider check.
@@ -49,12 +50,11 @@ catalog first, so it is a deployment action, not a health probe.
 
 After registration and startup, manually verify `/faq`, one selected approved
 answer, the omitted-topic question listing, a request from a disallowed
-channel, and `/status`. Confirm replies are public where expected, the selected
-answer corresponds to the entry in the active catalog selected by
-`FAQ_CATALOG_PATH`, and no uncontrolled mention fires. `config/faq.json` is the
-default catalog, not the comparison source when an override is configured.
-Account for intentional mention neutralization when comparing delivered text
-with the active catalog. These checks do not authorize broader Discord
+channel, and `/status`. If polls are enabled, verify a configured administrator
+can create one short two-option poll, a non-administrator cannot create one,
+members can change a selection, and `/poll-close` disables the buttons while
+keeping final totals. Confirm replies are public where expected, and no
+uncontrolled mention fires. These checks do not authorize broader Discord
 permissions.
 
 Stop native Jarvis with `Ctrl+C` in the owning console or a normal `SIGINT` or
@@ -108,6 +108,24 @@ history only for the current guild channel or thread. These are the
 application's intentional data deletions; do not run manual database cleanup
 as routine maintenance.
 
+## Poll lifecycle, recovery, and rollback
+
+When polls are enabled, their tables share `DATABASE_PATH` but are separate
+from conversation rows. Poll state, messages, deadlines, and aggregate totals
+survive a restart. After Discord login, the scheduler runs every
+`POLL_EXPIRY_CHECK_SECONDS`, with one tick at a time: it closes overdue polls,
+retries pending Jarvis-owned message edits, and removes terminal poll records
+older than `POLL_RETENTION_DAYS`. It contains a bounded batch, so a bad poll
+does not turn maintenance into an infinite shift.
+
+If Jarvis cannot fetch or edit its poll message because it was removed or access
+was lost, it marks the poll orphaned and stops retrying after its bounded retry
+schedule. Restore the minimum channel access and create a new poll if needed;
+do not edit or delete other Discord messages to repair it. To roll back a poll
+release, stop Jarvis, deploy the prior approved application version, register
+that version's command set once if necessary, then start one process. Back up
+the database first and do not roll back by deleting SQLite files.
+
 ## Backup and restore
 
 Back up before upgrades and before any storage investigation that could change
@@ -127,6 +145,12 @@ The in-process rate limiter applies `RATE_LIMIT_REQUESTS` per guild and user
 within `RATE_LIMIT_WINDOW_MS`. On excess requests, the bot returns a short
 retry message. It is not a shared cross-process limiter, so duplicate bot
 processes undermine the intent as well as producing duplicate replies.
+
+Polls have the same single-process assumption. The active-poll limit, creator
+creation-rate limit, scheduler, and SQLite coordination are local-process
+controls. Run one Jarvis process against one database. Horizontal scaling needs
+a redesigned shared coordination and storage model; it is not a harmless
+checkbox.
 
 Keep `MAX_INPUT_CHARS`, `MAX_HISTORY_MESSAGES`, `MAX_STORED_MESSAGES`,
 provider timeouts, and retry counts within the capacity and cost limits you

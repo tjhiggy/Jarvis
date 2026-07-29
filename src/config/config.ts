@@ -49,9 +49,18 @@ export interface AppConfig {
   readonly faq: Readonly<{
     catalogPath: string;
   }>;
+  readonly polls: PollConfig;
   readonly logging: Readonly<{
     level: LogLevel;
   }>;
+}
+
+export interface PollConfig {
+  readonly enabled: boolean;
+  readonly adminUserIds: ReadonlySet<string>;
+  readonly voterSecret: string;
+  readonly retentionDays: number;
+  readonly expiryCheckSeconds: number;
 }
 
 export interface DiscordRegistrationConfig {
@@ -60,6 +69,7 @@ export interface DiscordRegistrationConfig {
   readonly guildId: string;
   readonly maxInputChars: number;
   readonly faqCatalogPath: string;
+  readonly pollsEnabled: boolean;
 }
 
 const requiredString = z.string().trim().min(1);
@@ -96,6 +106,20 @@ const channelIds = z.preprocess(
   z.array(z.string().min(1)).default([]),
 );
 
+const pollAdminUserIds = z.preprocess(
+  (value) => {
+    if (typeof value !== 'string' || value.trim() === '') {
+      return [];
+    }
+
+    return value
+      .split(',')
+      .map((userId) => userId.trim())
+      .filter(Boolean);
+  },
+  z.array(z.string().regex(/^\d{17,20}$/)).default([]),
+);
+
 const baseEnvironmentSchema = z.object({
   DISCORD_TOKEN: requiredString,
   DISCORD_CLIENT_ID: requiredString,
@@ -130,7 +154,41 @@ const baseEnvironmentSchema = z.object({
   FAQ_CATALOG_PATH: optionalString('./config/faq.json'),
   ALLOWED_CHANNEL_IDS: channelIds,
   RESTRAINED_CHANNEL_IDS: channelIds,
+  POLL_ADMIN_USER_IDS: pollAdminUserIds,
+  POLL_VOTER_SECRET: z.string().trim().default(''),
+  POLL_RETENTION_DAYS: integer(30, 1),
+  POLL_EXPIRY_CHECK_SECONDS: integer(30, 1),
 });
+
+type PollEnvironment = Pick<
+  z.infer<typeof baseEnvironmentSchema>,
+  'POLL_ADMIN_USER_IDS' | 'POLL_VOTER_SECRET'
+>;
+
+const validatePollConfiguration = (
+  value: PollEnvironment,
+  context: z.RefinementCtx,
+): void => {
+  const hasAdministrators = value.POLL_ADMIN_USER_IDS.length > 0;
+  const hasVoterSecret = value.POLL_VOTER_SECRET !== '';
+
+  if (hasAdministrators !== hasVoterSecret) {
+    context.addIssue({
+      code: 'custom',
+      path: [hasAdministrators ? 'POLL_VOTER_SECRET' : 'POLL_ADMIN_USER_IDS'],
+      message: 'Poll credentials must be configured together.',
+    });
+    return;
+  }
+
+  if (hasVoterSecret && value.POLL_VOTER_SECRET.length < 32) {
+    context.addIssue({
+      code: 'custom',
+      path: ['POLL_VOTER_SECRET'],
+      message: 'POLL_VOTER_SECRET must contain at least 32 characters.',
+    });
+  }
+};
 
 const environmentSchema = baseEnvironmentSchema.superRefine(
   (value, context) => {
@@ -141,16 +199,22 @@ const environmentSchema = baseEnvironmentSchema.superRefine(
         message: 'OPENAI_API_KEY is required when AI_PROVIDER=openai.',
       });
     }
+
+    validatePollConfiguration(value, context);
   },
 );
 
-const discordRegistrationSchema = baseEnvironmentSchema.pick({
-  DISCORD_TOKEN: true,
-  DISCORD_CLIENT_ID: true,
-  DISCORD_GUILD_ID: true,
-  MAX_INPUT_CHARS: true,
-  FAQ_CATALOG_PATH: true,
-});
+const discordRegistrationSchema = baseEnvironmentSchema
+  .pick({
+    DISCORD_TOKEN: true,
+    DISCORD_CLIENT_ID: true,
+    DISCORD_GUILD_ID: true,
+    MAX_INPUT_CHARS: true,
+    FAQ_CATALOG_PATH: true,
+    POLL_ADMIN_USER_IDS: true,
+    POLL_VOTER_SECRET: true,
+  })
+  .superRefine(validatePollConfiguration);
 
 const readonlySet = (values: string[]): ReadonlySet<string> => {
   const valuesSet = new Set(values);
@@ -217,6 +281,13 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
       promptPath: parsed.PERSONA_PROMPT_PATH,
     }),
     faq: Object.freeze({ catalogPath: parsed.FAQ_CATALOG_PATH }),
+    polls: Object.freeze({
+      enabled: parsed.POLL_ADMIN_USER_IDS.length > 0,
+      adminUserIds: readonlySet(parsed.POLL_ADMIN_USER_IDS),
+      voterSecret: parsed.POLL_VOTER_SECRET,
+      retentionDays: parsed.POLL_RETENTION_DAYS,
+      expiryCheckSeconds: parsed.POLL_EXPIRY_CHECK_SECONDS,
+    }),
     logging: Object.freeze({ level: parsed.LOG_LEVEL }),
   });
 };
@@ -231,6 +302,7 @@ export const loadDiscordRegistrationConfig = (
     guildId: parsed.DISCORD_GUILD_ID,
     maxInputChars: parsed.MAX_INPUT_CHARS,
     faqCatalogPath: parsed.FAQ_CATALOG_PATH,
+    pollsEnabled: parsed.POLL_ADMIN_USER_IDS.length > 0,
   });
 };
 

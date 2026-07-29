@@ -4,6 +4,7 @@ import { loadPersona } from '../src/config/persona.js';
 import {
   createDiscordHandlers,
   discordGatewayIntents,
+  parsePollCustomId,
   type DiscordMessage,
   type MessageHandlerDependencies,
 } from '../src/discord/handlers.js';
@@ -204,6 +205,7 @@ describe('Discord event routing', () => {
   it('passes chat-input interactions to the injected command handler', async () => {
     const interaction = {
       isChatInputCommand: () => true,
+      isButton: () => false,
       id: 'interaction-1',
     };
     const handled: unknown[] = [];
@@ -222,7 +224,11 @@ describe('Discord event routing', () => {
   it('keeps interaction deduplication within ConversationService', async () => {
     const fixture = await createConversationFixture();
     const statuses: string[] = [];
-    const interaction = { id: 'interaction-1', isChatInputCommand: () => true };
+    const interaction = {
+      id: 'interaction-1',
+      isChatInputCommand: () => true,
+      isButton: () => false,
+    };
     const handlers = createDiscordHandlers(
       dependencies({
         handleCommand: async (received) => {
@@ -247,6 +253,70 @@ describe('Discord event routing', () => {
     expect(fixture.ai.requests).toHaveLength(1);
   });
 
+  it('routes a valid owned poll button privately to the poll controller', async () => {
+    const deferred: ReplyPayload[] = [];
+    const edits: ReplyPayload[] = [];
+    const votes: unknown[] = [];
+    const controller = {
+      vote: async (request: {
+        acknowledge(message: string): Promise<unknown>;
+      }) => {
+        votes.push(request);
+        await request.acknowledge('Vote recorded.');
+      },
+    } as unknown as MessageHandlerDependencies['pollController'];
+    const interaction = {
+      id: 'button-1',
+      isChatInputCommand: () => false,
+      isButton: () => true,
+      customId: 'poll:v1:abcdef234567:1',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      channel: { parentId: null, isThread: () => false },
+      user: { id: 'user-1' },
+      message: {
+        id: 'message-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        author: { id: 'bot-1' },
+      },
+      reply: async () => undefined,
+      deferReply: async (payload: ReplyPayload) => {
+        deferred.push(payload);
+      },
+      editReply: async (payload: ReplyPayload) => {
+        edits.push(payload);
+      },
+    };
+
+    const handlers = createDiscordHandlers(
+      dependencies({ pollController: controller }),
+    );
+    await handlers.onInteractionCreate(interaction);
+    await handlers.onInteractionCreate(interaction);
+
+    expect(deferred).toEqual([{ ephemeral: true }]);
+    expect(votes).toEqual([
+      expect.objectContaining({
+        pollId: 'abcdef234567',
+        optionIndex: 1,
+        guildId: 'guild-1',
+        voterUserId: 'user-1',
+      }),
+    ]);
+    expect(edits).toEqual([
+      expect.objectContaining({ content: 'Vote recorded.' }),
+    ]);
+  });
+
+  it('rejects malformed poll controls privately and ignores unrelated buttons', async () => {
+    expect(parsePollCustomId('poll:v1:abcdef234567:4')).toEqual({
+      pollId: 'abcdef234567',
+      optionIndex: 4,
+    });
+    expect(parsePollCustomId('poll:v1:bad:6')).toBeUndefined();
+  });
+
   it('ignores non-command interactions', async () => {
     let handled = 0;
 
@@ -256,7 +326,10 @@ describe('Discord event routing', () => {
           handled += 1;
         },
       }),
-    ).onInteractionCreate({ isChatInputCommand: () => false });
+    ).onInteractionCreate({
+      isChatInputCommand: () => false,
+      isButton: () => false,
+    });
 
     expect(handled).toBe(0);
   });
@@ -320,6 +393,7 @@ function dependencies(
     ask: MessageHandlerDependencies['conversationService']['ask'];
     conversationService: MessageHandlerDependencies['conversationService'];
     handleCommand: MessageHandlerDependencies['handleCommand'];
+    pollController: MessageHandlerDependencies['pollController'];
   }> = {},
 ): MessageHandlerDependencies {
   return {
@@ -331,6 +405,9 @@ function dependencies(
         (async () => ({ status: 'success' as const, text: 'Acknowledged.' })),
     },
     handleCommand: overrides.handleCommand ?? (async () => {}),
+    ...(overrides.pollController === undefined
+      ? {}
+      : { pollController: overrides.pollController }),
   };
 }
 

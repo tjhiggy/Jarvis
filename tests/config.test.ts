@@ -129,6 +129,68 @@ describe('loadConfig', () => {
     expect(channelIds.has('1')).toBe(true);
     expect(channelIds.has('2')).toBe(false);
   });
+
+  it('disables polls when both poll credentials are empty and applies poll defaults', () => {
+    const config = loadConfig(validEnv);
+
+    expect(config.polls).toEqual({
+      enabled: false,
+      adminUserIds: expect.anything(),
+      voterSecret: '',
+      retentionDays: 30,
+      expiryCheckSeconds: 30,
+    });
+    expect([...config.polls.adminUserIds]).toEqual([]);
+    expect(Object.isFrozen(config.polls)).toBe(true);
+  });
+
+  it('enables polls only with valid administrator snowflakes and a long voter secret', () => {
+    const config = loadConfig({
+      ...validEnv,
+      POLL_ADMIN_USER_IDS: '12345678901234567, 98765432109876543',
+      POLL_VOTER_SECRET: '0123456789abcdef0123456789abcdef',
+      POLL_RETENTION_DAYS: '45',
+      POLL_EXPIRY_CHECK_SECONDS: '60',
+    });
+
+    expect(config.polls).toEqual({
+      enabled: true,
+      adminUserIds: expect.anything(),
+      voterSecret: '0123456789abcdef0123456789abcdef',
+      retentionDays: 45,
+      expiryCheckSeconds: 60,
+    });
+    expect([...config.polls.adminUserIds]).toEqual([
+      '12345678901234567',
+      '98765432109876543',
+    ]);
+  });
+
+  it.each([
+    { POLL_ADMIN_USER_IDS: '12345678901234567' },
+    { POLL_VOTER_SECRET: '0123456789abcdef0123456789abcdef' },
+  ])('rejects partial poll credentials', (pollEnv) => {
+    expect(() => loadConfig({ ...validEnv, ...pollEnv })).toThrow(
+      /POLL_(ADMIN_USER_IDS|VOTER_SECRET)/,
+    );
+  });
+
+  it('rejects non-snowflake poll administrators and short voter secrets', () => {
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        POLL_ADMIN_USER_IDS: 'admin-user',
+        POLL_VOTER_SECRET: '0123456789abcdef0123456789abcdef',
+      }),
+    ).toThrow(/POLL_ADMIN_USER_IDS/);
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        POLL_ADMIN_USER_IDS: '12345678901234567',
+        POLL_VOTER_SECRET: 'too-short',
+      }),
+    ).toThrow(/POLL_VOTER_SECRET/);
+  });
 });
 
 describe('loadDiscordRegistrationConfig', () => {
@@ -146,7 +208,22 @@ describe('loadDiscordRegistrationConfig', () => {
       guildId: 'guild-id',
       maxInputChars: 123,
       faqCatalogPath: './config/faq.json',
+      pollsEnabled: false,
     });
+  });
+
+  it('exposes only the polls enabled flag to command registration', () => {
+    const config = loadDiscordRegistrationConfig({
+      DISCORD_TOKEN: 'discord-token',
+      DISCORD_CLIENT_ID: 'client-id',
+      DISCORD_GUILD_ID: 'guild-id',
+      POLL_ADMIN_USER_IDS: '12345678901234567',
+      POLL_VOTER_SECRET: '0123456789abcdef0123456789abcdef',
+    });
+
+    expect(config.pollsEnabled).toBe(true);
+    expect(config).not.toHaveProperty('adminUserIds');
+    expect(config).not.toHaveProperty('voterSecret');
   });
 
   it('loads an FAQ catalog path override without requiring OpenAI', () => {

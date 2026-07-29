@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createCommandDefinitions } from '../src/commands/definitions.js';
 import type { FaqCatalog, FaqEntry } from '../src/faq/faq-catalog.js';
+import type { PollController } from '../src/polls/poll-controller.js';
+import {
+  pollDurationChoices,
+  pollDurationMilliseconds,
+} from '../src/polls/poll-duration.js';
 import {
   handleCommand,
   type CommandDependencies,
@@ -12,7 +17,7 @@ import { isAllowedChannel } from '../src/discord/access.js';
 const safeMentions = { parse: [], repliedUser: false };
 
 describe('command definitions', () => {
-  it('publishes the supported commands with configured question limits and approved FAQ topics', () => {
+  it('retains six commands when poll registration is disabled', () => {
     const definitions = createCommandDefinitions(123, [
       faqEntry('capabilities', 'Jarvis capabilities'),
       faqEntry('runtime', 'Jarvis runtime'),
@@ -57,6 +62,71 @@ describe('command definitions', () => {
         },
       ],
     });
+  });
+
+  it('adds exact poll command contracts when poll registration is enabled', () => {
+    const definitions = createCommandDefinitions(
+      123,
+      [faqEntry('capabilities', 'Jarvis capabilities')],
+      true,
+    );
+
+    expect(definitions.map((definition) => definition.name)).toEqual([
+      'ask',
+      'search',
+      'forget',
+      'help',
+      'status',
+      'faq',
+      'poll',
+      'poll-close',
+    ]);
+    expect(definitions[6]).toMatchObject({
+      name: 'poll',
+      options: [
+        { name: 'question', required: true, max_length: 200 },
+        { name: 'option1', required: true, max_length: 80 },
+        { name: 'option2', required: true, max_length: 80 },
+        { name: 'option3', required: false, max_length: 80 },
+        { name: 'option4', required: false, max_length: 80 },
+        { name: 'option5', required: false, max_length: 80 },
+        {
+          name: 'duration',
+          required: true,
+          choices: [
+            { name: '15 minutes', value: '15m' },
+            { name: '1 hour', value: '1h' },
+            { name: '6 hours', value: '6h' },
+            { name: '24 hours', value: '24h' },
+            { name: '3 days', value: '3d' },
+            { name: '7 days', value: '7d' },
+          ],
+        },
+      ],
+    });
+    expect(definitions[7]).toMatchObject({
+      name: 'poll-close',
+      options: [{ name: 'poll_id', required: true, max_length: 12 }],
+    });
+  });
+
+  it.each([
+    ['15m', 900_000],
+    ['1h', 3_600_000],
+    ['6h', 21_600_000],
+    ['24h', 86_400_000],
+    ['3d', 259_200_000],
+    ['7d', 604_800_000],
+  ] as const)('maps the %s poll duration exactly', (value, milliseconds) => {
+    expect(pollDurationChoices.map((choice) => choice.value)).toEqual([
+      '15m',
+      '1h',
+      '6h',
+      '24h',
+      '3d',
+      '7d',
+    ]);
+    expect(pollDurationMilliseconds(value)).toBe(milliseconds);
   });
 
   it('caps the slash-command prompt at Discord string-option limits', () => {
@@ -125,6 +195,103 @@ describe('isAllowedChannel', () => {
 });
 
 describe('handleCommand', () => {
+  it('rejects /poll when polls are disabled without deferring', async () => {
+    const fake = interaction({ commandName: 'poll' });
+
+    await handleCommand(fake.interaction, dependencies());
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/not configured/i),
+        ephemeral: true,
+      }),
+    ]);
+  });
+
+  it('routes an authorized /poll in an allowlisted parent thread to the controller', async () => {
+    const fake = interaction({
+      commandName: 'poll',
+      userId: 'admin-1',
+      channelId: 'thread-1',
+      parentId: 'polls',
+      isThread: true,
+      values: {
+        question: 'Which launch window?',
+        option1: 'Now',
+        option2: 'Later',
+        option3: 'Never',
+        duration: '1h',
+      },
+    });
+    const created: unknown[] = [];
+    const controller = {
+      create: async (request: unknown) => {
+        created.push(request);
+      },
+    } as PollController;
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        allowedChannelIds: new Set(['polls']),
+        pollEnabled: true,
+        pollAdminUserIds: new Set(['admin-1']),
+        pollController: controller,
+      }),
+    );
+
+    expect(fake.deferred).toEqual([{ ephemeral: false }]);
+    expect(created).toEqual([
+      expect.objectContaining({
+        guildId: 'guild-1',
+        channelId: 'thread-1',
+        conversationId: 'thread-1',
+        parentChannelId: 'polls',
+        creatorUserId: 'admin-1',
+        options: ['Now', 'Later', 'Never'],
+        duration: '1h',
+      }),
+    ]);
+  });
+
+  it('keeps /poll-close administrator-only and forwards its exact poll ID', async () => {
+    const unauthorized = interaction({
+      commandName: 'poll-close',
+      values: { poll_id: 'abcdef234567' },
+    });
+    const closed: unknown[] = [];
+    const controller = {
+      close: async (request: unknown) => {
+        closed.push(request);
+      },
+    } as PollController;
+    const commandDependencies = dependencies({
+      pollEnabled: true,
+      pollAdminUserIds: new Set(['admin-1']),
+      pollController: controller,
+    });
+
+    await handleCommand(unauthorized.interaction, commandDependencies);
+    const authorized = interaction({
+      commandName: 'poll-close',
+      userId: 'admin-1',
+      values: { poll_id: 'abcdef234567' },
+    });
+    await handleCommand(authorized.interaction, commandDependencies);
+
+    expect(unauthorized.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/administrators/i),
+        ephemeral: true,
+      }),
+    ]);
+    expect(authorized.deferred).toEqual([{ ephemeral: true }]);
+    expect(closed).toEqual([
+      expect.objectContaining({ pollId: 'abcdef234567' }),
+    ]);
+  });
+
   it('rejects an /ask request from a DM without invoking the conversation service', async () => {
     const fake = interaction({
       commandName: 'ask',
@@ -745,6 +912,62 @@ describe('handleCommand', () => {
     ]);
   });
 
+  it('reports poll storage and scheduler health without exposing poll configuration', async () => {
+    const fake = interaction({ commandName: 'status' });
+    let pollDatabaseChecks = 0;
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        pollEnabled: true,
+        pollAdminUserIds: new Set(['admin-1']),
+        pollController: inertPollController(),
+        pollHealth: {
+          store: {
+            healthCheck: async () => {
+              pollDatabaseChecks += 1;
+              return false;
+            },
+          },
+          scheduler: { healthy: false },
+        },
+      }),
+    );
+
+    expect(pollDatabaseChecks).toBe(1);
+    expect(fake.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(
+          /Polls: configured[\s\S]*Poll database: unhealthy[\s\S]*Poll scheduler: degraded/i,
+        ),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+    expect(JSON.stringify(fake.replies)).not.toMatch(/admin-1|secret/i);
+  });
+
+  it('reports configured polls as unavailable when lifecycle health is absent', async () => {
+    const fake = interaction({ commandName: 'status' });
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        pollEnabled: true,
+        pollAdminUserIds: new Set(['admin-1']),
+        pollController: inertPollController(),
+      }),
+    );
+
+    expect(fake.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/Polls: unavailable/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+  });
+
   it('returns a safe ephemeral response for an unknown command', async () => {
     const fake = interaction({ commandName: 'eject-crew' });
 
@@ -769,6 +992,8 @@ function interaction(
     isThread: boolean;
     prompt: string;
     topic: string | null;
+    userId: string;
+    values: Readonly<Record<string, string | null>>;
   }> = {},
 ): {
   readonly interaction: CommandInteraction;
@@ -799,9 +1024,12 @@ function interaction(
         parentId: overrides.parentId ?? null,
         isThread: () => overrides.isThread ?? false,
       },
-      user: { id: 'user-1' },
+      user: { id: overrides.userId ?? 'user-1' },
       options: {
         getString: (name) => {
+          if (overrides.values !== undefined && name in overrides.values) {
+            return overrides.values[name] ?? null;
+          }
           if (commandName === 'faq' && name === 'topic') {
             return topic;
           }
@@ -813,6 +1041,7 @@ function interaction(
       deferReply: async (payload) => {
         deferred.push(payload);
       },
+      fetchReply: async () => ({ id: 'message-1' }),
       reply: async (payload) => {
         replies.push(payload);
       },
@@ -835,6 +1064,10 @@ function dependencies(
     healthCheck: CommandDependencies['store']['healthCheck'];
     tavilyApiKey: string;
     faq: FaqCatalog;
+    pollEnabled: boolean;
+    pollAdminUserIds: ReadonlySet<string>;
+    pollController: PollController;
+    pollHealth: NonNullable<CommandDependencies['pollHealth']>;
   }> = {},
 ): CommandDependencies {
   return {
@@ -855,6 +1088,14 @@ function dependencies(
         allowedChannelIds: overrides.allowedChannelIds ?? new Set<string>(),
         maxInputChars: overrides.maxInputChars ?? 100,
       },
+      ...(overrides.pollEnabled === undefined
+        ? {}
+        : {
+            polls: {
+              enabled: overrides.pollEnabled,
+              adminUserIds: overrides.pollAdminUserIds ?? new Set<string>(),
+            },
+          }),
     },
     conversationService: {
       ask:
@@ -875,6 +1116,12 @@ function dependencies(
           answer: 'Jarvis is an advisory AI, not a command deck.',
         },
       ]),
+    ...(overrides.pollController === undefined
+      ? {}
+      : { pollController: overrides.pollController }),
+    ...(overrides.pollHealth === undefined
+      ? {}
+      : { pollHealth: overrides.pollHealth }),
   };
 }
 
@@ -886,6 +1133,15 @@ function faqCatalog(entries: readonly FaqEntry[]): FaqCatalog {
   return {
     entries,
     get: (id) => entriesById.get(id.trim().toLowerCase()),
+  };
+}
+
+function inertPollController(): PollController {
+  return {
+    create: async () => undefined,
+    vote: async () => undefined,
+    close: async () => undefined,
+    synchronize: async () => undefined,
   };
 }
 

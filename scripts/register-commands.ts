@@ -34,7 +34,13 @@ export const registerCommands = async (
 
   await rest.put(
     Routes.applicationGuildCommands(config.clientId, config.guildId),
-    { body: createCommandDefinitions(config.maxInputChars, catalog.entries) },
+    {
+      body: createCommandDefinitions(
+        config.maxInputChars,
+        catalog.entries,
+        config.pollsEnabled,
+      ),
+    },
   );
 };
 

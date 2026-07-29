@@ -3,7 +3,7 @@ import { registerCommands } from '../scripts/register-commands.js';
 import type { FaqCatalog } from '../src/faq/faq-catalog.js';
 
 describe('registerCommands', () => {
-  it('bulk-overwrites only the configured guild command route without OpenAI configuration', async () => {
+  it('bulk-overwrites six disabled-poll commands only on the configured guild route', async () => {
     const calls: Array<{
       route: string;
       options: Readonly<{ body: readonly unknown[] }>;
@@ -53,6 +53,57 @@ describe('registerCommands', () => {
           : undefined,
       ),
     ).toEqual(['ask', 'search', 'forget', 'help', 'status', 'faq']);
+    expect(JSON.stringify(calls[0]?.options.body)).not.toContain(
+      'POLL_VOTER_SECRET',
+    );
+  });
+
+  it('registers poll commands without placing poll credentials in the payload', async () => {
+    const calls: Array<{
+      route: string;
+      options: Readonly<{ body: readonly unknown[] }>;
+    }> = [];
+    const voterSecret = '0123456789abcdef0123456789abcdef';
+    const administratorIds = '12345678901234567,98765432109876543';
+
+    await registerCommands({
+      env: {
+        DISCORD_TOKEN: 'discord-token',
+        DISCORD_CLIENT_ID: 'client-id',
+        DISCORD_GUILD_ID: 'guild-id',
+        POLL_ADMIN_USER_IDS: administratorIds,
+        POLL_VOTER_SECRET: voterSecret,
+      },
+      loadEnvironment: () => undefined,
+      loadFaqCatalog: async () => faqCatalog(),
+      createClient: () => ({
+        put: async (route, options) => {
+          calls.push({ route, options });
+        },
+      }),
+    });
+
+    expect(
+      calls[0]?.options.body.map((definition) =>
+        typeof definition === 'object' &&
+        definition !== null &&
+        'name' in definition
+          ? definition.name
+          : undefined,
+      ),
+    ).toEqual([
+      'ask',
+      'search',
+      'forget',
+      'help',
+      'status',
+      'faq',
+      'poll',
+      'poll-close',
+    ]);
+    const payload = JSON.stringify(calls[0]?.options.body);
+    expect(payload).not.toContain(voterSecret);
+    expect(payload).not.toContain(administratorIds);
   });
 });
 

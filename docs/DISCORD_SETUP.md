@@ -13,7 +13,7 @@ For a single-server installation, configure the application as a private bot in 
 
 ## Gateway intents and minimum permissions
 
-The code requests only the nonprivileged `Guilds` and `GuildMessages` gateway intents. Do **not** enable the privileged Message Content, Presence, or Server Members intents for this application. Jarvis processes a message only when it directly mentions the bot, and it ignores bot-authored messages and direct messages.
+The code requests only the nonprivileged `Guilds` and `GuildMessages` gateway intents. Polls use interactions and buttons through the same connection; they require no new intent. Do **not** enable the privileged Message Content, Presence, or Server Members intents for this application. Jarvis processes a message only when it directly mentions the bot, and it ignores bot-authored messages and direct messages.
 
 Grant only the permissions used by the Discord adapter in the channels where Jarvis operates:
 
@@ -21,6 +21,7 @@ Grant only the permissions used by the Discord adapter in the channels where Jar
 - **Read Message History**
 - **Send Messages** for normal channels
 - **Send Messages in Threads** when using threads
+- **Embed Links** for the optional poll interface
 
 Users invoking commands also need Discord's **Use Application Commands** access where their role and channel overrides apply. Do not grant Administrator, Manage Channels, Manage Roles, Manage Messages, moderation, webhook, or other unimplemented powers. The bot cannot use them, and granting them is security theater with teeth.
 
@@ -53,21 +54,23 @@ After creating `.env` and installing dependencies, register the definitions in t
 npm run register-commands
 ```
 
-The script sends the complete current command set to Discord's guild-command route for `DISCORD_CLIENT_ID` and `DISCORD_GUILD_ID`. Treat it as an operator action: it replaces this application's registered commands in that guild with the set in `src/commands/definitions.ts`. It does not affect commands owned by other applications.
+The script sends the complete current command set to Discord's guild-command route for `DISCORD_CLIENT_ID` and `DISCORD_GUILD_ID`. Treat it as an operator action: it replaces only this application's registered commands in that guild with the set in `src/commands/definitions.ts`. It does not affect commands owned by other applications, roles, channels, permissions, messages, or server settings. When both poll credentials are configured, the set includes `/poll` and `/poll-close`; otherwise it contains only the six core commands.
 
 Global registration is not implemented as a runtime toggle. It is a future, manual deployment change: review and intentionally change the route in `scripts/register-commands.ts` from `Routes.applicationGuildCommands` to `Routes.applicationCommands`, test it, then register deliberately. Do not register both scopes casually; guild commands are the development-safe path.
 
 ## Commands
 
-| Command                | Behavior                                                                                                 |
-| ---------------------- | -------------------------------------------------------------------------------------------------------- |
-| `/ask prompt:<text>`   | Sends a bounded prompt to the selected provider with history from the current channel or thread.         |
-| `/search query:<text>` | Requires `TAVILY_API_KEY`; grounds the question with current Tavily results before the provider answers. |
-| `/forget`              | Deletes Jarvis's stored history for the current guild channel or thread and responds ephemerally.        |
-| `/faq`                 | Lists approved local FAQ questions publicly or returns the selected exact approved answer.               |
-| `/help`                | Lists the available commands and safety boundary in an ephemeral server-channel response.                |
-| `/status`              | Reports safe configuration, FAQ readiness, and SQLite health ephemerally without making a model request. |
+| Command                | Behavior                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `/ask prompt:<text>`   | Sends a bounded prompt to the selected provider with history from the current channel or thread.              |
+| `/search query:<text>` | Requires `TAVILY_API_KEY`; grounds the question with current Tavily results before the provider answers.      |
+| `/forget`              | Deletes Jarvis's stored history for the current guild channel or thread and responds ephemerally.             |
+| `/faq`                 | Lists approved local FAQ questions publicly or returns the selected exact approved answer.                    |
+| `/help`                | Lists the available commands and safety boundary in an ephemeral server-channel response.                     |
+| `/status`              | Reports safe configuration, FAQ readiness, and SQLite health ephemerally without making a model request.      |
+| `/poll`                | Configured administrator IDs create a public anonymous two-to-five-option poll using a fixed duration preset. |
+| `/poll-close`          | Configured administrator IDs close an open poll early by poll ID.                                             |
 
-`/ask`, `/search`, `/forget`, and `/faq` enforce the channel allowlist. All commands are server-only; direct messages receive a safe unavailable response. Direct mentions require a non-empty prompt after the bot mention.
+`/ask`, `/search`, `/forget`, `/faq`, `/poll`, and `/poll-close` enforce the channel allowlist. Poll command creation and early closure additionally require an exact ID in `POLL_ADMIN_USER_IDS`; voting is open to members who can use the poll message. All commands are server-only; direct messages receive a safe unavailable response. Direct mentions require a non-empty prompt after the bot mention.
 
 Continue with [Configuration](CONFIGURATION.md) and [Development](DEVELOPMENT.md).

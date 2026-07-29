@@ -28,6 +28,18 @@ import { RateLimiter } from './security/rate-limiter.js';
 import { ConversationService } from './services/conversation-service.js';
 import type { ConversationStore } from './storage/conversation-store.js';
 import { SQLiteConversationStore } from './storage/sqlite-conversation-store.js';
+import {
+  DiscordPollController,
+  type PollController,
+} from './polls/poll-controller.js';
+import {
+  DiscordPollMessageGateway,
+  type PollChannelTarget,
+} from './polls/poll-message-gateway.js';
+import { DurablePollService, type PollService } from './polls/poll-service.js';
+import { PollScheduler } from './polls/poll-scheduler.js';
+import type { PollStore } from './polls/poll-store.js';
+import { SQLitePollStore } from './polls/sqlite-poll-store.js';
 import { createLogger, projectOperationalError } from './utils/logger.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
@@ -39,6 +51,9 @@ let dotenvLoaded = false;
 
 interface RuntimeDiscordClient {
   readonly user: Readonly<{ id: string }> | null;
+  readonly channels?: Readonly<{
+    fetch(channelId: string): Promise<unknown>;
+  }>;
   on(event: string, listener: (...args: unknown[]) => unknown): unknown;
   login(token: string): Promise<unknown>;
   destroy(): void;
@@ -58,6 +73,26 @@ export interface ApplicationDependencies {
     databasePath: string,
     maxStoredMessages: number,
   ) => ConversationStore;
+  readonly createPollStore?: (databasePath: string) => PollStore;
+  readonly createPollController?: (
+    dependencies: Readonly<{
+      service: PollService;
+      client: RuntimeDiscordClient;
+      botUserId: string;
+      logger: Logger;
+    }>,
+  ) => PollController;
+  readonly createPollScheduler?: (
+    dependencies: Readonly<{
+      service: PollService;
+      store: PollStore;
+      controller: PollController;
+      retentionDays: number;
+      intervalMs: number;
+      timers: ApplicationTimers;
+      logger: Logger;
+    }>,
+  ) => PollScheduler;
   readonly createAIService?: (config: AppConfig) => AIService;
   readonly createDiscordClient?: () => RuntimeDiscordClient;
   readonly createLogger?: (level: string) => Logger;
@@ -129,6 +164,32 @@ const createDefaultDiscordClient = (): RuntimeDiscordClient =>
     intents: discordGatewayIntents,
   }) as unknown as RuntimeDiscordClient;
 
+const createDefaultPollController = (
+  dependencies: Readonly<{
+    service: PollService;
+    client: RuntimeDiscordClient;
+    botUserId: string;
+    logger: Logger;
+  }>,
+): PollController =>
+  new DiscordPollController({
+    service: dependencies.service,
+    gateway: new DiscordPollMessageGateway({
+      botUserId: dependencies.botUserId,
+      fetchChannel: async (channelId) => {
+        const channel = await dependencies.client.channels?.fetch(channelId);
+        return isPollChannelTarget(channel) ? channel : undefined;
+      },
+    }),
+    logger: dependencies.logger,
+  });
+
+const isPollChannelTarget = (value: unknown): value is PollChannelTarget =>
+  typeof value === 'object' &&
+  value !== null &&
+  'messages' in value &&
+  typeof (value as { readonly messages?: unknown }).messages === 'object';
+
 const registerProcessSignal = (
   signal: NodeJS.Signals,
   handler: () => void | Promise<void>,
@@ -169,6 +230,8 @@ export const createApplication = async (
 
   let logger: Logger | undefined;
   let store: ConversationStore | undefined;
+  let pollStore: PollStore | undefined;
+  let pollScheduler: PollScheduler | undefined;
   let client: RuntimeDiscordClient | undefined;
   let cleanupTimer: unknown;
   let acceptingWork = false;
@@ -180,6 +243,25 @@ export const createApplication = async (
       if (cleanupTimer !== undefined) {
         timers.clearInterval(cleanupTimer);
         cleanupTimer = undefined;
+      }
+
+      if (pollScheduler !== undefined) {
+        try {
+          await pollScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            { error },
+            'Poll scheduler stop failed during shutdown.',
+          );
+        }
+      }
+
+      if (pollStore !== undefined) {
+        try {
+          await pollStore.closeConnection();
+        } catch (error) {
+          logger?.warn({ error }, 'Poll storage close failed during shutdown.');
+        }
       }
 
       if (store !== undefined) {
@@ -217,6 +299,13 @@ export const createApplication = async (
     const initializedStore = store;
     const ai = aiFactory(config);
     client = discordFactory();
+
+    if (config.polls.enabled) {
+      pollStore =
+        dependencies.createPollStore?.(config.storage.databasePath) ??
+        new SQLitePollStore(config.storage.databasePath);
+      await pollStore.recoverCreating();
+    }
 
     const conversationService = new ConversationService({
       store: initializedStore,
@@ -285,6 +374,46 @@ export const createApplication = async (
     if (botUserId === undefined || botUserId === '') {
       throw new Error('Discord client did not expose a bot user after login.');
     }
+    let pollController: PollController | undefined;
+    if (pollStore !== undefined) {
+      const pollService = new DurablePollService({
+        store: pollStore,
+        voterSecret: config.polls.voterSecret,
+      });
+      pollController =
+        dependencies.createPollController?.({
+          service: pollService,
+          client,
+          botUserId,
+          logger,
+        }) ??
+        createDefaultPollController({
+          service: pollService,
+          client,
+          botUserId,
+          logger,
+        });
+      pollScheduler =
+        dependencies.createPollScheduler?.({
+          service: pollService,
+          store: pollStore,
+          controller: pollController,
+          retentionDays: config.polls.retentionDays,
+          intervalMs: config.polls.expiryCheckSeconds * 1_000,
+          timers,
+          logger,
+        }) ??
+        new PollScheduler({
+          service: pollService,
+          store: pollStore,
+          controller: pollController,
+          retentionDays: config.polls.retentionDays,
+          intervalMs: config.polls.expiryCheckSeconds * 1_000,
+          timers,
+          logger,
+        });
+    }
+
     handlerState.handlers = createDiscordHandlers({
       botUserId,
       allowedChannelIds: config.security.allowedChannelIds,
@@ -295,8 +424,20 @@ export const createApplication = async (
           conversationService,
           store: initializedStore,
           faq,
+          ...(pollController === undefined ? {} : { pollController }),
+          ...(pollStore === undefined || pollScheduler === undefined
+            ? {}
+            : {
+                pollHealth: {
+                  store: pollStore,
+                  scheduler: pollScheduler,
+                },
+              }),
         }),
+      ...(pollController === undefined ? {} : { pollController }),
     });
+
+    pollScheduler?.start();
 
     cleanupTimer = timers.setInterval(() => {
       void cleanup();

@@ -18,6 +18,7 @@ enhancements.
 | Verified capability                                                                | Current boundary                                                                                                                      |
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `/ask`, `/search`, `/forget`, `/faq`, `/help`, and `/status`, plus direct mentions | Server channels only; `/ask`, `/search`, `/forget`, and `/faq` enforce the configured channel allowlist                               |
+| Optional `/poll` and `/poll-close` commands                                        | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls        |
 | Short conversation context stored in SQLite                                        | Isolated by guild and channel or thread; not encrypted by the application                                                             |
 | Local Ollama and OpenAI Responses providers                                        | Exactly one provider is selected at startup                                                                                           |
 | Optional balanced Tavily grounding                                                 | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence |
@@ -49,8 +50,8 @@ port:
 4. Optional Tavily search grounds current and evidence-sensitive factual
    requests.
 5. The selected Ollama or OpenAI adapter produces a bounded answer.
-6. SQLite stores bot-owned conversation records, and safe delivery neutralizes
-   mentions and splits long replies.
+6. SQLite stores bot-owned conversation records and, when enabled, anonymous
+   poll state. Safe delivery neutralizes mentions and splits long replies.
 
 The copied `.env.example` is Ollama-first. Ollama runs locally and needs no API
 credits. OpenAI is an optional hosted provider, and Tavily is an optional web
@@ -98,16 +99,15 @@ Then use this four-command local quick start:
    screenshots, and chat. The default `AI_PROVIDER=ollama` does not require an
    OpenAI key.
 
-3. Register the six guild-scoped commands in the configured development
-   server.
+3. Register the guild-scoped commands in the configured development server.
 
    ```powershell
    npm run register-commands
    ```
 
-   Run registration once after deploying this release because the checked-in
-   command set changed. The script replaces this application's commands in the
-   configured development guild.
+   Polls disabled produces the six core commands. Configuring both poll
+   credentials adds `/poll` and `/poll-close`. The script replaces only this
+   application's commands in the configured development guild.
 
 4. Start the development watcher.
 
@@ -157,20 +157,39 @@ gate reduce risk but cannot make language-model output infallible; use
 
 ## Commands
 
-| Command                       | What it does                                                                                                                                        |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/ask prompt:<question>`      | Sends a bounded question, persona instructions, and recent channel or thread history to the selected AI provider.                                   |
-| `/search query:<question>`    | Requires Tavily and forces current web grounding before the selected AI provider answers.                                                           |
-| `/forget`                     | Deletes Jarvis-owned conversation history for the current guild channel or thread.                                                                  |
-| `/faq`                        | Lists the approved local FAQ questions publicly without calling AI, Tavily, or SQLite.                                                              |
-| `/faq topic:<approved topic>` | Posts the selected answer from the active approved local catalog publicly without provider usage cost or stored conversation history.               |
-| `/help`                       | Lists the available commands and safety boundary.                                                                                                   |
-| `/status`                     | Reports Discord configuration, SQLite health, selected provider configuration, web-search configuration, and FAQ readiness without a model request. |
+| Command                                                                 | What it does                                                                                                                                        |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/ask prompt:<question>`                                                | Sends a bounded question, persona instructions, and recent channel or thread history to the selected AI provider.                                   |
+| `/search query:<question>`                                              | Requires Tavily and forces current web grounding before the selected AI provider answers.                                                           |
+| `/forget`                                                               | Deletes Jarvis-owned conversation history for the current guild channel or thread.                                                                  |
+| `/faq`                                                                  | Lists the approved local FAQ questions publicly without calling AI, Tavily, or SQLite.                                                              |
+| `/faq topic:<approved topic>`                                           | Posts the selected answer from the active approved local catalog publicly without provider usage cost or stored conversation history.               |
+| `/help`                                                                 | Lists the available commands and safety boundary.                                                                                                   |
+| `/status`                                                               | Reports Discord configuration, SQLite health, selected provider configuration, web-search configuration, and FAQ readiness without a model request. |
+| `/poll question:<text> option1:<text> option2:<text> duration:<preset>` | Configured administrators create an anonymous two-to-five-option poll. Available only when polls are enabled.                                       |
+| `/poll-close poll_id:<id>`                                              | Configured administrators close an open poll early. Available only when polls are enabled.                                                          |
 
 All commands are server-only. `/ask`, `/search`, `/forget`, and `/faq` enforce
 `ALLOWED_CHANNEL_IDS`; an allowlisted parent channel also permits its threads.
 Each thread still keeps separate history. FAQ replies still pass through the
 same mention-neutralizing delivery boundary as other replies.
+
+### Optional anonymous polls
+
+Polls are opt-in. Configure both `POLL_ADMIN_USER_IDS` and
+`POLL_VOTER_SECRET`, restart Jarvis, then run `npm run register-commands` in
+the intended development guild. Administrators listed by exact Discord user ID
+can create a two-to-five-option `/poll` with a 15-minute, 1-hour, 6-hour,
+24-hour, 3-day, or 7-day duration. Members may select one option and change it
+while the poll is open; the public message displays only live aggregate totals
+and percentages.
+
+Jarvis stores a keyed HMAC-derived voter token, not the raw Discord voter ID.
+It deletes individual vote tokens when a poll closes, while preserving final
+aggregate totals. Poll state, deadlines, and totals survive a normal restart in
+the same local SQLite database. See [Configuration](docs/CONFIGURATION.md),
+[Operations](docs/OPERATIONS.md), and [Security model](docs/SECURITY_MODEL.md)
+before enabling the feature.
 
 ### Approved FAQ catalog
 
@@ -209,11 +228,14 @@ unless duplicate replies are somehow your product strategy.
 
 The current release has an explicit no-server-mutation boundary. Jarvis cannot
 modify pre-existing Discord content, roles, channels, permissions, members,
-server settings, or webhooks. Two deliberate state changes remain:
+server settings, or webhooks. It creates and edits only its own poll messages
+when polls are enabled. Three deliberate state changes remain:
 
 - `/forget` deletes this bot's stored history for the current conversation.
+- Poll closure and retention cleanup remove Jarvis-owned anonymous voter tokens
+  and expired poll rows according to the configured retention policy.
 - The operator-run registration script bulk-replaces this application's guild
-  command definitions with the checked-in six-command set.
+  command definitions with the checked-in set for this application.
 
 Jarvis also answers clearly unsupported action requests locally instead of
 sending them to the model. That classifier is a user-experience guardrail, not

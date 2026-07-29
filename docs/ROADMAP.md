@@ -23,6 +23,12 @@ dates, promises, or claims that an interface declaration is a working feature.
 
 ## Next
 
+**Release pending, not deployed.** Enable the reviewed anonymous-poll release
+in an approved guild: configured administrator IDs can create and close
+two-to-five-option polls, members can change one anonymous selection, and
+Jarvis maintains live aggregate totals with local SQLite recovery. Do not mark
+issue #26 implemented until deployment and controlled live verification finish.
+
 **Planned, not implemented.** Add a dedicated `SAFETY_IDENTIFIER_SECRET` so
 safety-identifier derivation no longer depends on an existing provider or bot
 credential. It requires configuration, migration guidance, tests, and review.

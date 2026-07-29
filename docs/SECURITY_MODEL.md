@@ -12,6 +12,8 @@ describe implemented source behavior; proposals are labelled as planned.
   assistant responses, plus backups of that database.
 - Trusted operator configuration and persona content.
 - Approved FAQ catalog content and topic-to-answer integrity.
+- Optional poll administrator IDs, poll questions/options, aggregate totals,
+  and the secret-derived voter-token boundary.
 - Provider account availability, budget, rate limits, and model access.
 - The integrity of Jarvis's deployment, source revision, and command set.
 
@@ -91,6 +93,16 @@ invalid content fails closed with a sanitized error that names
   metadata rather than error messages, stacks, content, or secret values.
 - **Database safety.** SQLite uses parameterized statements, WAL mode,
   foreign-key enforcement, and a five-second busy timeout.
+- **Anonymous poll boundary.** `/poll` and `/poll-close` require an exact
+  configured administrator ID after the existing guild and channel checks.
+  Members can vote or change one selection while a poll is open, but storage
+  receives only an HMAC-derived token scoped to guild, poll, and member. It
+  never stores raw voter IDs. Closure deletes individual vote-token rows and
+  preserves only final aggregate totals for the configured retention period.
+- **Poll-message authority.** Jarvis creates and edits only its own poll
+  messages. It does not delete messages or gain authority over roles, channels,
+  permissions, members, moderation, server settings, or webhooks. Poll text is
+  untrusted content and does not enter poll telemetry.
 
 ## Safety identifier
 
@@ -122,9 +134,10 @@ calls on obvious requests Jarvis cannot perform. It must never be treated as a
 security boundary or allowlist. Implemented adapters, credentials, Discord
 permissions, configuration, and operator approval define actual authority.
 
-Jarvis makes ordinary delivery edits to its own deferred interaction reply, and
-an operator-run command-registration script bulk-overwrites this application's
-guild command definitions. Neither is general server administration. All
+Jarvis makes ordinary delivery edits to its own deferred interaction reply and,
+when configured, creates or edits its own poll messages. An operator-run
+command-registration script bulk-overwrites this application's guild command
+definitions. Neither is general server administration. All
 administrative changes must be deliberate, operator-authorized, scoped to the
 named system, and non-destructive by default. Do not turn a support request into
 an unreviewed change to Discord, source control, or production data.

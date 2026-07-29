@@ -4,19 +4,20 @@ Jarvis is a single Node.js process. It receives Discord gateway events, applies 
 
 ## Components
 
-| Component               | Responsibility                                                                                                                                                                                                   | Source                                                                                                          |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Application composition | Loads configuration, persona, and the approved FAQ catalog before constructing adapters or logging into Discord; runs retention cleanup and closes resources on `SIGINT` or `SIGTERM`.                           | `src/index.ts`                                                                                                  |
-| Configuration           | Parses and validates environment settings into immutable configuration objects.                                                                                                                                  | `src/config/config.ts`                                                                                          |
-| Discord adapter         | Accepts guild mentions and chat-input commands, checks message permissions, derives channel or thread context, neutralizes reply mentions, and chunks replies.                                                   | `src/discord/handlers.ts`, `src/commands/handlers.ts`, `src/discord/delivery.ts`, `src/utils/chunk-response.ts` |
-| Command definitions     | Defines `/ask`, `/search`, `/forget`, `/faq`, `/help`, and `/status` for guild registration.                                                                                                                     | `src/commands/definitions.ts`                                                                                   |
-| FAQ catalog             | Validates and freezes 1 to 25 entries from the active approved local catalog, provides ID lookup, and rejects invalid content with a sanitized configuration error.                                              | `src/faq/faq-catalog.ts`, default `config/faq.json`                                                             |
-| Conversation service    | Owns shared prompt normalization, input validation, channel access, event de-duplication, per-guild/user rate limits, unsupported-action UX responses, persona mode, history reads, and coordinated persistence. | `src/services/conversation-service.ts`, `src/security/unsupported-action-classifier.ts`                         |
-| AI providers            | Implements the shared AI boundary for OpenAI Responses and Ollama chat. Each runtime response is capped at 1,000 output tokens by application composition.                                                       | `src/openai/openai-service.ts`, `src/ollama/ollama-service.ts`, `src/index.ts`                                  |
-| Web grounding           | Uses Tavily only when configured and either forced by `/search` or selected by the balanced evidence-routing heuristic.                                                                                          | `src/search/web-search.ts`                                                                                      |
-| Storage                 | Defines the conversation-store boundary and provides the SQLite implementation.                                                                                                                                  | `src/storage/conversation-store.ts`, `src/storage/sqlite-conversation-store.ts`                                 |
-| Disabled extensions     | Declares disabled-by-default, operator-approved extension shapes; it does not implement or wire tools.                                                                                                           | `src/extensions/contracts.ts`                                                                                   |
-| Command registration    | Bulk-registers this application's command definitions in the configured development guild.                                                                                                                       | `scripts/register-commands.ts`                                                                                  |
+| Component               | Responsibility                                                                                                                                                                                                                                     | Source                                                                                                          |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Application composition | Loads configuration, persona, and the approved FAQ catalog before constructing adapters or logging into Discord; runs conversation retention cleanup, starts optional poll maintenance after login, and closes resources on `SIGINT` or `SIGTERM`. | `src/index.ts`                                                                                                  |
+| Configuration           | Parses and validates environment settings into immutable configuration objects.                                                                                                                                                                    | `src/config/config.ts`                                                                                          |
+| Discord adapter         | Accepts guild mentions and chat-input commands, checks message permissions, derives channel or thread context, neutralizes reply mentions, and chunks replies.                                                                                     | `src/discord/handlers.ts`, `src/commands/handlers.ts`, `src/discord/delivery.ts`, `src/utils/chunk-response.ts` |
+| Command definitions     | Defines the six core commands and adds `/poll` and `/poll-close` only when polls are configured.                                                                                                                                                   | `src/commands/definitions.ts`                                                                                   |
+| FAQ catalog             | Validates and freezes 1 to 25 entries from the active approved local catalog, provides ID lookup, and rejects invalid content with a sanitized configuration error.                                                                                | `src/faq/faq-catalog.ts`, default `config/faq.json`                                                             |
+| Conversation service    | Owns shared prompt normalization, input validation, channel access, event de-duplication, per-guild/user rate limits, unsupported-action UX responses, persona mode, history reads, and coordinated persistence.                                   | `src/services/conversation-service.ts`, `src/security/unsupported-action-classifier.ts`                         |
+| AI providers            | Implements the shared AI boundary for OpenAI Responses and Ollama chat. Each runtime response is capped at 1,000 output tokens by application composition.                                                                                         | `src/openai/openai-service.ts`, `src/ollama/ollama-service.ts`, `src/index.ts`                                  |
+| Web grounding           | Uses Tavily only when configured and either forced by `/search` or selected by the balanced evidence-routing heuristic.                                                                                                                            | `src/search/web-search.ts`                                                                                      |
+| Storage                 | Defines the conversation-store boundary and provides the SQLite implementation.                                                                                                                                                                    | `src/storage/conversation-store.ts`, `src/storage/sqlite-conversation-store.ts`                                 |
+| Polls                   | Provides opt-in administrator-created anonymous polls, HMAC voter tokens, aggregate storage, safe bot-owned message updates, and bounded lifecycle maintenance.                                                                                    | `src/polls/`                                                                                                    |
+| Disabled extensions     | Declares disabled-by-default, operator-approved extension shapes; it does not implement or wire tools.                                                                                                                                             | `src/extensions/contracts.ts`                                                                                   |
+| Command registration    | Bulk-registers this application's command definitions in the configured development guild.                                                                                                                                                         | `scripts/register-commands.ts`                                                                                  |
 
 ## Request flow
 
@@ -58,6 +59,24 @@ topic ID selects its answer from the active approved catalog chosen by
 boundary, which may neutralize unsafe mention tokens before delivery. The
 handler does not call the AI service, Tavily, or the conversation store, and it
 does not modify the catalog.
+
+## Optional poll flow
+
+Polls are an opt-in path. `/poll` and `/poll-close` require a guild channel,
+the existing allowlist, and an exact configured administrator ID. Creation
+validates a two-to-five-option poll and one fixed duration, reserves durable
+SQLite state, then edits the deferred interaction reply into a Jarvis-owned
+poll message. Votes derive an HMAC voter token scoped to guild, poll, and
+member, atomically update one aggregate selection, and never persist raw voter
+IDs. This path does not call AI, Tavily, conversation history, moderation, or
+server-administration code.
+
+The poll store owns additive SQLite tables with parameterized statements, WAL,
+foreign keys, and transactions. Closing deletes voter-token rows, disables
+buttons, and preserves final totals. `PollScheduler` starts after Discord login,
+never overlaps a tick, closes overdue polls, retries pending bot-message edits,
+marks irrecoverable messages orphaned, and removes terminal rows after
+`POLL_RETENTION_DAYS`.
 
 ## Web-grounding boundary
 
@@ -119,7 +138,7 @@ The selected provider is an external boundary:
 - Ollama receives the composed instructions, bounded history, and prompt at the configured HTTP(S) endpoint.
 - Tavily is optional. When web search is invoked, Tavily receives the user's full normalized prompt as its search query. Its bounded, sanitized summaries are evidence only; the grounding wrapper explicitly tells the AI not to treat them as instructions, and an empty usable result set carries an inability-to-verify instruction to the AI provider.
 
-Jarvis has no implemented shell, code-execution, arbitrary-file, GitHub-write, Discord-administration, webhook-management, or autonomous-learning capability. Conversation history supplies request context only. It is not a training loop, and no request can grant the application new authority.
+Jarvis has no implemented shell, code-execution, arbitrary-file, GitHub-write, Discord-administration, webhook-management, or autonomous-learning capability. The optional poll path creates and edits only Jarvis-owned poll messages; it cannot edit or delete other content, roles, channels, permissions, members, settings, or webhooks. Conversation history supplies request context only. It is not a training loop, and no request can grant the application new authority.
 
 `classifyUnsupportedAction` returns local explanatory responses for obvious
 requests that the current release cannot perform. It is deliberately a UX

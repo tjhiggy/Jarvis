@@ -1,6 +1,10 @@
 import type { ConversationResult } from '../services/conversation-service.js';
 import type { ConversationStore } from '../storage/conversation-store.js';
 import type { FaqCatalog } from '../faq/faq-catalog.js';
+import type { PollController } from '../polls/poll-controller.js';
+import type { PollDurationValue } from '../polls/poll-duration.js';
+import type { PollScheduler } from '../polls/poll-scheduler.js';
+import type { PollStore } from '../polls/poll-store.js';
 import { isAllowedChannel } from '../discord/access.js';
 import {
   editDeferredReplySafely,
@@ -27,6 +31,7 @@ export interface CommandInteraction extends ReplyTarget, DeferredReplyTarget {
     getString(name: string): string | null;
   }>;
   deferReply(payload: ReplyPayload): Promise<unknown>;
+  fetchReply(): Promise<Readonly<{ id: string }>>;
 }
 
 export interface CommandDependencies {
@@ -39,6 +44,10 @@ export interface CommandDependencies {
     security: Readonly<{
       allowedChannelIds: ReadonlySet<string>;
       maxInputChars: number;
+    }>;
+    polls?: Readonly<{
+      enabled: boolean;
+      adminUserIds: ReadonlySet<string>;
     }>;
   }>;
   readonly conversationService: Readonly<{
@@ -62,6 +71,11 @@ export interface CommandDependencies {
   }>;
   readonly store: Pick<ConversationStore, 'healthCheck'>;
   readonly faq: FaqCatalog;
+  readonly pollController?: PollController;
+  readonly pollHealth?: Readonly<{
+    store: Pick<PollStore, 'healthCheck'>;
+    scheduler: Pick<PollScheduler, 'healthy'>;
+  }>;
 }
 
 const dmMessage = 'This command is available only in a server channel.';
@@ -73,15 +87,29 @@ const webSearchNotConfiguredMessage =
   'Web search is not configured on the MuthaShip.';
 const unknownCommandMessage =
   'Unknown command. Use /help for available commands.';
-const helpMessage = [
-  '/ask prompt:<question> asks Jarvis a question.',
-  '/search query:<question> searches current web sources before Jarvis answers.',
-  '/forget clears Jarvis history in this channel or thread.',
-  '/faq topic:<approved topic> browses approved Jarvis information.',
-  '/help lists the available commands.',
-  '/status reports safe service configuration and database health.',
-  'Safety: Jarvis cannot administer or modify the server, cannot use tools or take external actions, and keeps history only for the current channel or thread.',
-].join('\n');
+const pollsDisabledMessage =
+  'Poll systems are not configured on the MuthaShip.';
+const pollAdministratorMessage =
+  'Poll creation and early closure are restricted to configured MuthaShip administrators.';
+const pollInputMessage =
+  'Please provide a valid poll question, options, and duration.';
+const helpMessage = (pollsEnabled: boolean): string =>
+  [
+    '/ask prompt:<question> asks Jarvis a question.',
+    '/search query:<question> searches current web sources before Jarvis answers.',
+    '/forget clears Jarvis history in this channel or thread.',
+    '/faq topic:<approved topic> browses approved Jarvis information.',
+    '/help lists the available commands.',
+    '/status reports safe service configuration and database health.',
+    ...(pollsEnabled
+      ? [
+          '/poll creates an anonymous 2-to-5-option poll for configured administrators.',
+          '/poll-close poll_id:<id> closes a poll early for configured administrators.',
+          'Members may vote anonymously and change their selection while a poll is open.',
+        ]
+      : ['Polls: not configured.']),
+    'Safety: Jarvis cannot administer or modify the server, cannot use tools or take external actions, and keeps history only for the current channel or thread.',
+  ].join('\n');
 
 export const handleCommand = async (
   interaction: CommandInteraction,
@@ -100,11 +128,21 @@ export const handleCommand = async (
     case 'faq':
       await handleFaq(interaction, dependencies);
       return;
+    case 'poll':
+      await handlePoll(interaction, dependencies);
+      return;
+    case 'poll-close':
+      await handlePollClose(interaction, dependencies);
+      return;
     case 'help':
       if (await rejectDirectMessage(interaction)) {
         return;
       }
-      await replySafely(interaction, helpMessage, true);
+      await replySafely(
+        interaction,
+        helpMessage(pollsEnabled(dependencies)),
+        true,
+      );
       return;
     case 'status':
       if (await rejectDirectMessage(interaction)) {
@@ -189,6 +227,131 @@ const handleAsk = async (
 
   await editDeferredReplySafely(interaction, resultMessage(result));
 };
+
+const handlePoll = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (!pollsEnabled(dependencies)) {
+    await replySafely(interaction, pollsDisabledMessage, true);
+    return;
+  }
+  const scope = await authorizedPollScope(interaction, dependencies);
+  if (scope === undefined) {
+    return;
+  }
+  const question = interaction.options.getString('question') ?? '';
+  const options = ['option1', 'option2', 'option3', 'option4', 'option5']
+    .map((name) => interaction.options.getString(name))
+    .filter(
+      (option): option is string => option !== null && option.trim() !== '',
+    );
+  const duration = interaction.options.getString('duration') ?? '';
+  if (
+    !isPollDuration(duration) ||
+    question.trim() === '' ||
+    options.length < 2
+  ) {
+    await replySafely(interaction, pollInputMessage, true);
+    return;
+  }
+  await interaction.deferReply({ ephemeral: false });
+  try {
+    await dependencies.pollController?.create({
+      guildId: scope.guildId,
+      conversationId: scope.channelId,
+      channelId: scope.channelId,
+      creatorUserId: interaction.user.id,
+      question,
+      options,
+      duration,
+      ...(scope.parentChannelId === undefined
+        ? {}
+        : { parentChannelId: scope.parentChannelId }),
+      target: interaction,
+    });
+  } catch {
+    await editDeferredReplySafely(interaction, operationalErrorMessage);
+  }
+};
+
+const handlePollClose = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (!pollsEnabled(dependencies)) {
+    await replySafely(interaction, pollsDisabledMessage, true);
+    return;
+  }
+  if ((await authorizedPollScope(interaction, dependencies)) === undefined) {
+    return;
+  }
+  const pollId = interaction.options.getString('poll_id')?.trim();
+  if (pollId === undefined || !/^[a-z2-7]{12}$/.test(pollId)) {
+    await replySafely(interaction, pollInputMessage, true);
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    await dependencies.pollController?.close({
+      pollId,
+      acknowledge: async (message) =>
+        editDeferredReplySafely(interaction, message),
+    });
+  } catch {
+    await editDeferredReplySafely(interaction, operationalErrorMessage);
+  }
+};
+
+const authorizedPollScope = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<
+  | Readonly<{ guildId: string; channelId: string; parentChannelId?: string }>
+  | undefined
+> => {
+  const guildId = interaction.guildId?.trim();
+  if (guildId === undefined || guildId === '') {
+    await replySafely(interaction, dmMessage, true);
+    return undefined;
+  }
+  if (
+    !dependencies.config.polls?.adminUserIds.has(interaction.user.id.trim())
+  ) {
+    await replySafely(interaction, pollAdministratorMessage, true);
+    return undefined;
+  }
+  const channelId = interaction.channelId.trim();
+  const parentChannelId = threadParentId(interaction);
+  if (
+    channelId === '' ||
+    !isAllowedChannel(
+      channelId,
+      parentChannelId,
+      dependencies.config.security.allowedChannelIds,
+    )
+  ) {
+    await replySafely(interaction, disallowedMessage, true);
+    return undefined;
+  }
+  return {
+    guildId,
+    channelId,
+    ...(parentChannelId === undefined ? {} : { parentChannelId }),
+  };
+};
+
+const pollsEnabled = (dependencies: CommandDependencies): boolean =>
+  dependencies.config.polls?.enabled === true &&
+  dependencies.pollController !== undefined;
+
+const isPollDuration = (value: string): value is PollDurationValue =>
+  value === '15m' ||
+  value === '1h' ||
+  value === '6h' ||
+  value === '24h' ||
+  value === '3d' ||
+  value === '7d';
 
 const handleForget = async (
   interaction: CommandInteraction,
@@ -302,6 +465,7 @@ const handleStatus = async (
       ? dependencies.config.openai.apiKey.trim() !== ''
       : dependencies.config.ollama.baseUrl.trim() !== '' &&
         dependencies.config.ollama.model.trim() !== '';
+  const pollStatus = await getPollStatus(dependencies);
 
   await replySafely(
     interaction,
@@ -316,9 +480,32 @@ const handleStatus = async (
           : 'not configured'
       }`,
       'FAQ catalog: loaded',
+      ...pollStatus,
     ].join('\n'),
     true,
   );
+};
+
+const getPollStatus = async (
+  dependencies: CommandDependencies,
+): Promise<readonly string[]> => {
+  if (!dependencies.config.polls?.enabled) {
+    return ['Polls: not configured'];
+  }
+  if (
+    dependencies.pollController === undefined ||
+    dependencies.pollHealth === undefined
+  ) {
+    return ['Polls: unavailable'];
+  }
+  const databaseHealthy = await dependencies.pollHealth.store
+    .healthCheck()
+    .catch(() => false);
+  return [
+    'Polls: configured',
+    `Poll database: ${databaseHealthy ? 'healthy' : 'unhealthy'}`,
+    `Poll scheduler: ${dependencies.pollHealth.scheduler.healthy ? 'healthy' : 'degraded'}`,
+  ];
 };
 
 const resultMessage = (result: ConversationResult): string =>

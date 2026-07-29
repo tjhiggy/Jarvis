@@ -1,4 +1,5 @@
 import type { FaqEntry } from '../faq/faq-catalog.js';
+import { pollDurationChoices } from '../polls/poll-duration.js';
 
 interface InputCommandOptionDefinition {
   readonly type: 3;
@@ -19,12 +20,49 @@ interface FaqTopicOptionDefinition {
   }[];
 }
 
+interface RequiredStringOptionDefinition {
+  readonly type: 3;
+  readonly name:
+    'prompt' | 'query' | 'question' | 'option1' | 'option2' | 'poll_id';
+  readonly description: string;
+  readonly required: true;
+  readonly max_length: number;
+}
+
+interface OptionalPollOptionDefinition {
+  readonly type: 3;
+  readonly name: 'option3' | 'option4' | 'option5';
+  readonly description: string;
+  readonly required: false;
+  readonly max_length: number;
+}
+
+interface PollDurationOptionDefinition {
+  readonly type: 3;
+  readonly name: 'duration';
+  readonly description: string;
+  readonly required: true;
+  readonly choices: typeof pollDurationChoices;
+}
+
 export type CommandOptionDefinition =
-  InputCommandOptionDefinition | FaqTopicOptionDefinition;
+  | InputCommandOptionDefinition
+  | FaqTopicOptionDefinition
+  | RequiredStringOptionDefinition
+  | OptionalPollOptionDefinition
+  | PollDurationOptionDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
-  readonly name: 'ask' | 'search' | 'forget' | 'help' | 'status' | 'faq';
+  readonly name:
+    | 'ask'
+    | 'search'
+    | 'forget'
+    | 'help'
+    | 'status'
+    | 'faq'
+    | 'poll'
+    | 'poll-close';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -34,6 +72,7 @@ const discordStringOptionMaxLength = 6_000;
 export const createCommandDefinitions = (
   maxInputChars: number,
   faqEntries: readonly FaqEntry[],
+  pollsEnabled = false,
 ): readonly CommandDefinition[] => {
   if (!Number.isSafeInteger(maxInputChars) || maxInputChars < 1) {
     throw new RangeError(
@@ -47,7 +86,7 @@ export const createCommandDefinitions = (
     );
   }
 
-  return [
+  const definitions: CommandDefinition[] = [
     {
       type: 1,
       name: 'ask',
@@ -110,4 +149,81 @@ export const createCommandDefinitions = (
       ],
     },
   ];
+
+  if (pollsEnabled) {
+    definitions.push(
+      {
+        type: 1,
+        name: 'poll',
+        description: 'Create an anonymous poll with live totals.',
+        options: [
+          {
+            type: 3,
+            name: 'question',
+            description: 'The poll question.',
+            required: true,
+            max_length: 200,
+          },
+          {
+            type: 3,
+            name: 'option1',
+            description: 'The first poll option.',
+            required: true,
+            max_length: 80,
+          },
+          {
+            type: 3,
+            name: 'option2',
+            description: 'The second poll option.',
+            required: true,
+            max_length: 80,
+          },
+          {
+            type: 3,
+            name: 'option3',
+            description: 'An optional third poll option.',
+            required: false,
+            max_length: 80,
+          },
+          {
+            type: 3,
+            name: 'option4',
+            description: 'An optional fourth poll option.',
+            required: false,
+            max_length: 80,
+          },
+          {
+            type: 3,
+            name: 'option5',
+            description: 'An optional fifth poll option.',
+            required: false,
+            max_length: 80,
+          },
+          {
+            type: 3,
+            name: 'duration',
+            description: 'How long the poll remains open.',
+            required: true,
+            choices: pollDurationChoices,
+          },
+        ],
+      },
+      {
+        type: 1,
+        name: 'poll-close',
+        description: 'Close one of your active polls early.',
+        options: [
+          {
+            type: 3,
+            name: 'poll_id',
+            description: 'The 12-character poll ID.',
+            required: true,
+            max_length: 12,
+          },
+        ],
+      },
+    );
+  }
+
+  return definitions;
 };
