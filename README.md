@@ -143,8 +143,13 @@ An automatic search that misses the in-process cache sends a Tavily request and
 consumes provider usage; an equivalent cached query does not make another
 request. Jarvis requests bounded summaries, appends sanitized source links to
 grounded answers, and treats retrieved text as data rather than instructions.
-The router is a heuristic, not a fact guarantee: use `/search` when an excluded
-prompt still needs web evidence.
+For evidence-sensitive answers, an application-enforced gate requires explicit
+two-subject evidence for relationship claims, authoritative sources for
+government claims, and consistency across accepted results. It also withholds
+model output that introduces unsupported dates, people, quotations, laws,
+statistics, causal claims, or excessive novel factual content. The router and
+gate reduce risk but cannot make language-model output infallible; use
+`/search` when an excluded prompt still needs web evidence.
 
 ## Commands
 

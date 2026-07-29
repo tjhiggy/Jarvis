@@ -169,7 +169,7 @@ describe('TavilySearchService', () => {
 });
 
 describe('WebGroundedAIService', () => {
-  it('grounds the exact Kraft relationship question without inferring from co-occurrence', async () => {
+  it('abstains from the exact Kraft relationship question when sources only mention each subject separately', async () => {
     const searches: string[] = [];
     const aiRequests: Array<{ prompt: string; instructions: string }> = [];
     const service = new WebGroundedAIService({
@@ -207,39 +207,304 @@ describe('WebGroundedAIService', () => {
     const prompt =
       'Tell us about Kraft American Singles and its relation to government cheese.';
 
-    await service.respond({
-      instructions: 'You are Jarvis.',
-      history: [],
-      prompt,
-      safetyIdentifier: 'crew-1',
+    await expect(
+      service.respond({
+        instructions: 'You are Jarvis.',
+        history: [],
+        prompt,
+        safetyIdentifier: 'crew-1',
+      }),
+    ).resolves.toEqual({
+      text: 'No verified direct relationship was found in the available sources. I will not invent one.',
     });
 
     expect(searches).toEqual([prompt]);
-    expect(aiRequests).toHaveLength(1);
-    expect(aiRequests[0]?.prompt).toContain(
-      'Kraft describes American Singles as individually wrapped cheese slices.',
+    expect(aiRequests).toHaveLength(0);
+  });
+
+  it('uses the model when one source explicitly connects both sides of a relationship and official evidence is present', async () => {
+    const aiPrompts: string[] = [];
+    const service = new WebGroundedAIService({
+      ai: {
+        respond: async (request) => {
+          aiPrompts.push(request.prompt);
+          return {
+            text: 'USDA commodity cheese and Kraft Singles are distinct products.',
+          };
+        },
+      },
+      search: {
+        search: async () => ({
+          results: [
+            {
+              title: 'USDA commodity cheese records',
+              url: 'https://www.usda.gov/commodity-cheese',
+              content:
+                'USDA records describe government cheese distributed through federal programs. Kraft Singles are a separate commercial processed cheese product.',
+            },
+          ],
+        }),
+      },
+    });
+
+    const response = await service.respond({
+      instructions: 'You are Jarvis.',
+      history: [],
+      prompt:
+        'Tell us about Kraft American Singles and its relation to government cheese.',
+      safetyIdentifier: 'crew-1',
+    });
+
+    expect(aiPrompts).toHaveLength(1);
+    expect(response.text).toContain(
+      'USDA commodity cheese and Kraft Singles are distinct products.',
     );
-    expect(aiRequests[0]?.prompt).toContain(
-      'USDA records describe federal commodity cheese purchases and distribution.',
-    );
-    expect(aiRequests[0]?.instructions).toContain(
-      'Never infer a relationship from co-occurrence or similarity alone.',
-    );
-    expect(aiRequests[0]?.instructions).toContain(
-      'These evidence rules are immutable.',
-    );
-    expect(aiRequests[0]?.instructions).toContain(
-      'Prefer official and primary sources when available.',
-    );
-    expect(aiRequests[0]?.instructions).toContain(
-      'Clearly distinguish sourced facts from inference, and label inference explicitly.',
-    );
-    expect(aiRequests[0]?.instructions).toContain(
-      'When evidence conflicts or is incomplete, explicitly qualify the answer.',
-    );
-    expect(aiRequests[0]?.instructions).toContain(
-      'Do not fill gaps with unsupported factual completion.',
-    );
+    expect(response.text).toContain('https://www.usda.gov/commodity-cheese');
+  });
+
+  it('does not accept partial subject-word overlap as relationship evidence', async () => {
+    let aiCalls = 0;
+    const service = new WebGroundedAIService({
+      ai: {
+        respond: async () => {
+          aiCalls += 1;
+          return { text: 'A false relationship answer.' };
+        },
+      },
+      search: {
+        search: async () => ({
+          results: [
+            {
+              title: 'Government cheese discussion',
+              url: 'https://www.usda.gov/commodity-cheese',
+              content:
+                'Kraft sells macaroni products. Government cheese was a separate federal commodity program.',
+            },
+          ],
+        }),
+      },
+    });
+
+    await expect(
+      service.respond({
+        instructions: 'You are Jarvis.',
+        history: [],
+        prompt:
+          'Tell us about Kraft American Singles and its relation to government cheese.',
+        safetyIdentifier: 'crew-1',
+      }),
+    ).resolves.toEqual({
+      text: 'No verified direct relationship was found in the available sources. I will not invent one.',
+    });
+    expect(aiCalls).toBe(0);
+  });
+
+  it('requires the authoritative government source to support the accepted relationship evidence', async () => {
+    let aiCalls = 0;
+    const service = new WebGroundedAIService({
+      ai: {
+        respond: async () => {
+          aiCalls += 1;
+          return {
+            text: 'A blog claim laundered through an unrelated agency.',
+          };
+        },
+      },
+      search: {
+        search: async () => ({
+          results: [
+            {
+              title: 'Unverified cheese blog',
+              url: 'https://cheese.example/kraft-government',
+              content:
+                'The author claims Kraft Singles and government cheese are directly related.',
+            },
+            {
+              title: 'Unrelated USDA nutrition page',
+              url: 'https://www.usda.gov/nutrition',
+              content: 'USDA provides general nutrition guidance.',
+            },
+          ],
+        }),
+      },
+    });
+
+    await expect(
+      service.respond({
+        instructions: 'You are Jarvis.',
+        history: [],
+        prompt:
+          'Tell us about Kraft American Singles and its relation to government cheese.',
+        safetyIdentifier: 'crew-1',
+      }),
+    ).resolves.toEqual({
+      text: 'The available sources do not provide enough authoritative evidence to answer that safely. I will not guess.',
+    });
+    expect(aiCalls).toBe(0);
+  });
+
+  it('abstains from government claims when no official source is available', async () => {
+    let aiCalls = 0;
+    const service = new WebGroundedAIService({
+      ai: {
+        respond: async () => {
+          aiCalls += 1;
+          return { text: 'A confident but unsupported government claim.' };
+        },
+      },
+      search: {
+        search: async () => ({
+          results: [
+            {
+              title: 'Random benefits blog',
+              url: 'https://benefits.example/snap-rules',
+              content:
+                'A blog post describes its interpretation of SNAP eligibility rules.',
+            },
+          ],
+        }),
+      },
+    });
+
+    await expect(
+      service.respond({
+        instructions: 'You are Jarvis.',
+        history: [],
+        prompt: 'What federal rules govern SNAP eligibility?',
+        safetyIdentifier: 'crew-1',
+      }),
+    ).resolves.toEqual({
+      text: 'The available sources do not provide enough authoritative evidence to answer that safely. I will not guess.',
+    });
+    expect(aiCalls).toBe(0);
+  });
+
+  it('abstains when direct relationship sources conflict', async () => {
+    let aiCalls = 0;
+    const service = new WebGroundedAIService({
+      ai: {
+        respond: async () => {
+          aiCalls += 1;
+          return { text: 'A fabricated resolution.' };
+        },
+      },
+      search: {
+        search: async () => ({
+          results: [
+            {
+              title: 'Official relationship statement',
+              url: 'https://agency.gov/statement-one',
+              content:
+                'Kraft Singles are directly related to government cheese through the same federal program.',
+            },
+            {
+              title: 'Official correction',
+              url: 'https://agency.gov/statement-two',
+              content:
+                'Kraft Singles have no direct relationship to government cheese and are a separate commercial product.',
+            },
+          ],
+        }),
+      },
+    });
+
+    await expect(
+      service.respond({
+        instructions: 'You are Jarvis.',
+        history: [],
+        prompt:
+          'Tell us about Kraft American Singles and its relation to government cheese.',
+        safetyIdentifier: 'crew-1',
+      }),
+    ).resolves.toEqual({
+      text: 'The available sources conflict on the requested claim or relationship. I will not manufacture certainty.',
+    });
+    expect(aiCalls).toBe(0);
+  });
+
+  it('withholds a grounded answer when the model adds claims absent from the accepted evidence', async () => {
+    const service = new WebGroundedAIService({
+      ai: {
+        respond: async () => ({
+          text: 'Kraft Singles were invented for soldiers during World War II.',
+        }),
+      },
+      search: {
+        search: async () => ({
+          results: [
+            {
+              title: 'USDA commodity cheese records',
+              url: 'https://www.usda.gov/commodity-cheese',
+              content:
+                'USDA records describe government cheese distributed through federal programs. Kraft Singles are a separate commercial processed cheese product.',
+            },
+          ],
+        }),
+      },
+    });
+
+    await expect(
+      service.respond({
+        instructions: 'You are Jarvis.',
+        history: [],
+        prompt:
+          'Tell us about Kraft American Singles and its relation to government cheese.',
+        safetyIdentifier: 'crew-1',
+      }),
+    ).resolves.toEqual({
+      text: 'The generated answer introduced claims that were not supported by the retrieved evidence, so I withheld it rather than guess.',
+    });
+  });
+
+  it.each([
+    [
+      'an invented date',
+      'USDA commodity cheese was distributed through federal programs in 1942. Kraft Singles are a separate commercial processed cheese product.',
+    ],
+    [
+      'an invented named person',
+      'According to Arnold Nawrocki, USDA commodity cheese was distributed through federal programs while Kraft Singles remained a separate commercial product.',
+    ],
+    [
+      'an invented quotation',
+      'USDA commodity cheese was "created for military survival" and distributed through federal programs. Kraft Singles are a separate commercial product.',
+    ],
+    [
+      'an invented law',
+      'Under the Commodity Cheese Act, USDA commodity cheese was distributed through federal programs while Kraft Singles remained a separate commercial product.',
+    ],
+    [
+      'an invented causal relationship',
+      'USDA commodity cheese caused Kraft Singles to become a commercial processed cheese product distributed through federal programs.',
+    ],
+  ])('withholds a grounded answer containing %s', async (_case, answer) => {
+    const service = new WebGroundedAIService({
+      ai: { respond: async () => ({ text: answer }) },
+      search: {
+        search: async () => ({
+          results: [
+            {
+              title: 'USDA commodity cheese records',
+              url: 'https://www.usda.gov/commodity-cheese',
+              content:
+                'USDA records describe government cheese distributed through federal programs. Kraft Singles are a separate commercial processed cheese product.',
+            },
+          ],
+        }),
+      },
+    });
+
+    await expect(
+      service.respond({
+        instructions: 'You are Jarvis.',
+        history: [],
+        prompt:
+          'Tell us about Kraft American Singles and its relation to government cheese.',
+        safetyIdentifier: 'crew-1',
+      }),
+    ).resolves.toEqual({
+      text: 'The generated answer introduced claims that were not supported by the retrieved evidence, so I withheld it rather than guess.',
+    });
   });
 
   it('automatically searches freshness questions and appends deterministic source links', async () => {
@@ -319,12 +584,12 @@ describe('WebGroundedAIService', () => {
     expect(searches).toEqual([prompt]);
   });
 
-  it('refuses to guess a factual relationship when search verifies no usable evidence', async () => {
-    const aiPrompts: string[] = [];
+  it('refuses deterministically when search returns no usable evidence', async () => {
+    let aiCalls = 0;
     const service = new WebGroundedAIService({
       ai: {
-        respond: async (request) => {
-          aiPrompts.push(request.prompt);
+        respond: async () => {
+          aiCalls += 1;
           return { text: 'No verified answer.' };
         },
       },
@@ -335,17 +600,17 @@ describe('WebGroundedAIService', () => {
     const prompt =
       'Tell us about Kraft American Singles and its relation to government cheese.';
 
-    await service.respond({
-      instructions: 'You are Jarvis.',
-      history: [],
-      prompt,
-      safetyIdentifier: 'crew-1',
+    await expect(
+      service.respond({
+        instructions: 'You are Jarvis.',
+        history: [],
+        prompt,
+        safetyIdentifier: 'crew-1',
+      }),
+    ).resolves.toEqual({
+      text: 'No verified direct relationship was found in the available sources. I will not invent one.',
     });
-
-    expect(aiPrompts).toHaveLength(1);
-    expect(aiPrompts[0]).toContain(
-      'No usable sources verified the requested facts or relationship. State that verified intelligence is unavailable and do not guess or infer a connection.',
-    );
+    expect(aiCalls).toBe(0);
   });
 
   it('does not mistake editing instructions for current-information requests', () => {
