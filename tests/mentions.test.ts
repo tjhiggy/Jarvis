@@ -25,9 +25,13 @@ describe('removeBotMention', () => {
 });
 
 describe('neutralizeDiscordMentions', () => {
-  it('prevents mass, user, and role pings while preserving visible text', () => {
-    expect(neutralizeDiscordMentions('@everyone <@456> <@&789>')).toBe(
-      '@\u200beveryone <@\u200b456> <@\u200b&789>',
+  it('prevents mass, user, role, and channel pings while preserving visible text', () => {
+    expect(
+      neutralizeDiscordMentions(
+        '@everyone @here <@123> <@!123> <@&456> <#789>',
+      ),
+    ).toBe(
+      '@\u200beveryone @\u200bhere <@\u200b123> <@\u200b!123> <@\u200b&456> <#\u200b789>',
     );
   });
 
