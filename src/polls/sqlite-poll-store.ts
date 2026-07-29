@@ -44,8 +44,14 @@ export class SQLitePollStore implements PollStore {
   constructor(databasePath: string) {
     mkdirSync(dirname(databasePath), { recursive: true });
     this.database = new Database(databasePath);
-    this.configure();
-    this.migrate();
+    try {
+      this.configure();
+      this.migrate();
+    } catch (error) {
+      this.database.close();
+      this.closed = true;
+      throw error;
+    }
   }
 
   async reserve(input: ReservePollInput): Promise<PollView> {

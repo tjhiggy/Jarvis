@@ -266,6 +266,16 @@ describe('SQLitePollStore', () => {
     await store.closeConnection();
     await expect(store.healthCheck()).resolves.toBe(false);
   });
+
+  it('closes the opened database when migration fails', async () => {
+    const failingPath = join(directory, 'migration-failure.db');
+    const database = new Database(failingPath);
+    database.exec('CREATE TABLE polls (id TEXT PRIMARY KEY)');
+    database.close();
+
+    expect(() => new SQLitePollStore(failingPath)).toThrow();
+    await expect(rm(failingPath, { force: true })).resolves.toBeUndefined();
+  });
 });
 
 function date(seconds: number): Date {
