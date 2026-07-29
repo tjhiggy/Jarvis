@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PollReservationConflictError } from '../src/polls/poll-store.js';
+import {
+  PollReservationConflictError,
+  PollVoteTargetMismatchError,
+} from '../src/polls/poll-store.js';
 import { SQLitePollStore } from '../src/polls/sqlite-poll-store.js';
 import type { PollView } from '../src/polls/poll-types.js';
 
@@ -136,6 +139,29 @@ describe('SQLitePollStore', () => {
       },
     });
   });
+
+  it.each([
+    ['guild', { guildId: 'guild-2' }],
+    ['channel', { channelId: 'channel-2' }],
+    ['message', { messageId: 'message-2' }],
+  ] as const)(
+    'rejects a mismatched %s target before persisting a vote',
+    async (_target, mismatch) => {
+      await activateDefaultPoll(store);
+
+      await expect(store.recordVote(vote(mismatch))).rejects.toBeInstanceOf(
+        PollVoteTargetMismatchError,
+      );
+
+      const database = new Database(databasePath, { readonly: true });
+      expect(database.prepare('SELECT * FROM poll_votes').all()).toEqual([]);
+      database.close();
+      const pollView = await store.close('poll00000001', date(10));
+      expect(pollView.options.map((option) => option.voteCount)).toEqual([
+        0, 0,
+      ]);
+    },
+  );
 
   it('rejects votes for invalid options and polls that are expired or closed', async () => {
     await activateDefaultPoll(store);
@@ -272,6 +298,9 @@ function poll(
 function vote(
   overrides: Partial<{
     pollId: string;
+    guildId: string;
+    channelId: string;
+    messageId: string;
     voterKey: string;
     optionIndex: number;
     now: Date;
@@ -279,6 +308,9 @@ function vote(
 ) {
   return {
     pollId: 'poll00000001',
+    guildId: 'guild-1',
+    channelId: 'channel-1',
+    messageId: 'message-1',
     voterKey: 'voter-key-a',
     optionIndex: 0,
     now: date(5),

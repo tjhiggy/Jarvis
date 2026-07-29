@@ -239,7 +239,11 @@ function voteErrorMessage(error: unknown): string {
   if (code === 'poll_closed') {
     return 'This poll is closed.';
   }
-  if (code === 'invalid_option' || code === 'invalid_request') {
+  if (
+    code === 'invalid_option' ||
+    code === 'invalid_request' ||
+    code === 'invalid_target'
+  ) {
     return 'That poll option is not available.';
   }
   return 'The vote could not be recorded. Please try again later.';

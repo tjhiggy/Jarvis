@@ -9,6 +9,7 @@ import type {
 } from './poll-types.js';
 import {
   PollReservationConflictError,
+  PollVoteTargetMismatchError,
   type PollStore,
   type ReservePollInput,
 } from './poll-store.js';
@@ -123,6 +124,9 @@ export class SQLitePollStore implements PollStore {
 
   async recordVote(input: {
     readonly pollId: string;
+    readonly guildId: string;
+    readonly channelId: string;
+    readonly messageId: string;
     readonly voterKey: string;
     readonly optionIndex: number;
     readonly now: Date;
@@ -133,6 +137,13 @@ export class SQLitePollStore implements PollStore {
     this.ensureOpen();
     const record = this.database.transaction((value: typeof input) => {
       const poll = this.requirePoll(value.pollId);
+      if (
+        poll.guildId !== value.guildId ||
+        poll.channelId !== value.channelId ||
+        poll.messageId !== value.messageId
+      ) {
+        throw new PollVoteTargetMismatchError();
+      }
       if (
         poll.status !== 'active' ||
         poll.closesAt.getTime() <= value.now.getTime()

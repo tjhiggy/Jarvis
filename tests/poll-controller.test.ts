@@ -112,6 +112,8 @@ describe('DiscordPollController', () => {
     await controller.vote({
       pollId: 'abcde234567a',
       guildId: 'guild-1',
+      channelId: 'channel-1',
+      messageId: 'message-1',
       voterUserId: 'raw-voter-id',
       optionIndex: 0,
       acknowledge: async (message) => {
@@ -154,6 +156,32 @@ describe('DiscordPollController', () => {
     await cappedController.synchronize(poll({ syncAttempts: 5 }));
     expect(cappedService.pending).toEqual([]);
     expect(cappedService.orphaned).toEqual(['abcde234567a']);
+  });
+
+  it('maps a persisted vote-target rejection to a private safe acknowledgement', async () => {
+    const controller = new DiscordPollController({
+      service: createService({
+        vote: async () => {
+          throw new PollServiceError('invalid_target');
+        },
+      }),
+      gateway: createGateway(),
+    });
+    const acknowledgements: string[] = [];
+
+    await controller.vote({
+      pollId: 'abcde234567a',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
+      messageId: 'message-2',
+      voterUserId: 'user-1',
+      optionIndex: 0,
+      acknowledge: async (message) => {
+        acknowledgements.push(message);
+      },
+    });
+
+    expect(acknowledgements).toEqual(['That poll option is not available.']);
   });
 
   it('closes early, synchronizes disabled final results, then privately confirms', async () => {

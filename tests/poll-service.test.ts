@@ -96,6 +96,8 @@ describe('DurablePollService', () => {
     await service.vote({
       pollId: 'abcde234567a',
       guildId: 'guild-1',
+      channelId: 'channel-1',
+      messageId: 'message-1',
       voterUserId: 'raw-user-id',
       optionIndex: 0,
     });
@@ -118,12 +120,16 @@ describe('DurablePollService', () => {
         service.vote({
           pollId: 'abcde234567a',
           guildId: 'guild-1',
+          channelId: 'channel-1',
+          messageId: 'message-1',
           voterUserId: 'user-1',
           optionIndex: 0,
         }),
         service.vote({
           pollId: 'abcde234567a',
           guildId: 'guild-1',
+          channelId: 'channel-1',
+          messageId: 'message-1',
           voterUserId: 'user-1',
           optionIndex: 1,
         }),
@@ -138,6 +144,8 @@ describe('DurablePollService', () => {
       service.vote({
         pollId: 'abcde234567a',
         guildId: 'guild-1',
+        channelId: 'channel-1',
+        messageId: 'message-1',
         voterUserId: 'user-1',
         optionIndex: 5,
       }),

@@ -193,6 +193,8 @@ const handlePollButton = async (
   await dependencies.pollController.vote({
     pollId: parsed.pollId,
     guildId,
+    channelId,
+    messageId: interaction.message.id,
     voterUserId: interaction.user.id,
     optionIndex: parsed.optionIndex,
     acknowledge: async (message) =>

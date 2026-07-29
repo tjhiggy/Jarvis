@@ -7,6 +7,14 @@ export class PollReservationConflictError extends Error {
   }
 }
 
+/** Content-free rejection when a component interaction is not the poll's message. */
+export class PollVoteTargetMismatchError extends Error {
+  constructor() {
+    super('Poll vote target does not match the active poll.');
+    this.name = 'PollVoteTargetMismatchError';
+  }
+}
+
 export interface ReservePollInput {
   readonly id: string;
   readonly guildId: string;
@@ -26,6 +34,9 @@ export interface PollStore {
   markFailed(pollId: string): Promise<void>;
   recordVote(input: {
     readonly pollId: string;
+    readonly guildId: string;
+    readonly channelId: string;
+    readonly messageId: string;
     readonly voterKey: string;
     readonly optionIndex: number;
     readonly now: Date;

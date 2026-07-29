@@ -3,6 +3,7 @@ import type { PollDurationValue } from './poll-duration.js';
 import { createPollId, createVoterKey } from './poll-identity.js';
 import {
   PollReservationConflictError,
+  PollVoteTargetMismatchError,
   type PollStore,
   type ReservePollInput,
 } from './poll-store.js';
@@ -23,6 +24,8 @@ export interface CreatePollRequest {
 export interface VoteRequest {
   readonly pollId: string;
   readonly guildId: string;
+  readonly channelId: string;
+  readonly messageId: string;
   readonly voterUserId: string;
   readonly optionIndex: number;
 }
@@ -43,6 +46,7 @@ export type PollServiceErrorCode =
   | 'creator_poll_exists'
   | 'poll_closed'
   | 'invalid_option'
+  | 'invalid_target'
   | 'not_found'
   | 'storage_error';
 
@@ -203,6 +207,8 @@ export class DurablePollService implements PollService {
   async vote(request: VoteRequest): Promise<VoteResult> {
     const pollId = normalizePollId(request.pollId);
     const guildId = requireIdentifier(request.guildId);
+    const channelId = requireIdentifier(request.channelId);
+    const messageId = requireIdentifier(request.messageId);
     const voterUserId = requireIdentifier(request.voterUserId);
     const optionIndex = request.optionIndex;
     if (
@@ -224,6 +230,9 @@ export class DurablePollService implements PollService {
       try {
         return await this.dependencies.store.recordVote({
           pollId,
+          guildId,
+          channelId,
+          messageId,
           voterKey,
           optionIndex,
           now,
@@ -399,6 +408,9 @@ function mapVoteError(error: unknown): PollServiceError {
   }
   if (error instanceof RangeError) {
     return new PollServiceError('invalid_option');
+  }
+  if (error instanceof PollVoteTargetMismatchError) {
+    return new PollServiceError('invalid_target');
   }
   if (error instanceof Error && /closed/i.test(error.message)) {
     return new PollServiceError('poll_closed');
