@@ -8,6 +8,14 @@ import {
 
 describe('requiresWebGrounding', () => {
   it.each([
+    ['How are you feeling today?', false],
+    ['What is the weather today?', true],
+    ["What's the latest ARC Raiders update?", true],
+  ])('routes %s to web grounding: %s', (prompt, expected) => {
+    expect(requiresWebGrounding(prompt)).toBe(expected);
+  });
+
+  it.each([
     'Tell us about Kraft American Singles and its relation to government cheese.',
     'What is the history of the USDA commodity cheese program?',
     'What is the relationship between OpenAI and Microsoft?',
@@ -666,6 +674,37 @@ describe('WebGroundedAIService', () => {
     });
 
     expect(searches).toEqual(['What is RAM?']);
+  });
+
+  it('honors explicit web search for a casual prompt', async () => {
+    const searches: string[] = [];
+    const service = new WebGroundedAIService({
+      ai: { respond: async () => ({ text: 'I am feeling great.' }) },
+      search: {
+        search: async (prompt) => {
+          searches.push(prompt);
+          return {
+            results: [
+              {
+                title: 'Status',
+                url: 'https://example.com/status',
+                content: 'The assistant is ready to help.',
+              },
+            ],
+          };
+        },
+      },
+    });
+
+    await service.respond({
+      instructions: 'You are Jarvis.',
+      history: [],
+      prompt: 'How are you feeling today?',
+      safetyIdentifier: 'crew-1',
+      webSearch: true,
+    });
+
+    expect(searches).toEqual(['How are you feeling today?']);
   });
 
   it('removes model-invented links while preserving verified search sources', async () => {

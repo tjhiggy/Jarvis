@@ -3,6 +3,7 @@ import type {
   AIResponse,
   AIService,
 } from '../openai/openai-service.js';
+import { isCasualConversationPrompt } from '../services/response-style.js';
 
 export interface SearchResult {
   readonly title: string;
@@ -295,6 +296,10 @@ export const requiresWebGrounding = (prompt: string): boolean => {
       return false;
     }
     routingPrompt = additionalRequest;
+  }
+
+  if (isCasualConversationPrompt(routingPrompt)) {
+    return false;
   }
 
   if (
