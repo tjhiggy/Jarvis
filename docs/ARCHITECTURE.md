@@ -6,10 +6,11 @@ Jarvis is a single Node.js process. It receives Discord gateway events, applies 
 
 | Component               | Responsibility                                                                                                                                                                                                   | Source                                                                                                          |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Application composition | Loads configuration and persona, constructs adapters, starts the Discord client, runs retention cleanup, and closes resources on `SIGINT` or `SIGTERM`.                                                          | `src/index.ts`                                                                                                  |
+| Application composition | Loads configuration, persona, and the approved FAQ catalog before constructing adapters or logging into Discord; runs retention cleanup and closes resources on `SIGINT` or `SIGTERM`.                           | `src/index.ts`                                                                                                  |
 | Configuration           | Parses and validates environment settings into immutable configuration objects.                                                                                                                                  | `src/config/config.ts`                                                                                          |
 | Discord adapter         | Accepts guild mentions and chat-input commands, checks message permissions, derives channel or thread context, neutralizes reply mentions, and chunks replies.                                                   | `src/discord/handlers.ts`, `src/commands/handlers.ts`, `src/discord/delivery.ts`, `src/utils/chunk-response.ts` |
-| Command definitions     | Defines `/ask`, `/search`, `/forget`, `/help`, and `/status` for guild registration.                                                                                                                             | `src/commands/definitions.ts`                                                                                   |
+| Command definitions     | Defines `/ask`, `/search`, `/forget`, `/faq`, `/help`, and `/status` for guild registration.                                                                                                                     | `src/commands/definitions.ts`                                                                                   |
+| FAQ catalog             | Validates and freezes 1 to 25 approved local entries, provides ID lookup, and rejects invalid content with a sanitized configuration error.                                                                      | `src/faq/faq-catalog.ts`, `config/faq.json`                                                                     |
 | Conversation service    | Owns shared prompt normalization, input validation, channel access, event de-duplication, per-guild/user rate limits, unsupported-action UX responses, persona mode, history reads, and coordinated persistence. | `src/services/conversation-service.ts`, `src/security/unsupported-action-classifier.ts`                         |
 | AI providers            | Implements the shared AI boundary for OpenAI Responses and Ollama chat. Each runtime response is capped at 1,000 output tokens by application composition.                                                       | `src/openai/openai-service.ts`, `src/ollama/ollama-service.ts`, `src/index.ts`                                  |
 | Web grounding           | Uses Tavily only when configured and either forced by `/search` or selected by the balanced evidence-routing heuristic.                                                                                          | `src/search/web-search.ts`                                                                                      |
@@ -49,6 +50,12 @@ flowchart TD
 For direct mentions, the Discord adapter first requires a bot mention, a guild context, an allowed channel, and the bot's channel permissions. Commands make their own guild, channel, allowlist, and input checks before calling the same conversation service. The service is the shared normalization boundary for both ingress paths: it replaces unverified Discord member IDs before persistence or provider use, and it owns event de-duplication and rate limiting for requests that reach it.
 
 Storage transitions for a guild plus conversation are coordinated and serialized. A clear operation advances that conversation's generation, so queued stale storage work is invalidated. The provider call runs outside those coordinated sections, so provider calls for the same conversation can overlap; the subsequent assistant-message append is checked against the generation before it persists.
+
+`/faq` deliberately bypasses the conversational flow after the existing guild
+and channel checks. An omitted topic lists approved questions; a registered
+topic ID returns the exact checked-in answer. Both are public replies through
+the existing safe-delivery boundary. The handler does not call the AI service,
+Tavily, or the conversation store, and it does not modify the catalog.
 
 ## Web-grounding boundary
 
@@ -102,7 +109,7 @@ The replacement boundary is `ConversationStore`: `append`, `getRecent`, `clear`,
 
 ## Trust boundaries
 
-Discord message text, user names, interaction options, and Tavily search-result text are untrusted data. They are never trusted instructions. The persona file is an operator-controlled startup input and is loaded separately from Discord content. The local SQLite database and environment-derived credentials are host assets that operators must protect.
+Discord message text, user names, interaction options, and Tavily search-result text are untrusted data. They are never trusted instructions. The persona file and FAQ catalog are operator-controlled startup inputs loaded separately from Discord content. `FAQ_CATALOG_PATH` comes only from the deployment environment; Discord can select a registered topic ID but cannot choose a path or edit catalog content. Catalog validation requires 1 to 25 strictly shaped entries before startup or command registration. A load failure reports only `Invalid FAQ catalog configuration: FAQ_CATALOG_PATH`, never the resolved path or catalog content. The local SQLite database and environment-derived credentials are host assets that operators must protect.
 
 The selected provider is an external boundary:
 

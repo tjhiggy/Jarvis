@@ -9,8 +9,13 @@ inspection of user message content.
 Before starting, select exactly one deployment path: native Windows or Docker.
 Verify the configured `.env` is available to that process, the configured
 database location is writable, and the selected AI provider is configured. For
-the supported native path, start `npm start` from the deployment directory in
-an owning console and keep that console available for `Ctrl+C`.
+every deployment, also verify `FAQ_CATALOG_PATH` resolves to the approved local
+catalog. Jarvis reads but never modifies it; do not expose it through a
+Discord-writable path. The default Docker image already includes the catalog in
+its read-only `/app/config` tree.
+
+For the supported native path, start `npm start` from the deployment directory
+in an owning console and keep that console available for `Ctrl+C`.
 
 The `scripts/start-jarvis.ps1` file is only a workstation-specific convenience
 helper. Its `-DryRun` output makes unverified claims; it does not validate paths
@@ -23,9 +28,30 @@ full limitations.
 
 After start, use `/status` in a server channel. It returns an ephemeral report
 of Discord configuration, SQLite health, selected AI provider and its
-configuration, and web-search configuration. It does **not** make a model
-request or prove that Ollama has a loaded model. A successful `/ask` with a
-non-sensitive test prompt is the controlled end-to-end check.
+configuration, web-search configuration, and whether the FAQ catalog loaded.
+It does **not** make a model request or prove that Ollama has a loaded model. A
+successful `/ask` with a non-sensitive test prompt is the controlled
+end-to-end provider check.
+
+## FAQ registration and live checks
+
+The `/faq` choices are part of the development-guild command definition. After
+deploying a release that changes the catalog or command set, an authorized
+operator must run:
+
+```powershell
+npm run register-commands
+```
+
+Run it once against the intended `DISCORD_GUILD_ID`. Registration
+bulk-overwrites this application's command set in that guild and validates the
+catalog first, so it is a deployment action, not a health probe.
+
+After registration and startup, manually verify `/faq`, one selected approved
+answer, the omitted-topic question listing, a request from a disallowed
+channel, and `/status`. Confirm replies are public where expected, the selected
+answer matches `config/faq.json` exactly, and no uncontrolled mention fires.
+These checks do not authorize broader Discord permissions.
 
 Stop native Jarvis with `Ctrl+C` in the owning console or a normal `SIGINT` or
 `SIGTERM`. Stop the container with `docker compose stop jarvis`. Wait for the
@@ -121,3 +147,11 @@ internal errors. Treat the message as a service symptom, not a diagnosis.
    non-sensitive test prompt, and document the outcome without Discord content.
 
 See [Troubleshooting](TROUBLESHOOTING.md) for symptom-by-symptom recovery.
+
+## FAQ rollback
+
+If the FAQ release fails validation or live checks, stop Jarvis, deploy the
+previously approved application version, and run that version's
+`npm run register-commands` once to restore its prior command set. Then start
+one process and repeat the controlled checks. The catalog has no database
+migration, so do not restore or delete SQLite merely to roll back `/faq`.

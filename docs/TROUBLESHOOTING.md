@@ -8,8 +8,8 @@ copy or configuration change, stop the bot first and follow
 ## Bot is offline or exits at startup
 
 **Likely cause.** Required Discord configuration is empty, the selected provider
-is misconfigured, the persona or database path is unavailable, or the compiled
-entry point is missing.
+is misconfigured, the persona, FAQ catalog, or database path is unavailable, or
+the compiled entry point is missing.
 
 **Safe diagnosis.** Confirm `npm run build` completed, then use the supported
 manual `npm start` path in an owning console so startup failures remain visible.
@@ -23,6 +23,23 @@ workstation-specific limitations are documented in
 secret source, rebuild if needed, and restart one process. OpenAI requires a
 non-empty project key; Ollama requires a configured base URL and model.
 
+## FAQ catalog validation fails
+
+**Likely cause.** `FAQ_CATALOG_PATH` is missing, unreadable, malformed, empty,
+contains more than 25 entries, or contains an entry that violates the approved
+schema.
+
+**Safe diagnosis.** Startup reports only
+`Invalid FAQ catalog configuration: FAQ_CATALOG_PATH`; registration reports a
+generic failure. Check the configured file against the reviewed deployment
+revision without pasting its absolute local path or answer content into logs,
+tickets, or chat. Discord input never controls this path.
+
+**Resolution.** Restore the approved checked-in catalog, correct
+`FAQ_CATALOG_PATH` through operator-managed configuration if an override is
+intentional, and restart. Run `npm run register-commands` once after deployment
+so the development guild receives choices from the same validated catalog.
+
 ## Commands are missing
 
 **Likely cause.** The bot was installed without `applications.commands`,
@@ -31,7 +48,7 @@ registration.
 
 **Safe diagnosis.** Confirm the configured client and guild identifiers through
 approved operator records. Confirm this version defines `/ask`, `/search`,
-`/forget`, `/help`, and `/status`.
+`/forget`, `/faq`, `/help`, and `/status`, and that its FAQ catalog validates.
 
 **Resolution.** An authorized operator may run `npm run register-commands`
 against the intended guild. It bulk-overwrites this application's command set

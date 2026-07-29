@@ -1,6 +1,6 @@
 # Configuration
 
-Jarvis loads `.env` through `dotenv` during application startup. Copy `.env.example` to `.env`; do not commit `.env`. All settings are parsed at startup, so restart the process after changing any value. `npm run register-commands` separately loads the registration subset and must be rerun after changing `MAX_INPUT_CHARS` or command definitions.
+Jarvis loads `.env` through `dotenv` during application startup. Copy `.env.example` to `.env`; do not commit `.env`. All settings are parsed at startup, so restart the process after changing any value. `npm run register-commands` separately loads the registration subset and must be rerun after changing `MAX_INPUT_CHARS`, `FAQ_CATALOG_PATH`, FAQ catalog content, or command definitions.
 
 The table is the complete configuration contract from `.env.example` and `src/config/config.ts`. Defaults below are parser defaults. The committed example file intentionally selects Ollama, which overrides the parser's OpenAI-provider default when it is copied unchanged.
 
@@ -32,6 +32,7 @@ The table is the complete configuration contract from `.env.example` and `src/co
 | `ALLOWED_CHANNEL_IDS`     | Optional comma-separated IDs           | Empty set                    | Limits requests to named channels or their threads.                                            | `your-channel-id,another-channel-id` | Access boundary        |
 | `RESTRAINED_CHANNEL_IDS`  | Optional comma-separated IDs           | Empty set                    | Uses the restrained persona mode in named channels or their threads.                           | `your-technical-channel-id`          | Operational            |
 | `PERSONA_PROMPT_PATH`     | Optional; non-empty when supplied      | `./config/jarvis-persona.md` | Operator-controlled persona file loaded at startup.                                            | `./config/jarvis-persona.md`         | Trusted local content  |
+| `FAQ_CATALOG_PATH`        | Optional; non-empty when supplied      | `./config/faq.json`          | Operator-controlled approved FAQ catalog loaded before Discord login.                          | `./config/faq.json`                  | Trusted local content  |
 | `LOG_LEVEL`               | Optional enum                          | `info`                       | Pino logging level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, or `silent`.           | `info`                               | Operational            |
 
 ## Provider and web-search behavior
@@ -62,6 +63,10 @@ An empty `ALLOWED_CHANNEL_IDS` allows requests in every guild channel where the 
 
 Provider retry counts are attempts after the first request and are bounded to 0 through 10. OpenAI and Ollama each use their own timeout and retry setting; web search has a timeout but no configuration field for retries. The persona path must point to a non-empty readable file with at most 8,000 Unicode characters. It is trusted operator content, not a place for credentials or Discord message text.
 
-The live process does not reload configuration, persona, allowlists, models, or database paths. Restart it after edits. Register commands again after a `MAX_INPUT_CHARS` change because the registration script derives slash-option lengths from that setting.
+The live process does not reload configuration, persona, FAQ catalog,
+allowlists, models, or database paths. Restart it after edits. Register commands
+again after a `MAX_INPUT_CHARS` change or FAQ catalog change because the
+registration script derives slash-option lengths and topic choices from those
+settings.
 
 See [Architecture](ARCHITECTURE.md) for how these settings are consumed and [Development](DEVELOPMENT.md) for a safe local workflow.

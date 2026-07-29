@@ -15,15 +15,15 @@ enhancements.
 
 ## What ships
 
-| Verified capability                                                        | Current boundary                                                                                                                      |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `/ask`, `/search`, `/forget`, `/help`, and `/status`, plus direct mentions | Server channels only; `/ask`, `/search`, and `/forget` enforce the configured channel allowlist                                       |
-| Short conversation context stored in SQLite                                | Isolated by guild and channel or thread; not encrypted by the application                                                             |
-| Local Ollama and OpenAI Responses providers                                | Exactly one provider is selected at startup                                                                                           |
-| Optional balanced Tavily grounding                                         | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence |
-| Bounded input, output, retries, rate limits, retention, and stored rows    | Single-process controls, not distributed coordination                                                                                 |
-| Local responses for clearly unsupported action requests                    | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                     |
-| Native Node.js and hardened Docker Compose deployment paths                | One active Jarvis process and one SQLite database are the supported topology                                                          |
+| Verified capability                                                                | Current boundary                                                                                                                      |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `/ask`, `/search`, `/forget`, `/faq`, `/help`, and `/status`, plus direct mentions | Server channels only; `/ask`, `/search`, `/forget`, and `/faq` enforce the configured channel allowlist                               |
+| Short conversation context stored in SQLite                                        | Isolated by guild and channel or thread; not encrypted by the application                                                             |
+| Local Ollama and OpenAI Responses providers                                        | Exactly one provider is selected at startup                                                                                           |
+| Optional balanced Tavily grounding                                                 | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence |
+| Bounded input, output, retries, rate limits, retention, and stored rows            | Single-process controls, not distributed coordination                                                                                 |
+| Local responses for clearly unsupported action requests                            | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                     |
+| Native Node.js and hardened Docker Compose deployment paths                        | One active Jarvis process and one SQLite database are the supported topology                                                          |
 
 Jarvis does not moderate Discord, change roles or channels, edit content owned
 by others, execute shell commands, access arbitrary files, write to GitHub, or
@@ -98,12 +98,16 @@ Then use this four-command local quick start:
    screenshots, and chat. The default `AI_PROVIDER=ollama` does not require an
    OpenAI key.
 
-3. Register the five guild-scoped commands in the configured development
+3. Register the six guild-scoped commands in the configured development
    server.
 
    ```powershell
    npm run register-commands
    ```
+
+   Run registration once after deploying this release because the checked-in
+   command set changed. The script replaces this application's commands in the
+   configured development guild.
 
 4. Start the development watcher.
 
@@ -153,24 +157,41 @@ gate reduce risk but cannot make language-model output infallible; use
 
 ## Commands
 
-| Command                    | What it does                                                                                                                                |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/ask prompt:<question>`   | Sends a bounded question, persona instructions, and recent channel or thread history to the selected AI provider.                           |
-| `/search query:<question>` | Requires Tavily and forces current web grounding before the selected AI provider answers.                                                   |
-| `/forget`                  | Deletes Jarvis-owned conversation history for the current guild channel or thread.                                                          |
-| `/help`                    | Lists the available commands and safety boundary.                                                                                           |
-| `/status`                  | Reports Discord configuration, SQLite health, selected provider configuration, and web-search configuration without making a model request. |
+| Command                       | What it does                                                                                                                                        |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/ask prompt:<question>`      | Sends a bounded question, persona instructions, and recent channel or thread history to the selected AI provider.                                   |
+| `/search query:<question>`    | Requires Tavily and forces current web grounding before the selected AI provider answers.                                                           |
+| `/forget`                     | Deletes Jarvis-owned conversation history for the current guild channel or thread.                                                                  |
+| `/faq`                        | Lists the approved local FAQ questions publicly without calling AI, Tavily, or SQLite.                                                              |
+| `/faq topic:<approved topic>` | Posts the selected approved local answer publicly without provider usage cost or stored conversation history.                                       |
+| `/help`                       | Lists the available commands and safety boundary.                                                                                                   |
+| `/status`                     | Reports Discord configuration, SQLite health, selected provider configuration, web-search configuration, and FAQ readiness without a model request. |
 
-All commands are server-only. `/ask`, `/search`, and `/forget` enforce
+All commands are server-only. `/ask`, `/search`, `/forget`, and `/faq` enforce
 `ALLOWED_CHANNEL_IDS`; an allowlisted parent channel also permits its threads.
-Each thread still keeps separate history.
+Each thread still keeps separate history. FAQ replies still pass through the
+same mention-neutralizing delivery boundary as other replies.
+
+### Approved FAQ catalog
+
+`FAQ_CATALOG_PATH` selects the operator-controlled JSON catalog and defaults to
+`./config/faq.json`. Jarvis validates and loads 1 to 25 entries before Discord
+login. The registration script validates the same file before building the
+topic choices. Missing or invalid content stops startup or registration instead
+of falling back to an invented answer.
+
+The catalog is checked-in local content. Discord input can select only a
+registered topic ID, never a file path, and Jarvis never edits the catalog.
+Serving `/faq` does not call Ollama, OpenAI, Tavily, or SQLite, so approved
+answers add no AI or search-provider usage cost.
 
 ## Docker
 
 Register commands from the host, then follow
 [Deployment](docs/DEPLOYMENT.md) for the hardened Compose workflow. The
 container exposes no inbound port, runs as a non-root user with a read-only root
-filesystem, and persists SQLite data in the `jarvis-data` named volume.
+filesystem, includes the FAQ catalog in its read-only `/app/config` tree, and
+persists SQLite data in the `jarvis-data` named volume.
 
 If Jarvis runs in Docker Desktop while Ollama runs on the host, set:
 
@@ -190,7 +211,7 @@ server settings, or webhooks. Two deliberate state changes remain:
 
 - `/forget` deletes this bot's stored history for the current conversation.
 - The operator-run registration script bulk-replaces this application's guild
-  command definitions with the checked-in five-command set.
+  command definitions with the checked-in six-command set.
 
 Jarvis also answers clearly unsupported action requests locally instead of
 sending them to the model. That classifier is a user-experience guardrail, not

@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Comprehensive project documentation, policy guidance, GitHub intake forms, and the `docs:check` validation gate.
 - Local UX responses for clearly unsupported action requests, without treating classification as authorization.
+- Interactive `/faq` browsing backed by a validated, checked-in catalog of approved Jarvis answers, with no AI, web-search, or conversation-storage call.
 
 ### Changed
 
