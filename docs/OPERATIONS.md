@@ -176,6 +176,14 @@ internal errors. Treat the message as a service symptom, not a diagnosis.
 
 See [Troubleshooting](TROUBLESHOOTING.md) for symptom-by-symptom recovery.
 
+## Concise-response rollback
+
+If concise routing produces a regression, deploy the previously approved
+application version and restart the single Jarvis process. No command
+registration, database migration, or data deletion is required. Verify one
+casual prompt, one current factual prompt, and an explicit `/search` request
+after rollback. Do not attempt to repair output by deleting conversation data.
+
 ## FAQ rollback
 
 If the FAQ release fails validation or live checks, stop Jarvis, deploy the

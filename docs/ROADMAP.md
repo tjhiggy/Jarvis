@@ -17,17 +17,14 @@ dates, promises, or claims that an interface declaration is a working feature.
   for the current conversation.
 - OpenAI Responses and local Ollama providers with timeouts and bounded retries;
   optional Tavily web grounding with bounded results and in-memory caching.
+- Optional administrator-created anonymous polls with fixed durations,
+  two-to-five options, changeable anonymous selections, live aggregate totals,
+  local SQLite recovery, and administrator early-close controls.
 - Native Windows startup support and an optional hardened Docker Compose
   deployment with a persistent named SQLite volume.
 - Deliberately inert extension contracts and documented operating boundaries.
 
 ## Next
-
-**Release pending, not deployed.** Enable the reviewed anonymous-poll release
-in an approved guild: configured administrator IDs can create and close
-two-to-five-option polls, members can change one anonymous selection, and
-Jarvis maintains live aggregate totals with local SQLite recovery. Do not mark
-issue #26 implemented until deployment and controlled live verification finish.
 
 **Planned, not implemented.** Add a dedicated `SAFETY_IDENTIFIER_SECRET` so
 safety-identifier derivation no longer depends on an existing provider or bot

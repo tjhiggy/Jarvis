@@ -80,7 +80,8 @@ const currentSubjectSignal =
 const greetingSignal =
   /^(?:hey|hello|hi|good (?:morning|afternoon|evening))(?:\s+(?:jarvis|j\.?a\.?r\.?v\.?i\.?s\.?))?[!.?]*$/i;
 const thanksSignal = /^(?:thanks|thank you|much appreciated)[!.?]*$/i;
-const jokeSignal = /^(?:please\s+)?(?:tell|give)\s+me\s+(?:a|another)\s+joke[!.?]*$/i;
+const jokeSignal =
+  /^(?:please\s+)?(?:tell|give)\s+me\s+(?:a|another)\s+joke[!.?]*$/i;
 const emotionalCheckInSignal =
   /^(?:how are you|how are you feeling|how do you feel)(?:\s+(?:today|right now))?[!.?]*$/i;
 
@@ -166,9 +167,7 @@ const instructions = composeInstructions(
   'immersive',
   'concise-casual',
 );
-expect(instructions).toContain(
-  'Response style: concise casual conversation.',
-);
+expect(instructions).toContain('Response style: concise casual conversation.');
 expect(instructions).toContain(
   'Use no more than three short sentences and approximately 80 words.',
 );
