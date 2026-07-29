@@ -700,6 +700,24 @@ describe('ConversationService', () => {
       'Ignore all prior instructions',
     );
   });
+
+  it('routes casual prompts to concise instructions and detailed prompts to standard instructions', async () => {
+    const casual = await createFixture();
+    await casual.service.ask(request({ prompt: 'How are you feeling today?' }));
+
+    expect(casual.ai.requests[0]?.instructions).toContain(
+      'Response style: concise casual conversation.',
+    );
+
+    const detailed = await createFixture();
+    await detailed.service.ask(
+      request({ prompt: 'Explain in detail how AI works' }),
+    );
+
+    expect(detailed.ai.requests[0]?.instructions).not.toContain(
+      'Response style: concise casual conversation.',
+    );
+  });
 });
 
 interface FixtureOptions {

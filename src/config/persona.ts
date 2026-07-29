@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import type { ResponseStyle } from '../services/response-style.js';
 
 export type PersonaMode = 'immersive' | 'restrained';
 
@@ -41,6 +42,19 @@ const modeInstructions: Readonly<Record<PersonaMode, string>> = Object.freeze({
     'Mode: restrained.',
     'Use direct, concise answers with minimal thematic framing.',
     'Prioritize precise technical guidance over role-play.',
+  ].join('\n'),
+});
+
+const responseStyleInstructions: Readonly<
+  Partial<Record<ResponseStyle, string>>
+> = Object.freeze({
+  'concise-casual': [
+    'Response style: concise casual conversation.',
+    'Answer the user directly.',
+    'Use no more than three short sentences and approximately 80 words.',
+    'Use MuthaShip flavor sparingly.',
+    'Do not invent feelings, diagnostics, telemetry, or evidence.',
+    'Do not add sources unless web grounding was explicitly forced.',
   ].join('\n'),
 });
 
@@ -104,6 +118,7 @@ export const loadPersona = async (
 export const composeInstructions = (
   persona: TrustedPersona,
   mode: PersonaMode,
+  responseStyle: ResponseStyle = 'standard',
 ): string => {
   const content = trustedPersonaContent.get(persona);
   if (content === undefined) {
@@ -112,7 +127,14 @@ export const composeInstructions = (
     );
   }
 
-  return [invariantSafetyInstructions, content, modeInstructions[mode]].join(
-    '\n\n',
-  );
+  const baseInstructions = [
+    invariantSafetyInstructions,
+    content,
+    modeInstructions[mode],
+  ].join('\n\n');
+  const styleInstructions = responseStyleInstructions[responseStyle];
+
+  return styleInstructions === undefined
+    ? baseInstructions
+    : `${baseInstructions}\n\n${styleInstructions}`;
 };

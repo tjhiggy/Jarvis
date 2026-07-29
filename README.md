@@ -143,6 +143,13 @@ definitions, supplied-text work, ordinary drafting or creative requests, and
 timeless coding help normally remain local to preserve Tavily usage and the
 extra search latency.
 
+Casual greetings, thanks, jokes, and emotional check-ins stay local even when
+they contain social uses of words such as `today`. Jarvis gives these prompts a
+trusted concise-response instruction of no more than three short sentences and
+approximately 80 words. Explicit detail requests remain in standard mode, and
+responses are not chopped off after generation. `/search` always overrides
+automatic routing and forces grounding when Tavily is configured.
+
 An automatic search that misses the in-process cache sends a Tavily request and
 consumes provider usage; an equivalent cached query does not make another
 request. Jarvis requests bounded summaries, appends sanitized source links to

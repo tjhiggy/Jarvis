@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Pending release: optional administrator-created anonymous polls with fixed
+- Shipped: optional administrator-created anonymous polls with fixed
   durations, live aggregate totals, vote changes, local SQLite recovery,
   bounded expiry/synchronization maintenance, and `/poll-close`.
 - Comprehensive project documentation, policy guidance, GitHub intake forms, and the `docs:check` validation gate.
@@ -17,6 +17,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Added deterministic concise-casual routing for greetings, thanks, jokes, and
+  emotional check-ins, preventing irrelevant automatic searches while
+  preserving forced `/search` and detailed-answer behavior.
 - Centralized Discord member-mention normalization in the conversation service so mention and slash-command requests share the same boundary.
 - Reworked the Jarvis persona for a sharper, more concise MuthaShip voice with stronger anti-fabrication rules and an explicit verified-member-data boundary.
 - Expanded automatic Tavily grounding from freshness-only prompts to a balanced policy for current and evidence-sensitive factual claims, while keeping basic definitions and ordinary drafting local.
