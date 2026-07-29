@@ -22,5 +22,7 @@ export interface PollView {
   readonly closesAt: Date;
   readonly closedAt?: Date;
   readonly syncState: PollSyncState;
+  readonly syncAttempts: number;
+  readonly nextSyncAt?: Date;
   readonly options: readonly PollOptionView[];
 }
