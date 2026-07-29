@@ -1,3 +1,4 @@
+import { caseFold } from 'unicode-case-folding';
 import {
   pollDurationMilliseconds,
   type PollDurationValue,
@@ -15,11 +16,7 @@ const pollDurations = new Set<PollDurationValue>([
 const codePointLength = (value: string): number => Array.from(value).length;
 
 const normalizeOptionForComparison = (value: string): string =>
-  value
-    .normalize('NFKC')
-    .toLocaleLowerCase('und')
-    .replace(/\u00df/gu, 'ss')
-    .replace(/\u03c2/gu, '\u03c3')
+  caseFold(value.normalize('NFKC'))
     .replace(/\p{White_Space}+/gu, ' ')
     .trim();
 

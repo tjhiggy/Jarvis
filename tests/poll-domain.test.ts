@@ -57,6 +57,7 @@ describe('validatePollInput', () => {
     ['case', ['Ready', 'ready']],
     ['whitespace', ['Ready  now', '  Ready\tnow  ']],
     ['Unicode normalization', ['Café', 'Café']],
+    ['full Unicode case folding', ['\u0345', '\u03b9']],
   ])(
     'rejects duplicate options after Unicode normalization: %s',
     (_label, options) => {
