@@ -125,6 +125,35 @@ describe('composeInstructions', () => {
     ).toThrow(/trusted persona/i);
   });
 
+  it('appends trusted concise-casual instructions only for casual responses', async () => {
+    const path = await writeTemporaryPersona('Trusted operator persona.');
+    const persona = await loadPersona(path);
+    const instructions = composeInstructions(
+      persona,
+      'immersive',
+      'concise-casual',
+    );
+
+    expect(instructions).toContain(
+      'Response style: concise casual conversation.',
+    );
+    expect(instructions).toContain(
+      'Use no more than three short sentences and approximately 80 words.',
+    );
+    expect(instructions).toContain('Do not add sources');
+    expect(instructions).toContain(
+      'Do not invent feelings, diagnostics, telemetry, or evidence.',
+    );
+  });
+
+  it('preserves standard instructions byte-for-byte', async () => {
+    const path = await writeTemporaryPersona('Trusted operator persona.');
+    const persona = await loadPersona(path);
+    const omitted = composeInstructions(persona, 'immersive');
+
+    expect(composeInstructions(persona, 'immersive', 'standard')).toBe(omitted);
+  });
+
   it('loads the production persona with concise, sassy, anti-fabrication rules', async () => {
     const persona = await loadPersona('config/jarvis-persona.md');
     const instructions = composeInstructions(persona, 'immersive');

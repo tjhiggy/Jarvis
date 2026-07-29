@@ -21,6 +21,7 @@ import {
   type OperationalLogger,
 } from '../utils/logger.js';
 import { replaceUnverifiedUserMentions } from '../utils/mentions.js';
+import { classifyResponseStyle } from './response-style.js';
 
 export interface ConversationRequest {
   readonly eventId: string;
@@ -215,6 +216,7 @@ export class ConversationService {
             : { parentChannelId: normalized.parentChannelId }),
           restrainedChannelIds: this.options.restrainedChannelIds,
         }),
+        classifyResponseStyle(normalized.prompt),
       );
 
       const localResponse = classifyUnsupportedAction(normalized.prompt);
