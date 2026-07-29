@@ -7,7 +7,11 @@ import type {
   PollSyncState,
   PollView,
 } from './poll-types.js';
-import type { PollStore, ReservePollInput } from './poll-store.js';
+import {
+  PollReservationConflictError,
+  type PollStore,
+  type ReservePollInput,
+} from './poll-store.js';
 
 interface PollRow {
   id: string;
@@ -31,8 +35,6 @@ interface PollOptionRow {
   label: string;
   vote_count: number;
 }
-
-const pollSchemaVersion = 1;
 
 export class SQLitePollStore implements PollStore {
   private readonly database: Database.Database;
@@ -77,7 +79,14 @@ export class SQLitePollStore implements PollStore {
       });
       return this.requirePoll(value.id);
     });
-    return reserve(input);
+    try {
+      return reserve(input);
+    } catch (error) {
+      if (isPollReservationConflict(error)) {
+        throw new PollReservationConflictError();
+      }
+      throw error;
+    }
   }
 
   async activate(pollId: string, messageId: string): Promise<PollView> {
@@ -342,15 +351,13 @@ export class SQLitePollStore implements PollStore {
           )`,
         )
         .run();
-      const applied = this.database
-        .prepare('SELECT 1 FROM poll_schema_migrations WHERE version = ?')
-        .get(pollSchemaVersion);
-      if (applied !== undefined) {
-        return;
-      }
-      this.database
-        .prepare(
-          `CREATE TABLE IF NOT EXISTS polls (
+      const hasInitialSchema = this.database
+        .prepare('SELECT 1 FROM poll_schema_migrations WHERE version = 1')
+        .get();
+      if (hasInitialSchema === undefined) {
+        this.database
+          .prepare(
+            `CREATE TABLE IF NOT EXISTS polls (
             id TEXT PRIMARY KEY,
             guild_id TEXT NOT NULL,
             conversation_id TEXT NOT NULL,
@@ -367,23 +374,23 @@ export class SQLitePollStore implements PollStore {
             sync_state TEXT NOT NULL CHECK (sync_state IN ('pending', 'synced', 'orphaned')),
             sync_attempts INTEGER NOT NULL DEFAULT 0 CHECK (sync_attempts >= 0),
             next_sync_at INTEGER
-          )`,
-        )
-        .run();
-      this.database
-        .prepare(
-          `CREATE TABLE IF NOT EXISTS poll_options (
+            )`,
+          )
+          .run();
+        this.database
+          .prepare(
+            `CREATE TABLE IF NOT EXISTS poll_options (
             poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
             option_index INTEGER NOT NULL CHECK (option_index BETWEEN 0 AND 4),
             label TEXT NOT NULL,
             vote_count INTEGER NOT NULL DEFAULT 0 CHECK (vote_count >= 0),
             PRIMARY KEY (poll_id, option_index)
-          )`,
-        )
-        .run();
-      this.database
-        .prepare(
-          `CREATE TABLE IF NOT EXISTS poll_votes (
+            )`,
+          )
+          .run();
+        this.database
+          .prepare(
+            `CREATE TABLE IF NOT EXISTS poll_votes (
             poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
             voter_key TEXT NOT NULL,
             option_index INTEGER NOT NULL CHECK (option_index BETWEEN 0 AND 4),
@@ -392,32 +399,50 @@ export class SQLitePollStore implements PollStore {
             PRIMARY KEY (poll_id, voter_key),
             FOREIGN KEY (poll_id, option_index)
               REFERENCES poll_options(poll_id, option_index)
-          )`,
-        )
-        .run();
-      this.database
-        .prepare(
-          `CREATE INDEX IF NOT EXISTS polls_due_active
+            )`,
+          )
+          .run();
+        this.database
+          .prepare(
+            `CREATE INDEX IF NOT EXISTS polls_due_active
            ON polls (status, closes_at, id)`,
-        )
-        .run();
-      this.database
-        .prepare(
-          `CREATE INDEX IF NOT EXISTS polls_pending_sync
+          )
+          .run();
+        this.database
+          .prepare(
+            `CREATE INDEX IF NOT EXISTS polls_pending_sync
            ON polls (sync_state, next_sync_at, id)`,
-        )
-        .run();
-      this.database
-        .prepare(
-          `CREATE INDEX IF NOT EXISTS polls_creator_conversation_active
+          )
+          .run();
+        this.database
+          .prepare(
+            `CREATE INDEX IF NOT EXISTS polls_creator_conversation_active
            ON polls (creator_user_id, conversation_id, status)`,
-        )
-        .run();
-      this.database
-        .prepare(
-          'INSERT INTO poll_schema_migrations (version, applied_at) VALUES (?, ?)',
-        )
-        .run(pollSchemaVersion, Date.now());
+          )
+          .run();
+        this.database
+          .prepare(
+            'INSERT INTO poll_schema_migrations (version, applied_at) VALUES (1, ?)',
+          )
+          .run(Date.now());
+      }
+      const hasReservationLimit = this.database
+        .prepare('SELECT 1 FROM poll_schema_migrations WHERE version = 2')
+        .get();
+      if (hasReservationLimit === undefined) {
+        this.database
+          .prepare(
+            `CREATE UNIQUE INDEX IF NOT EXISTS polls_creator_conversation_open
+             ON polls (creator_user_id, conversation_id)
+             WHERE status IN ('creating', 'active')`,
+          )
+          .run();
+        this.database
+          .prepare(
+            'INSERT INTO poll_schema_migrations (version, applied_at) VALUES (2, ?)',
+          )
+          .run(Date.now());
+      }
     })();
   }
 
@@ -518,6 +543,18 @@ export class SQLitePollStore implements PollStore {
       throw new Error('Poll store is closed.');
     }
   }
+}
+
+function isPollReservationConflict(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return (
+    'code' in error &&
+    (error as { code?: string }).code?.startsWith('SQLITE_CONSTRAINT') ===
+      true &&
+    error.message.includes('polls.creator_user_id, polls.conversation_id')
+  );
 }
 
 function toPollView(row: PollRow, options: readonly PollOptionRow[]): PollView {

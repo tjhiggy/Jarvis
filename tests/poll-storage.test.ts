@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PollReservationConflictError } from '../src/polls/poll-store.js';
 import { SQLitePollStore } from '../src/polls/sqlite-poll-store.js';
+import type { PollView } from '../src/polls/poll-types.js';
 
 describe('SQLitePollStore', () => {
   let directory: string;
@@ -60,7 +62,7 @@ describe('SQLitePollStore', () => {
     ).toBeDefined();
     expect(
       database.prepare('SELECT version FROM poll_schema_migrations').all(),
-    ).toEqual([{ version: 1 }]);
+    ).toEqual([{ version: 1 }, { version: 2 }]);
     database.close();
   });
 
@@ -89,6 +91,30 @@ describe('SQLitePollStore', () => {
     await expect(
       store.hasActiveByCreatorInConversation('creator-1', 'conversation-1'),
     ).resolves.toBe(true);
+  });
+
+  it('atomically allows only one creating or active poll per creator conversation', async () => {
+    const secondStore = new SQLitePollStore(databasePath);
+    try {
+      const results = await Promise.allSettled([
+        store.reserve(poll({ id: 'poll00000001' })),
+        secondStore.reserve(poll({ id: 'poll00000002' })),
+      ]);
+      const fulfilled = results.filter(
+        (result): result is PromiseFulfilledResult<PollView> =>
+          result.status === 'fulfilled',
+      );
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected',
+      );
+
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]?.reason).toBeInstanceOf(PollReservationConflictError);
+    } finally {
+      await secondStore.closeConnection();
+    }
   });
 
   it('records initial, repeated, and changed votes with exact aggregate counts', async () => {
@@ -174,7 +200,13 @@ describe('SQLitePollStore', () => {
   it('closes due polls and orders pending synchronization by next retry', async () => {
     await store.reserve(poll({ id: 'poll00000001', closesAt: date(10) }));
     await store.activate('poll00000001', 'message-1');
-    await store.reserve(poll({ id: 'poll00000002', closesAt: date(100) }));
+    await store.reserve(
+      poll({
+        id: 'poll00000002',
+        conversationId: 'conversation-2',
+        closesAt: date(100),
+      }),
+    );
     await store.activate('poll00000002', 'message-2');
     await store.markPendingSync('poll00000002', date(30));
     await store.markPendingSync('poll00000001', date(20));
@@ -216,6 +248,7 @@ function date(seconds: number): Date {
 function poll(
   overrides: Partial<{
     id: string;
+    conversationId: string;
     closesAt: Date;
     createdAt: Date;
   }> = {},

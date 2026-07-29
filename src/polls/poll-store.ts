@@ -1,5 +1,12 @@
 import type { PollView } from './poll-types.js';
 
+export class PollReservationConflictError extends Error {
+  constructor() {
+    super('A poll is already being created or active in this conversation.');
+    this.name = 'PollReservationConflictError';
+  }
+}
+
 export interface ReservePollInput {
   readonly id: string;
   readonly guildId: string;
