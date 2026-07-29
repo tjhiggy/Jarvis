@@ -21,6 +21,7 @@ Grant only the permissions used by the Discord adapter in the channels where Jar
 - **Read Message History**
 - **Send Messages** for normal channels
 - **Send Messages in Threads** when using threads
+- **Embed Links** for the optional poll interface
 
 Users invoking commands also need Discord's **Use Application Commands** access where their role and channel overrides apply. Do not grant Administrator, Manage Channels, Manage Roles, Manage Messages, moderation, webhook, or other unimplemented powers. The bot cannot use them, and granting them is security theater with teeth.
 
