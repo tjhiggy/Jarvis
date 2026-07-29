@@ -92,6 +92,7 @@ const defaultActivePollLimit = 100;
 const defaultCreationLimit = 3;
 const defaultCreationWindowMs = 10 * 60 * 1_000;
 const defaultMaximumRateLimitKeys = 10_000;
+const globalReservationCoordinatorKey = '__poll_reservation_capacity__';
 
 export class DurablePollService implements PollService {
   private readonly coordinator: PollCoordinator;
@@ -135,19 +136,6 @@ export class DurablePollService implements PollService {
     });
     const createdAt = requireValidDate(this.now());
 
-    if ((await this.dependencies.store.countActive()) >= this.activePollLimit) {
-      throw new PollServiceError('capacity_reached');
-    }
-    if (
-      await this.dependencies.store.hasActiveByCreatorInConversation(
-        normalized.creatorUserId,
-        normalized.conversationId,
-      )
-    ) {
-      throw new PollServiceError('creator_poll_exists');
-    }
-    this.consumeCreationRate(normalized.creatorUserId, createdAt.getTime());
-
     const input: ReservePollInput = {
       id: normalizePollId(this.createId()),
       guildId: normalized.guildId,
@@ -162,14 +150,30 @@ export class DurablePollService implements PollService {
         ? {}
         : { parentChannelId: normalized.parentChannelId }),
     };
-    try {
-      return await this.dependencies.store.reserve(input);
-    } catch (error) {
-      if (error instanceof PollReservationConflictError) {
+    return this.coordinator.run(globalReservationCoordinatorKey, async () => {
+      if (
+        (await this.dependencies.store.countActive()) >= this.activePollLimit
+      ) {
+        throw new PollServiceError('capacity_reached');
+      }
+      if (
+        await this.dependencies.store.hasActiveByCreatorInConversation(
+          normalized.creatorUserId,
+          normalized.conversationId,
+        )
+      ) {
         throw new PollServiceError('creator_poll_exists');
       }
-      throw toServiceError(error);
-    }
+      this.consumeCreationRate(normalized.creatorUserId, createdAt.getTime());
+      try {
+        return await this.dependencies.store.reserve(input);
+      } catch (error) {
+        if (error instanceof PollReservationConflictError) {
+          throw new PollServiceError('creator_poll_exists');
+        }
+        throw toServiceError(error);
+      }
+    });
   }
 
   async activate(pollId: string, messageId: string): Promise<PollView> {

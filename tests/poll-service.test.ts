@@ -54,6 +54,31 @@ describe('DurablePollService', () => {
     ).rejects.toMatchObject({ code: 'creation_rate_limited' });
   });
 
+  it('serializes concurrent capacity checks so the active-poll ceiling cannot be exceeded', async () => {
+    const store = createStore();
+    let activePolls = 99;
+    const reserve = store.reserve;
+    store.countActive = async () => activePolls;
+    store.reserve = async (input) => {
+      activePolls += 1;
+      return reserve(input);
+    };
+    const service = createService(store);
+
+    const results = await Promise.allSettled([
+      service.reserve(createRequest()),
+      service.reserve(createRequest({ conversationId: 'conversation-2' })),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === 'rejected'),
+    ).toHaveLength(1);
+    expect(activePolls).toBe(100);
+  });
+
   it('converts raw voter identity to a poll-scoped key before it reaches storage', async () => {
     const store = createStore();
     const seen: string[] = [];
