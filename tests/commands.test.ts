@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createCommandDefinitions } from '../src/commands/definitions.js';
-import type { FaqEntry } from '../src/faq/faq-catalog.js';
+import type { FaqCatalog, FaqEntry } from '../src/faq/faq-catalog.js';
 import {
   handleCommand,
   type CommandDependencies,
@@ -404,6 +404,221 @@ describe('handleCommand', () => {
     expect(fake.edits[0]?.content).not.toContain(internalDetail);
   });
 
+  it('returns only the approved public answer for an exact /faq topic without side effects', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'capabilities' });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'capabilities',
+            label: 'Jarvis capabilities',
+            question: 'What can Jarvis do?',
+            answer: 'Jarvis is an advisory AI, not a command deck.',
+          },
+        ]),
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      {
+        content: 'Jarvis is an advisory AI, not a command deck.',
+        ephemeral: false,
+        allowedMentions: safeMentions,
+      },
+    ]);
+  });
+
+  it('lists approved FAQ questions publicly when /faq omits a topic without side effects', async () => {
+    const fake = interaction({ commandName: 'faq', topic: null });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'capabilities',
+            label: 'Jarvis capabilities',
+            question: 'What can Jarvis do?',
+            answer: 'Jarvis is an advisory AI, not a command deck.',
+          },
+          {
+            id: 'runtime',
+            label: 'Jarvis runtime',
+            question: 'Where does Jarvis run?',
+            answer: 'Jarvis runs locally.',
+          },
+        ]),
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      {
+        content:
+          'Choose an approved FAQ topic:\n- What can Jarvis do?\n- Where does Jarvis run?',
+        ephemeral: false,
+        allowedMentions: safeMentions,
+      },
+    ]);
+  });
+
+  it('guides unknown /faq topics to the approved public questions without side effects', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'self-destruct' });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'capabilities',
+            label: 'Jarvis capabilities',
+            question: 'What can Jarvis do?',
+            answer: 'Jarvis is an advisory AI, not a command deck.',
+          },
+          {
+            id: 'runtime',
+            label: 'Jarvis runtime',
+            question: 'Where does Jarvis run?',
+            answer: 'Jarvis runs locally.',
+          },
+        ]),
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      {
+        content:
+          'That FAQ topic is not available. Choose an approved FAQ topic:\n- Jarvis capabilities\n- Jarvis runtime',
+        ephemeral: false,
+        allowedMentions: safeMentions,
+      },
+    ]);
+  });
+
+  it('rejects /faq from a DM without side effects', async () => {
+    const fake = interaction({
+      commandName: 'faq',
+      guildId: null,
+      topic: 'capabilities',
+    });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'capabilities',
+            label: 'Jarvis capabilities',
+            question: 'What can Jarvis do?',
+            answer: 'Jarvis is an advisory AI, not a command deck.',
+          },
+        ]),
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/server/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+  });
+
+  it('rejects /faq outside the direct channel allowlist without side effects', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'capabilities' });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'capabilities',
+            label: 'Jarvis capabilities',
+            question: 'What can Jarvis do?',
+            answer: 'Jarvis is an advisory AI, not a command deck.',
+          },
+        ]),
+        { allowedChannelIds: new Set(['another-channel']) },
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/not available/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+  });
+
+  it('accepts /faq in a thread whose parent is allowlisted without side effects', async () => {
+    const fake = interaction({
+      commandName: 'faq',
+      channelId: 'thread-1',
+      parentId: 'allowed-parent',
+      isThread: true,
+      topic: 'runtime',
+    });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'runtime',
+            label: 'Jarvis runtime',
+            question: 'Where does Jarvis run?',
+            answer: 'Jarvis runs locally.',
+          },
+        ]),
+        { allowedChannelIds: new Set(['allowed-parent']) },
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      {
+        content: 'Jarvis runs locally.',
+        ephemeral: false,
+        allowedMentions: safeMentions,
+      },
+    ]);
+  });
+
+  it('neutralizes mass mentions in approved /faq answers without side effects', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'mentions' });
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'mentions',
+            label: 'Mention safety',
+            question: 'How are mentions handled?',
+            answer: '@everyone, remain calm.',
+          },
+        ]),
+      ),
+    );
+
+    expect(fake.deferred).toEqual([]);
+    expect(fake.replies).toEqual([
+      {
+        content: '@\u200beveryone, remain calm.',
+        ephemeral: false,
+        allowedMentions: safeMentions,
+      },
+    ]);
+  });
+
   it('lists every supported command and no imaginary server controls in /help', async () => {
     const fake = interaction({ commandName: 'help' });
 
@@ -420,6 +635,7 @@ describe('handleCommand', () => {
     expect(content).toContain('/search');
     expect(content).toContain('/help');
     expect(content).toContain('/status');
+    expect(content).toContain('/faq');
     expect(content).not.toMatch(/moderate|ban|kick|role/i);
     expect(content).toMatch(/cannot.*(?:administer|modify).*server/i);
     expect(content).toMatch(/cannot.*(?:tool|external action)/i);
@@ -472,7 +688,7 @@ describe('handleCommand', () => {
     expect(fake.replies).toEqual([
       expect.objectContaining({
         content: expect.stringMatching(
-          /Discord: configured[\s\S]*Database: healthy[\s\S]*AI provider: Ollama[\s\S]*AI configuration: configured[\s\S]*Web search: configured/i,
+          /Discord: configured[\s\S]*Database: healthy[\s\S]*AI provider: Ollama[\s\S]*AI configuration: configured[\s\S]*Web search: configured[\s\S]*FAQ catalog: loaded/i,
         ),
         ephemeral: true,
         allowedMentions: safeMentions,
@@ -503,6 +719,7 @@ function interaction(
     parentId: string | null;
     isThread: boolean;
     prompt: string;
+    topic: string | null;
   }> = {},
 ): {
   readonly interaction: CommandInteraction;
@@ -517,6 +734,7 @@ function interaction(
   const followUps: ReplyPayload[] = [];
   const commandName = overrides.commandName ?? 'help';
   const prompt = overrides.prompt ?? 'What is the plan?';
+  const topic = overrides.topic ?? null;
 
   return {
     deferred,
@@ -534,10 +752,14 @@ function interaction(
       },
       user: { id: 'user-1' },
       options: {
-        getString: (name) =>
-          name === (commandName === 'search' ? 'query' : 'prompt')
+        getString: (name) => {
+          if (commandName === 'faq' && name === 'topic') {
+            return topic;
+          }
+          return name === (commandName === 'search' ? 'query' : 'prompt')
             ? prompt
-            : null,
+            : null;
+        },
       },
       deferReply: async (payload) => {
         deferred.push(payload);
@@ -563,6 +785,7 @@ function dependencies(
     clear: CommandDependencies['conversationService']['clear'];
     healthCheck: CommandDependencies['store']['healthCheck'];
     tavilyApiKey: string;
+    faq: FaqCatalog;
   }> = {},
 ): CommandDependencies {
   return {
@@ -593,5 +816,45 @@ function dependencies(
     store: {
       healthCheck: overrides.healthCheck ?? (async () => true),
     },
+    faq:
+      overrides.faq ??
+      faqCatalog([
+        {
+          id: 'capabilities',
+          label: 'Jarvis capabilities',
+          question: 'What can Jarvis do?',
+          answer: 'Jarvis is an advisory AI, not a command deck.',
+        },
+      ]),
   };
+}
+
+function faqCatalog(entries: readonly FaqEntry[]): FaqCatalog {
+  const entriesById = new Map(
+    entries.map((entry) => [entry.id.trim().toLowerCase(), entry]),
+  );
+
+  return {
+    entries,
+    get: (id) => entriesById.get(id.trim().toLowerCase()),
+  };
+}
+
+function faqDependencies(
+  faq: FaqCatalog,
+  overrides: Readonly<{ allowedChannelIds?: ReadonlySet<string> }> = {},
+): CommandDependencies {
+  return dependencies({
+    faq,
+    allowedChannelIds: overrides.allowedChannelIds,
+    ask: vi.fn(async () => {
+      throw new Error('/faq must not call conversationService.ask');
+    }),
+    clear: vi.fn(async () => {
+      throw new Error('/faq must not call conversationService.clear');
+    }),
+    healthCheck: vi.fn(async () => {
+      throw new Error('/faq must not call store.healthCheck');
+    }),
+  });
 }
