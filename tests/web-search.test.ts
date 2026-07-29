@@ -9,6 +9,8 @@ import {
 describe('requiresWebGrounding', () => {
   it.each([
     ['How are you feeling today?', false],
+    ["What's up?", false],
+    ["How's it going?", false],
     ['What is the weather today?', true],
     ["What's the latest ARC Raiders update?", true],
   ])('routes %s to web grounding: %s', (prompt, expected) => {

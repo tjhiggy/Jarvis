@@ -8,6 +8,9 @@ describe('classifyResponseStyle', () => {
     'Hello Jarvis',
     'Thanks',
     'Tell me a joke',
+    "What's up?",
+    "How's it going?",
+    'How is your day going?',
   ])('classifies casual conversation: %s', (prompt) => {
     expect(classifyResponseStyle(prompt)).toBe('concise-casual');
   });

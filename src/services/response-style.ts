@@ -11,6 +11,8 @@ const jokeSignal =
   /^(?:please\s+)?(?:tell|give)\s+me\s+(?:a|another)\s+joke[!.?]*$/i;
 const emotionalCheckInSignal =
   /^(?:how are you|how are you feeling|how do you feel)(?:\s+(?:today|right now))?[!.?]*$/i;
+const smallTalkSignal =
+  /^(?:what(?:['’]s| is) up|how(?:['’]s| is) it going|how(?:['’]s| is) your day going)[!.?]*$/i;
 
 export const isCasualConversationPrompt = (prompt: string): boolean => {
   const normalized = prompt
@@ -29,6 +31,7 @@ export const isCasualConversationPrompt = (prompt: string): boolean => {
     thanksSignal,
     jokeSignal,
     emotionalCheckInSignal,
+    smallTalkSignal,
   ].some((signal) => signal.test(normalized));
 };
 

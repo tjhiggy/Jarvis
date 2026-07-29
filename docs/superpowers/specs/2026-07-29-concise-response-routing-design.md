@@ -1,6 +1,6 @@
 # Concise Response and Search Routing Design
 
-**Issue:** #77  
+**Issue:** #77
 **Status:** Approved design, not implemented
 
 ## Goal
