@@ -79,6 +79,7 @@ export class DiscordPollController implements PollController {
         await this.failActivation(reserved, messageId, error);
         return;
       }
+      await this.synchronize(active);
       this.log('poll_create', 'success', { pollId: active.id });
     } catch (error) {
       if (reserved !== undefined) {

@@ -55,6 +55,46 @@ describe('DiscordPollController', () => {
     expect(calls).toEqual(['reserve', 'create', 'activate']);
   });
 
+  it('synchronizes an active poll after publishing its disabled creating state', async () => {
+    const calls: string[] = [];
+    const service = createService({
+      reserve: async () => {
+        calls.push('reserve');
+        return poll({ status: 'creating', syncState: 'pending' });
+      },
+      activate: async () => {
+        calls.push('activate');
+        return poll({ messageId: 'message-1' });
+      },
+      get: async () => poll({ messageId: 'message-1' }),
+      markSynced: async () => {
+        calls.push('synced');
+      },
+    });
+    const controller = new DiscordPollController({
+      service,
+      gateway: createGateway({
+        create: async (_target, value) => {
+          calls.push(`create:${value.status}`);
+          return 'message-1';
+        },
+        update: async (value) => {
+          calls.push(`update:${value.status}`);
+        },
+      }),
+    });
+
+    await controller.create(createRequest());
+
+    expect(calls).toEqual([
+      'reserve',
+      'create:creating',
+      'activate',
+      'update:active',
+      'synced',
+    ]);
+  });
+
   it('marks failed on creation error and marks an already-created message unavailable on activation error', async () => {
     const first = createService();
     const createFailure = new DiscordPollController({
