@@ -32,6 +32,9 @@ export class PollMessageGatewayError extends Error {
 }
 
 export interface PollMessageTarget {
+  readonly id: string;
+  readonly guildId: string;
+  readonly channelId: string;
   readonly author: Readonly<{ id: string }>;
   edit(options: PollMessagePayload): Promise<unknown>;
 }
@@ -101,7 +104,12 @@ export class DiscordPollMessageGateway implements PollMessageGateway {
         throw new PollMessageGatewayError('unknown-message');
       }
       const message = await channel.messages.fetch(messageId);
-      if (message.author.id !== this.botUserId) {
+      if (
+        message.id !== messageId ||
+        message.guildId !== poll.guildId ||
+        message.channelId !== poll.channelId ||
+        message.author.id !== this.botUserId
+      ) {
         throw new PollMessageGatewayError('permission');
       }
       await message.edit(payload);

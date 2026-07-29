@@ -152,6 +152,9 @@ describe('Discord poll message gateway', () => {
   it('updates only a message authored by Jarvis and can mark it unavailable', async () => {
     const edits: unknown[] = [];
     const message = {
+      id: 'jarvis-message-1',
+      guildId: 'guild-1',
+      channelId: 'channel-1',
       author: { id: 'jarvis-1' },
       edit: async (payload: unknown) => {
         edits.push(payload);
@@ -174,6 +177,39 @@ describe('Discord poll message gateway', () => {
     );
   });
 
+  it.each([
+    ['guild', { guildId: 'guild-2' }],
+    ['channel', { channelId: 'channel-2' }],
+    ['message', { id: 'jarvis-message-2' }],
+  ] as const)(
+    'refuses a Jarvis-authored message with a mismatched stored %s scope',
+    async (_scope, mismatch) => {
+      let edits = 0;
+      const gateway = new DiscordPollMessageGateway({
+        botUserId: 'jarvis-1',
+        fetchChannel: async () => ({
+          messages: {
+            fetch: async () => ({
+              id: 'jarvis-message-1',
+              guildId: 'guild-1',
+              channelId: 'channel-1',
+              author: { id: 'jarvis-1' },
+              edit: async () => {
+                edits += 1;
+              },
+              ...mismatch,
+            }),
+          },
+        }),
+      });
+
+      await expect(
+        gateway.update(poll({ messageId: 'jarvis-message-1' })),
+      ).rejects.toMatchObject({ category: 'permission' });
+      expect(edits).toBe(0);
+    },
+  );
+
   it('rejects foreign messages and maps Discord failures without leaking poll content', async () => {
     const secretQuestion = 'do not leak this question';
     const gateway = new DiscordPollMessageGateway({
@@ -181,6 +217,9 @@ describe('Discord poll message gateway', () => {
       fetchChannel: async () => ({
         messages: {
           fetch: async () => ({
+            id: 'message-1',
+            guildId: 'guild-1',
+            channelId: 'channel-1',
             author: { id: 'someone-else' },
             edit: async () => undefined,
           }),
