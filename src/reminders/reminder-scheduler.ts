@@ -8,10 +8,7 @@ import type {
   ReminderStore,
 } from './reminder-store.js';
 import type { ReminderView } from './reminder-types.js';
-import {
-  projectOperationalError,
-  type OperationalLogger,
-} from '../utils/logger.js';
+import type { OperationalLogger } from '../utils/logger.js';
 
 const defaultIntervalMs = 30_000;
 const defaultBatchSize = 50;
@@ -61,6 +58,15 @@ interface TickCounts {
   failureCategoryCounts: Partial<Record<ReminderFailureCategory, number>>;
 }
 
+type SchedulerFailureOperation =
+  | 'recover_expired_claims'
+  | 'claim_due'
+  | 'deliver'
+  | 'persist_delivery_outcome'
+  | 'cleanup';
+
+type SchedulerFailureCategory = 'storage' | 'delivery' | 'delivery-state';
+
 /** Bounded durable reminder delivery that never overlaps itself. */
 export class ReminderScheduler {
   private readonly intervalMs: number;
@@ -86,9 +92,11 @@ export class ReminderScheduler {
       dependencies.cleanupBatchSize ?? defaultCleanupBatchSize;
     this.leaseTimeoutMs = dependencies.leaseTimeoutMs ?? defaultLeaseTimeoutMs;
     this.retentionDays = dependencies.retentionDays ?? defaultRetentionDays;
-    this.retryDelaysMs = [
-      ...(dependencies.retryDelaysMs ?? defaultRetryDelaysMs),
-    ] as [number, number, number];
+    const retryDelaysMs = dependencies.retryDelaysMs ?? defaultRetryDelaysMs;
+    if (retryDelaysMs.length !== 3) {
+      throw new RangeError('retryDelaysMs must contain exactly three delays.');
+    }
+    this.retryDelaysMs = [...retryDelaysMs] as [number, number, number];
     this.now = dependencies.now ?? (() => new Date());
     this.createLeaseId = dependencies.createLeaseId ?? createReminderLeaseId;
     this.timers = dependencies.timers ?? systemTimers;
@@ -159,9 +167,9 @@ export class ReminderScheduler {
     try {
       counts.recoveredCount =
         await this.dependencies.store.recoverExpiredClaims(leaseCutoff, now);
-    } catch (error) {
+    } catch {
       failed = true;
-      this.logFailure('recover_expired_claims', error);
+      this.logFailure('recover_expired_claims');
     }
 
     let reminders: readonly ReminderView[] = [];
@@ -174,9 +182,9 @@ export class ReminderScheduler {
         this.batchSize,
       );
       counts.claimedCount = reminders.length;
-    } catch (error) {
+    } catch {
       failed = true;
-      this.logFailure('claim_due', error);
+      this.logFailure('claim_due');
     }
 
     if (leaseId !== undefined) {
@@ -184,17 +192,27 @@ export class ReminderScheduler {
         let outcome: ReminderDeliveryOutcome;
         try {
           outcome = await this.dependencies.gateway.deliver(reminder, now);
-        } catch (error) {
+        } catch {
           failed = true;
-          this.logFailure('deliver', error);
+          this.logFailure('deliver');
+          try {
+            await this.dependencies.store.markDeliveryUncertain(
+              reminder.id,
+              leaseId,
+              now,
+            );
+            counts.uncertainCount += 1;
+          } catch {
+            this.logFailure('persist_delivery_outcome');
+          }
           continue;
         }
 
         try {
           await this.persistOutcome(reminder, leaseId, now, outcome, counts);
-        } catch (error) {
+        } catch {
           failed = true;
-          this.logFailure('persist_delivery_outcome', error, outcome.kind);
+          this.logFailure('persist_delivery_outcome');
         }
       }
     }
@@ -206,9 +224,9 @@ export class ReminderScheduler {
         cutoff,
         this.cleanupBatchSize,
       );
-    } catch (error) {
+    } catch {
       failed = true;
-      this.logFailure('cleanup', error);
+      this.logFailure('cleanup');
     }
 
     this.healthyState = !failed;
@@ -278,16 +296,12 @@ export class ReminderScheduler {
     }
   }
 
-  private logFailure(
-    operation: string,
-    error: unknown,
-    outcomeCategory?: ReminderDeliveryOutcome['kind'],
-  ): void {
+  private logFailure(operation: SchedulerFailureOperation): void {
     this.logger.warn(
       {
         operation,
-        ...(outcomeCategory === undefined ? {} : { outcomeCategory }),
-        ...projectOperationalError(error, 'reminder_scheduler'),
+        category: schedulerFailureCategory(operation),
+        failureCount: 1,
       },
       'Reminder scheduler operation failed.',
     );
@@ -311,4 +325,12 @@ function incrementCategory(
   category: ReminderFailureCategory,
 ): void {
   counts[category] = (counts[category] ?? 0) + 1;
+}
+
+function schedulerFailureCategory(
+  operation: SchedulerFailureOperation,
+): SchedulerFailureCategory {
+  if (operation === 'deliver') return 'delivery';
+  if (operation === 'persist_delivery_outcome') return 'delivery-state';
+  return 'storage';
 }

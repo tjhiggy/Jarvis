@@ -111,6 +111,24 @@ describe('ReminderScheduler lifecycle', () => {
     ['leaseTimeoutMs', { leaseTimeoutMs: 0 }],
     ['retentionDays', { retentionDays: 0 }],
     ['retry delay', { retryDelaysMs: [60_000, 0, 900_000] }],
+    [
+      'short retry delay tuple',
+      {
+        retryDelaysMs: [60_000, 300_000] as unknown as readonly [
+          number,
+          number,
+          number,
+        ],
+      },
+    ],
+    [
+      'long retry delay tuple',
+      {
+        retryDelaysMs: [
+          60_000, 300_000, 900_000, 1_800_000,
+        ] as unknown as readonly [number, number, number],
+      },
+    ],
   ] as const)('rejects invalid %s configuration', (_name, overrides) => {
     expect(() =>
       schedulerFor(overrides as Partial<ReminderSchedulerDependencies>),
@@ -208,15 +226,17 @@ describe('ReminderScheduler delivery tick', () => {
     expect(scheduler.healthy).toBe(true);
   });
 
-  it('persists an ambiguous outcome as uncertain and does not repost it on a later tick', async () => {
+  it('persists a rejected gateway call as uncertain and does not repost it after lease expiry', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'jarvis-scheduler-'));
     const store = new SQLiteReminderStore(join(directory, 'reminders.db'));
     let deliveryCount = 0;
+    let currentNow = new Date('2026-07-29T12:00:00.000Z');
     const scheduler = schedulerFor({
       store,
+      now: () => new Date(currentNow),
       gateway: createGateway(async () => {
         deliveryCount += 1;
-        return { kind: 'uncertain' };
+        throw new Error('remote acceptance is unknown');
       }),
     });
     try {
@@ -234,9 +254,12 @@ describe('ReminderScheduler delivery tick', () => {
       );
 
       await scheduler.runNow();
+      expect(scheduler.healthy).toBe(false);
+      currentNow = new Date('2026-07-29T12:10:00.000Z');
       await scheduler.runNow();
 
       expect(deliveryCount).toBe(1);
+      expect(scheduler.healthy).toBe(true);
       await expect(
         store.listByOwner('guild-1', 'owner-1'),
       ).resolves.toMatchObject([
@@ -275,13 +298,18 @@ describe('ReminderScheduler delivery tick', () => {
           throw new Error('TOP SECRET storage detail');
         }
       },
+      markDeliveryUncertain: async (id) => {
+        calls.push(`uncertain:${id}`);
+      },
     });
     const scheduler = schedulerFor({
       store,
       gateway: createGateway(async (value) => {
         calls.push(`deliver:${value.id}`);
         if (value.id === 'gateway-error') {
-          throw new Error('TOP SECRET gateway detail');
+          throw Object.assign(new Error('TOP SECRET gateway detail'), {
+            code: 'USER_DERIVED_SECRET_CODE',
+          });
         }
         return { kind: 'delivered' };
       }),
@@ -295,6 +323,7 @@ describe('ReminderScheduler delivery tick', () => {
 
     expect(calls).toEqual([
       'deliver:gateway-error',
+      'uncertain:gateway-error',
       'deliver:state-error',
       'mark:state-error',
       'deliver:continues',
@@ -302,8 +331,31 @@ describe('ReminderScheduler delivery tick', () => {
     ]);
     expect(scheduler.healthy).toBe(false);
     expect(JSON.stringify(logs)).not.toContain('TOP SECRET');
+    expect(JSON.stringify(logs)).not.toContain('USER_DERIVED_SECRET_CODE');
     expect(JSON.stringify(logs)).not.toContain('gateway-error');
     expect(JSON.stringify(logs)).not.toContain('state-error');
+    expect(
+      logs.filter(({ message }) =>
+        message.includes('scheduler operation failed'),
+      ),
+    ).toEqual([
+      {
+        context: {
+          operation: 'deliver',
+          category: 'delivery',
+          failureCount: 1,
+        },
+        message: 'Reminder scheduler operation failed.',
+      },
+      {
+        context: {
+          operation: 'persist_delivery_outcome',
+          category: 'delivery-state',
+          failureCount: 1,
+        },
+        message: 'Reminder scheduler operation failed.',
+      },
+    ]);
 
     await scheduler.runNow();
     expect(scheduler.healthy).toBe(true);
