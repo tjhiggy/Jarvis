@@ -3,7 +3,10 @@ import {
   DiscordPollController,
   type PollControllerDependencies,
 } from '../src/polls/poll-controller.js';
-import { PollMessageGatewayError } from '../src/polls/poll-message-gateway.js';
+import {
+  DiscordPollMessageGateway,
+  PollMessageGatewayError,
+} from '../src/polls/poll-message-gateway.js';
 import {
   PollServiceError,
   type PollService,
@@ -57,41 +60,103 @@ describe('DiscordPollController', () => {
 
   it('synchronizes an active poll after publishing its disabled creating state', async () => {
     const calls: string[] = [];
+    const initialPayloads: unknown[] = [];
+    const updatedPayloads: unknown[] = [];
     const service = createService({
       reserve: async () => {
         calls.push('reserve');
-        return poll({ status: 'creating', syncState: 'pending' });
+        return poll({
+          question: 'Reserved creating snapshot',
+          status: 'creating',
+          syncState: 'pending',
+        });
       },
       activate: async () => {
         calls.push('activate');
-        return poll({ messageId: 'message-1' });
+        return poll({
+          messageId: 'message-1',
+          question: 'Activated snapshot',
+        });
       },
-      get: async () => poll({ messageId: 'message-1' }),
+      get: async () => {
+        calls.push('get');
+        return poll({
+          messageId: 'message-1',
+          question: 'Authoritative active snapshot',
+        });
+      },
       markSynced: async () => {
         calls.push('synced');
       },
     });
     const controller = new DiscordPollController({
       service,
-      gateway: createGateway({
-        create: async (_target, value) => {
-          calls.push(`create:${value.status}`);
-          return 'message-1';
-        },
-        update: async (value) => {
-          calls.push(`update:${value.status}`);
-        },
+      gateway: new DiscordPollMessageGateway({
+        botUserId: 'jarvis-1',
+        fetchChannel: async () => ({
+          messages: {
+            fetch: async () => ({
+              id: 'message-1',
+              guildId: 'guild-1',
+              channelId: 'channel-1',
+              author: { id: 'jarvis-1' },
+              edit: async (payload: unknown) => {
+                updatedPayloads.push(payload);
+              },
+            }),
+          },
+        }),
       }),
     });
 
-    await controller.create(createRequest());
+    await controller.create({
+      ...createRequest(),
+      target: {
+        editReply: async (payload: unknown) => {
+          initialPayloads.push(payload);
+        },
+        fetchReply: async () => ({ id: 'message-1' }),
+      },
+    });
 
-    expect(calls).toEqual([
-      'reserve',
-      'create:creating',
-      'activate',
-      'update:active',
-      'synced',
+    expect(calls).toEqual(['reserve', 'activate', 'get', 'synced']);
+    expect(
+      buttonsFromPayload(initialPayloads[0]).every((button) => button.disabled),
+    ).toBe(true);
+    expect(
+      toJson((initialPayloads[0] as { embeds: readonly unknown[] }).embeds[0])
+        .description,
+    ).toContain('Reserved creating snapshot');
+    expect(
+      buttonsFromPayload(updatedPayloads[0]).every(
+        (button) => !button.disabled,
+      ),
+    ).toBe(true);
+    expect(
+      toJson((updatedPayloads[0] as { embeds: readonly unknown[] }).embeds[0])
+        .description,
+    ).toContain('Authoritative active snapshot');
+  });
+
+  it('keeps an activated poll pending when its initial synchronization read fails', async () => {
+    const service = createService({
+      reserve: async () => poll({ status: 'creating', syncState: 'pending' }),
+      activate: async () => poll({ messageId: 'message-1' }),
+      get: async () => {
+        throw new PollServiceError('storage_error');
+      },
+    });
+    const controller = new DiscordPollController({
+      service,
+      gateway: createGateway(),
+      now: () => new Date('2026-07-29T12:00:00.000Z'),
+    });
+
+    await expect(controller.create(createRequest())).resolves.toBeUndefined();
+
+    expect(service.failed).toEqual([]);
+    expect(service.pending).toEqual([
+      ['abcde234567a', new Date('2026-07-29T12:00:30.000Z')],
     ]);
   });
 
@@ -368,4 +433,17 @@ function deferred<T>(): {
     throw new Error('Deferred promise initialization failed.');
   }
   return { promise, resolve };
+}
+
+function toJson(value: unknown): Record<string, unknown> {
+  return (value as { toJSON(): Record<string, unknown> }).toJSON();
+}
+
+function buttonsFromPayload(
+  payload: unknown,
+): readonly Readonly<{ disabled: boolean }>[] {
+  const row = toJson(
+    (payload as { components: readonly unknown[] }).components[0],
+  );
+  return row.components as readonly Readonly<{ disabled: boolean }>[];
 }
