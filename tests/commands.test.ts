@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { createCommandDefinitions } from '../src/commands/definitions.js';
 import type { FaqCatalog, FaqEntry } from '../src/faq/faq-catalog.js';
 import {
+  pollDurationChoices,
+  pollDurationMilliseconds,
+} from '../src/polls/poll-duration.js';
+import {
   handleCommand,
   type CommandDependencies,
   type CommandInteraction,
@@ -12,7 +16,7 @@ import { isAllowedChannel } from '../src/discord/access.js';
 const safeMentions = { parse: [], repliedUser: false };
 
 describe('command definitions', () => {
-  it('publishes the supported commands with configured question limits and approved FAQ topics', () => {
+  it('retains six commands when poll registration is disabled', () => {
     const definitions = createCommandDefinitions(123, [
       faqEntry('capabilities', 'Jarvis capabilities'),
       faqEntry('runtime', 'Jarvis runtime'),
@@ -57,6 +61,71 @@ describe('command definitions', () => {
         },
       ],
     });
+  });
+
+  it('adds exact poll command contracts when poll registration is enabled', () => {
+    const definitions = createCommandDefinitions(
+      123,
+      [faqEntry('capabilities', 'Jarvis capabilities')],
+      true,
+    );
+
+    expect(definitions.map((definition) => definition.name)).toEqual([
+      'ask',
+      'search',
+      'forget',
+      'help',
+      'status',
+      'faq',
+      'poll',
+      'poll-close',
+    ]);
+    expect(definitions[6]).toMatchObject({
+      name: 'poll',
+      options: [
+        { name: 'question', required: true, max_length: 200 },
+        { name: 'option1', required: true, max_length: 80 },
+        { name: 'option2', required: true, max_length: 80 },
+        { name: 'option3', required: false, max_length: 80 },
+        { name: 'option4', required: false, max_length: 80 },
+        { name: 'option5', required: false, max_length: 80 },
+        {
+          name: 'duration',
+          required: true,
+          choices: [
+            { name: '15 minutes', value: '15m' },
+            { name: '1 hour', value: '1h' },
+            { name: '6 hours', value: '6h' },
+            { name: '24 hours', value: '24h' },
+            { name: '3 days', value: '3d' },
+            { name: '7 days', value: '7d' },
+          ],
+        },
+      ],
+    });
+    expect(definitions[7]).toMatchObject({
+      name: 'poll-close',
+      options: [{ name: 'poll_id', required: true, max_length: 12 }],
+    });
+  });
+
+  it.each([
+    ['15m', 900_000],
+    ['1h', 3_600_000],
+    ['6h', 21_600_000],
+    ['24h', 86_400_000],
+    ['3d', 259_200_000],
+    ['7d', 604_800_000],
+  ] as const)('maps the %s poll duration exactly', (value, milliseconds) => {
+    expect(pollDurationChoices.map((choice) => choice.value)).toEqual([
+      '15m',
+      '1h',
+      '6h',
+      '24h',
+      '3d',
+      '7d',
+    ]);
+    expect(pollDurationMilliseconds(value)).toBe(milliseconds);
   });
 
   it('caps the slash-command prompt at Discord string-option limits', () => {

@@ -52,6 +52,13 @@ const config: AppConfig = {
     promptPath: 'trusted-persona.md',
   },
   faq: { catalogPath: 'faq.json' },
+  polls: {
+    enabled: false,
+    adminUserIds: new Set(),
+    voterSecret: '',
+    retentionDays: 30,
+    expiryCheckSeconds: 30,
+  },
   logging: { level: 'silent' },
 };
 
