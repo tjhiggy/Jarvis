@@ -102,7 +102,18 @@ describe('ReminderService', () => {
   });
 
   it('lists and cancels only owned reminders idempotently', async () => {
-    const { service, store } = fixture();
+    const consumedKeys: string[] = [];
+    const store = new InMemoryReminderStore();
+    const service = new ReminderService({
+      store,
+      rateLimiter: {
+        consume: (key) => {
+          consumedKeys.push(key);
+          return { allowed: true, retryAfterMs: 0 };
+        },
+      },
+      now: () => now,
+    });
     store.reminders.push(
       reminder({ id: 'abcdef234567', ownerUserId: 'user-1' }),
       reminder({ id: 'bcdefg234567', ownerUserId: 'user-2' }),
@@ -132,6 +143,12 @@ describe('ReminderService', () => {
         reminderId: 'bcdefg234567',
       }),
     ).resolves.toBeUndefined();
+    expect(consumedKeys).toEqual([
+      JSON.stringify(['guild-1', 'user-1']),
+      JSON.stringify(['guild-1', 'user-1']),
+      JSON.stringify(['guild-1', 'user-1']),
+      JSON.stringify(['guild-1', 'user-1']),
+    ]);
   });
 
   it('rejects invalid clocks', async () => {
@@ -145,6 +162,46 @@ describe('ReminderService', () => {
     await expect(service.set(request())).rejects.toMatchObject({
       code: 'invalid-request',
     });
+  });
+
+  it.each([
+    ['a non-string duration', { duration: 600_000 }],
+    ['a non-string message', { message: null }],
+    ['a missing owner identifier', { ownerUserId: undefined }],
+    ['a non-string parent channel identifier', { parentChannelId: 4 }],
+  ])(
+    'rejects %s with a public invalid-request error',
+    async (_case, fields) => {
+      const { service } = fixture();
+
+      await expect(
+        service.set({ ...request(), ...fields } as never),
+      ).rejects.toEqual(new ReminderServiceError('invalid-request'));
+    },
+  );
+
+  it('rejects missing list and cancel properties with public invalid-request errors', async () => {
+    const { service } = fixture();
+
+    await expect(service.list({ guildId: 'guild-1' } as never)).rejects.toEqual(
+      new ReminderServiceError('invalid-request'),
+    );
+    await expect(
+      service.cancel({ guildId: 'guild-1', ownerUserId: 'user-1' } as never),
+    ).rejects.toEqual(new ReminderServiceError('invalid-request'));
+  });
+
+  it('rejects a non-Date clock result with a public invalid-request error', async () => {
+    const { store } = fixture();
+    const service = new ReminderService({
+      store,
+      rateLimiter: { consume: () => ({ allowed: true, retryAfterMs: 0 }) },
+      now: () => 'not a date' as never,
+    });
+
+    await expect(service.set(request())).rejects.toEqual(
+      new ReminderServiceError('invalid-request'),
+    );
   });
 });
 

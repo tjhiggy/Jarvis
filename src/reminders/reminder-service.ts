@@ -56,12 +56,13 @@ export class ReminderService {
     readonly duration: string;
     readonly message: string;
   }): Promise<ReminderView> {
-    const guildId = requireIdentifier(request.guildId);
-    const channelId = requireIdentifier(request.channelId);
-    const ownerUserId = requireIdentifier(request.ownerUserId);
-    const parentChannelId = optionalIdentifier(request.parentChannelId);
-    const message = request.message.trim();
-    const duration = parseReminderDuration(request.duration);
+    const input = requireRequest(request);
+    const guildId = requireIdentifier(input.guildId);
+    const channelId = requireIdentifier(input.channelId);
+    const ownerUserId = requireIdentifier(input.ownerUserId);
+    const parentChannelId = optionalIdentifier(input.parentChannelId);
+    const message = requireString(input.message).trim();
+    const duration = parseReminderDuration(requireString(input.duration));
     if (
       message.length === 0 ||
       message.length > 500 ||
@@ -100,8 +101,9 @@ export class ReminderService {
     readonly guildId: string;
     readonly ownerUserId: string;
   }): Promise<readonly ReminderView[]> {
-    const guildId = requireIdentifier(request.guildId);
-    const ownerUserId = requireIdentifier(request.ownerUserId);
+    const input = requireRequest(request);
+    const guildId = requireIdentifier(input.guildId);
+    const ownerUserId = requireIdentifier(input.ownerUserId);
     this.consume(guildId, ownerUserId);
     return (
       await this.dependencies.store.listByOwner(guildId, ownerUserId)
@@ -113,9 +115,10 @@ export class ReminderService {
     readonly ownerUserId: string;
     readonly reminderId: string;
   }): Promise<ReminderView | undefined> {
-    const guildId = requireIdentifier(request.guildId);
-    const ownerUserId = requireIdentifier(request.ownerUserId);
-    const reminderId = requireReminderId(request.reminderId);
+    const input = requireRequest(request);
+    const guildId = requireIdentifier(input.guildId);
+    const ownerUserId = requireIdentifier(input.ownerUserId);
+    const reminderId = requireReminderId(input.reminderId);
     const cancelledAt = requireValidDate(this.now());
     this.consume(guildId, ownerUserId);
     const reminder = await this.dependencies.store.cancelOwned(
@@ -137,22 +140,36 @@ export class ReminderService {
   }
 }
 
-function requireIdentifier(value: string): string {
-  const normalized = value.trim();
+function requireRequest(value: unknown): Readonly<Record<string, unknown>> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ReminderServiceError('invalid-request');
+  }
+  return value as Readonly<Record<string, unknown>>;
+}
+
+function requireString(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new ReminderServiceError('invalid-request');
+  }
+  return value;
+}
+
+function requireIdentifier(value: unknown): string {
+  const normalized = requireString(value).trim();
   if (normalized === '') {
     throw new ReminderServiceError('invalid-request');
   }
   return normalized;
 }
 
-function optionalIdentifier(value: string | undefined): string | undefined {
+function optionalIdentifier(value: unknown): string | undefined {
   if (value === undefined) {
     return undefined;
   }
   return requireIdentifier(value);
 }
 
-function requireReminderId(value: string): string {
+function requireReminderId(value: unknown): string {
   const id = requireIdentifier(value);
   if (!/^[a-z2-7]{12}$/.test(id)) {
     throw new ReminderServiceError('invalid-request');
@@ -160,7 +177,10 @@ function requireReminderId(value: string): string {
   return id;
 }
 
-function requireValidDate(value: Date): Date {
+function requireValidDate(value: unknown): Date {
+  if (!(value instanceof Date)) {
+    throw new ReminderServiceError('invalid-request');
+  }
   if (!Number.isFinite(value.getTime())) {
     throw new ReminderServiceError('invalid-request');
   }
