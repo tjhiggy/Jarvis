@@ -36,7 +36,8 @@ interface ReminderRow {
   updated_at: number;
 }
 
-const activeStatuses = "'pending', 'claimed', 'retry_pending', 'delivery_uncertain'";
+const activeStatuses =
+  "'pending', 'claimed', 'retry_pending', 'delivery_uncertain'";
 
 export class SQLiteReminderStore implements ReminderStore {
   private readonly database: Database.Database;
@@ -103,9 +104,18 @@ export class SQLiteReminderStore implements ReminderStore {
   ): Promise<ReminderView> {
     this.ensureOpen();
     if (!Number.isSafeInteger(activeLimit) || activeLimit < 1) {
-      throw new RangeError('Active reminder limit must be a positive safe integer.');
+      throw new RangeError(
+        'Active reminder limit must be a positive safe integer.',
+      );
     }
-    return this.createTransaction(input, activeLimit);
+    return this.createTransaction(
+      {
+        ...input,
+        dueAt: copyFiniteDate(input.dueAt),
+        createdAt: copyFiniteDate(input.createdAt),
+      },
+      activeLimit,
+    );
   }
 
   async listByOwner(
@@ -132,36 +142,41 @@ export class SQLiteReminderStore implements ReminderStore {
     now: Date,
   ): Promise<ReminderView | undefined> {
     this.ensureOpen();
-    return this.database.transaction(() => {
-      const row = this.database
-        .prepare(
-          'SELECT * FROM reminders WHERE id = ? AND guild_id = ? AND owner_user_id = ?',
-        )
-        .get(reminderId, guildId, ownerUserId) as ReminderRow | undefined;
-      if (row === undefined) return undefined;
-      if (row.status !== 'cancelled') {
-        this.database
+    const nowMilliseconds = finiteDateMilliseconds(now);
+    return this.database
+      .transaction(() => {
+        const row = this.database
           .prepare(
-            `
+            'SELECT * FROM reminders WHERE id = ? AND guild_id = ? AND owner_user_id = ?',
+          )
+          .get(reminderId, guildId, ownerUserId) as ReminderRow | undefined;
+        if (row === undefined) return undefined;
+        if (row.status !== 'cancelled') {
+          this.database
+            .prepare(
+              `
               UPDATE reminders
               SET status = 'cancelled', cancelled_at = ?, updated_at = ?,
                   lease_id = NULL, claimed_at = NULL
               WHERE id = ?
                 AND status IN (${activeStatuses})
             `,
-          )
-          .run(now.getTime(), now.getTime(), reminderId);
-        const cancelled = this.database
-          .prepare('SELECT * FROM reminders WHERE id = ?')
-          .get(reminderId) as ReminderRow;
-        return toReminderView(cancelled);
-      }
-      return toReminderView(row);
-    }).immediate();
+            )
+            .run(nowMilliseconds, nowMilliseconds, reminderId);
+          const cancelled = this.database
+            .prepare('SELECT * FROM reminders WHERE id = ?')
+            .get(reminderId) as ReminderRow;
+          return toReminderView(cancelled);
+        }
+        return toReminderView(row);
+      })
+      .immediate();
   }
 
   async recoverExpiredClaims(leaseCutoff: Date, now: Date): Promise<number> {
     this.ensureOpen();
+    const cutoffMilliseconds = finiteDateMilliseconds(leaseCutoff);
+    const nowMilliseconds = finiteDateMilliseconds(now);
     return this.database
       .prepare(
         `
@@ -171,7 +186,7 @@ export class SQLiteReminderStore implements ReminderStore {
           WHERE status = 'claimed' AND claimed_at < ?
         `,
       )
-      .run(now.getTime(), now.getTime(), leaseCutoff.getTime()).changes;
+      .run(nowMilliseconds, nowMilliseconds, cutoffMilliseconds).changes;
   }
 
   async claimDue(
@@ -180,14 +195,16 @@ export class SQLiteReminderStore implements ReminderStore {
     limit: number,
   ): Promise<readonly ReminderView[]> {
     this.ensureOpen();
+    const nowMilliseconds = finiteDateMilliseconds(now);
     if (!Number.isSafeInteger(limit) || limit < 0) {
       throw new RangeError('Claim limit must be a non-negative safe integer.');
     }
     if (limit === 0) return [];
-    return this.database.transaction(() => {
-      const ids = this.database
-        .prepare(
-          `
+    return this.database
+      .transaction(() => {
+        const ids = this.database
+          .prepare(
+            `
             SELECT id
             FROM reminders
             WHERE (status = 'pending' AND due_at <= ?)
@@ -195,22 +212,27 @@ export class SQLiteReminderStore implements ReminderStore {
             ORDER BY due_at ASC, id ASC
             LIMIT ?
           `,
-        )
-        .all(now.getTime(), now.getTime(), limit) as Array<{ id: string }>;
-      const claim = this.database.prepare(
-        `
+          )
+          .all(nowMilliseconds, nowMilliseconds, limit) as Array<{
+          id: string;
+        }>;
+        const claim = this.database.prepare(
+          `
           UPDATE reminders
           SET status = 'claimed', lease_id = ?, claimed_at = ?, updated_at = ?
           WHERE id = ?
             AND (status = 'pending' OR status = 'retry_pending')
         `,
-      );
-      const getById = this.database.prepare('SELECT * FROM reminders WHERE id = ?');
-      return ids.map(({ id }) => {
-        claim.run(leaseId, now.getTime(), now.getTime(), id);
-        return toReminderView(getById.get(id) as ReminderRow);
-      });
-    }).immediate();
+        );
+        const getById = this.database.prepare(
+          'SELECT * FROM reminders WHERE id = ?',
+        );
+        return ids.map(({ id }) => {
+          claim.run(leaseId, nowMilliseconds, nowMilliseconds, id);
+          return toReminderView(getById.get(id) as ReminderRow);
+        });
+      })
+      .immediate();
   }
 
   async markDelivered(
@@ -219,6 +241,7 @@ export class SQLiteReminderStore implements ReminderStore {
     deliveredAt: Date,
   ): Promise<void> {
     this.ensureOpen();
+    const deliveredMilliseconds = finiteDateMilliseconds(deliveredAt);
     this.transition(
       `
         UPDATE reminders
@@ -227,7 +250,7 @@ export class SQLiteReminderStore implements ReminderStore {
             updated_at = ?
         WHERE id = ? AND status = 'claimed' AND lease_id = ?
       `,
-      [deliveredAt.getTime(), deliveredAt.getTime(), reminderId, leaseId],
+      [deliveredMilliseconds, deliveredMilliseconds, reminderId, leaseId],
     );
   }
 
@@ -239,6 +262,7 @@ export class SQLiteReminderStore implements ReminderStore {
     category: ReminderFailureCategory,
   ): Promise<void> {
     this.ensureOpen();
+    const nextAttemptMilliseconds = finiteDateMilliseconds(nextAttemptAt);
     this.transition(
       `
         UPDATE reminders
@@ -248,7 +272,7 @@ export class SQLiteReminderStore implements ReminderStore {
       `,
       [
         attemptCount,
-        nextAttemptAt.getTime(),
+        nextAttemptMilliseconds,
         category,
         Date.now(),
         reminderId,
@@ -264,6 +288,7 @@ export class SQLiteReminderStore implements ReminderStore {
     category: ReminderFailureCategory,
   ): Promise<void> {
     this.ensureOpen();
+    const failedMilliseconds = finiteDateMilliseconds(failedAt);
     this.transition(
       `
         UPDATE reminders
@@ -271,13 +296,7 @@ export class SQLiteReminderStore implements ReminderStore {
             lease_id = NULL, claimed_at = NULL, failure_category = ?, updated_at = ?
         WHERE id = ? AND status = 'claimed' AND lease_id = ?
       `,
-      [
-        failedAt.getTime(),
-        category,
-        failedAt.getTime(),
-        reminderId,
-        leaseId,
-      ],
+      [failedMilliseconds, category, failedMilliseconds, reminderId, leaseId],
     );
   }
 
@@ -287,6 +306,7 @@ export class SQLiteReminderStore implements ReminderStore {
     uncertainAt: Date,
   ): Promise<void> {
     this.ensureOpen();
+    const uncertainMilliseconds = finiteDateMilliseconds(uncertainAt);
     this.transition(
       `
         UPDATE reminders
@@ -294,14 +314,17 @@ export class SQLiteReminderStore implements ReminderStore {
             lease_id = NULL, claimed_at = NULL, updated_at = ?
         WHERE id = ? AND status = 'claimed' AND lease_id = ?
       `,
-      [uncertainAt.getTime(), uncertainAt.getTime(), reminderId, leaseId],
+      [uncertainMilliseconds, uncertainMilliseconds, reminderId, leaseId],
     );
   }
 
   async cleanup(cutoff: Date, limit: number): Promise<number> {
     this.ensureOpen();
+    const cutoffMilliseconds = finiteDateMilliseconds(cutoff);
     if (!Number.isSafeInteger(limit) || limit < 0) {
-      throw new RangeError('Cleanup limit must be a non-negative safe integer.');
+      throw new RangeError(
+        'Cleanup limit must be a non-negative safe integer.',
+      );
     }
     return this.database
       .prepare(
@@ -317,7 +340,7 @@ export class SQLiteReminderStore implements ReminderStore {
           )
         `,
       )
-      .run(cutoff.getTime(), limit).changes;
+      .run(cutoffMilliseconds, limit).changes;
   }
 
   async statusCounts(): Promise<ReminderStatusCounts> {
@@ -384,7 +407,9 @@ export class SQLiteReminderStore implements ReminderStore {
         )
         .run();
       const applied = this.database
-        .prepare('SELECT version FROM reminder_schema_migrations WHERE version = 1')
+        .prepare(
+          'SELECT version FROM reminder_schema_migrations WHERE version = 1',
+        )
         .get();
       if (applied !== undefined) return;
       this.database
@@ -478,4 +503,15 @@ function toReminderView(row: ReminderRow): ReminderView {
       : { cancelledAt: new Date(row.cancelled_at) }),
     ...(row.failed_at === null ? {} : { failedAt: new Date(row.failed_at) }),
   };
+}
+
+function copyFiniteDate(value: unknown): Date {
+  return new Date(finiteDateMilliseconds(value));
+}
+
+function finiteDateMilliseconds(value: unknown): number {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    throw new TypeError('Expected a finite Date.');
+  }
+  return value.getTime();
 }
