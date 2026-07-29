@@ -99,6 +99,7 @@ describe('loadFaqCatalog', () => {
       [{ ...validEntry, question: 'What can Jarvis do? ' }],
     ],
     ['duplicate normalized IDs', [{ ...validEntry }, { ...validEntry }]],
+    ['empty ID', [{ ...validEntry, id: '' }]],
     ['invalid ID characters', [{ ...validEntry, id: 'not_valid' }]],
     ['ID longer than 32 characters', [{ ...validEntry, id: 'a'.repeat(33) }]],
     ['empty label', [{ ...validEntry, label: '' }]],

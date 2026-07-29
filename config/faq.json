@@ -15,7 +15,7 @@
     "id": "search",
     "label": "Use /search",
     "question": "When should I use /search?",
-    "answer": "Use /search for current, source-sensitive, or fast-changing information. Jarvis will search approved web sources before answering."
+    "answer": "Use /search for current, source-sensitive, or fast-changing information. Jarvis will search current web sources before answering."
   },
   {
     "id": "memory",

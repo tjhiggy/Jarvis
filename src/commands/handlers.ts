@@ -4,6 +4,7 @@ import type { FaqCatalog } from '../faq/faq-catalog.js';
 import { isAllowedChannel } from '../discord/access.js';
 import {
   editDeferredReplySafely,
+  replyImmediatelyInChunksSafely,
   replySafely,
   type DeferredReplyTarget,
   type ReplyPayload,
@@ -258,7 +259,7 @@ const handleFaq = async (
 
   const topic = interaction.options.getString('topic')?.trim();
   if (topic === undefined || topic === '') {
-    await replySafely(
+    await replyImmediatelyInChunksSafely(
       interaction,
       `Choose an approved FAQ topic:\n${faqQuestions(dependencies.faq)}`,
     );
@@ -267,14 +268,14 @@ const handleFaq = async (
 
   const entry = dependencies.faq.get(topic);
   if (entry === undefined) {
-    await replySafely(
+    await replyImmediatelyInChunksSafely(
       interaction,
       `That FAQ topic is not available. Choose an approved FAQ topic:\n${faqLabels(dependencies.faq)}`,
     );
     return;
   }
 
-  await replySafely(interaction, entry.answer);
+  await replyImmediatelyInChunksSafely(interaction, entry.answer);
 };
 
 const faqQuestions = (faq: FaqCatalog): string =>

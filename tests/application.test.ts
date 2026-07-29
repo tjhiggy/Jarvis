@@ -249,6 +249,56 @@ describe('createApplication', () => {
     ]);
   });
 
+  it('projects FAQ catalog startup failures without path, content, or parser telemetry', async () => {
+    const telemetry: Array<{
+      context: Record<string, unknown>;
+      message: string;
+    }> = [];
+    const elapsedTimes = [200, 240];
+    const faqError = Object.assign(
+      new Error(
+        'Unexpected token in C:\\private\\faq.json near approved answer text',
+      ),
+      { code: 'FAQ_PARSE_FAILED:C:\\private\\faq.json' },
+    );
+
+    await expect(
+      createTestApplication({
+        loadConfig: () => config,
+        loadPersona: async () => ({}) as TrustedPersona,
+        loadFaqCatalog: async () => {
+          throw faqError;
+        },
+        createLogger: () =>
+          ({
+            info: () => undefined,
+            warn: () => undefined,
+            error: (
+              context: Record<string, unknown>,
+              message: string,
+            ): void => {
+              telemetry.push({ context, message });
+            },
+          }) as unknown as Logger,
+        elapsedNow: () => elapsedTimes.shift() ?? 240,
+      }),
+    ).rejects.toBe(faqError);
+
+    expect(telemetry).toEqual([
+      {
+        context: {
+          elapsedMs: 40,
+          errorClass: 'Error',
+          errorCategory: 'startup',
+        },
+        message: 'Application startup failed.',
+      },
+    ]);
+    expect(JSON.stringify(telemetry)).not.toMatch(
+      /private|faq\.json|approved answer|unexpected token|parse failed/i,
+    );
+  });
+
   it('shuts down once, stopping event work before closing dependencies', async () => {
     const listeners = new Map<string, (...args: unknown[]) => unknown>();
     let closeCalls = 0;

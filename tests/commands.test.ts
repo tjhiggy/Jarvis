@@ -619,6 +619,55 @@ describe('handleCommand', () => {
     ]);
   });
 
+  it('chunks the maximum valid /faq question listing into safe public replies', async () => {
+    const fake = interaction({ commandName: 'faq', topic: null });
+    const entries = maximumFaqEntries();
+    const expectedContent = `Choose an approved FAQ topic:\n${entries
+      .map((entry) => `- ${entry.question}`)
+      .join('\n')}`;
+
+    await handleCommand(fake.interaction, faqDependencies(faqCatalog(entries)));
+
+    expectSafePublicChunks(fake, expectedContent);
+  });
+
+  it('chunks maximum valid /faq label guidance into safe public replies', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'not-a-topic' });
+    const entries = maximumFaqEntries();
+    const expectedContent =
+      'That FAQ topic is not available. Choose an approved FAQ topic:\n' +
+      entries.map((entry) => `- ${entry.label}`).join('\n');
+
+    await handleCommand(fake.interaction, faqDependencies(faqCatalog(entries)));
+
+    expectSafePublicChunks(fake, expectedContent);
+  });
+
+  it('chunks an 1800-character /faq answer after mention neutralization expands it', async () => {
+    const fake = interaction({ commandName: 'faq', topic: 'mentions' });
+    const answer = '<@123>'.repeat(300);
+    const expectedContent = '<@\u200b123>'.repeat(300);
+
+    expect(answer).toHaveLength(1_800);
+    expect(expectedContent.length).toBeGreaterThan(2_000);
+
+    await handleCommand(
+      fake.interaction,
+      faqDependencies(
+        faqCatalog([
+          {
+            id: 'mentions',
+            label: 'Mention safety',
+            question: 'How are mentions handled?',
+            answer,
+          },
+        ]),
+      ),
+    );
+
+    expectSafePublicChunks(fake, expectedContent);
+  });
+
   it('lists every supported command and no imaginary server controls in /help', async () => {
     const fake = interaction({ commandName: 'help' });
 
@@ -838,6 +887,45 @@ function faqCatalog(entries: readonly FaqEntry[]): FaqCatalog {
     entries,
     get: (id) => entriesById.get(id.trim().toLowerCase()),
   };
+}
+
+function maximumFaqEntries(): readonly FaqEntry[] {
+  return Array.from({ length: 25 }, (_, index) => {
+    const number = String(index + 1);
+    const labelPrefix = `Topic ${number} `;
+    const questionPrefix = `Question ${number} `;
+
+    return {
+      id: `topic-${number}`,
+      label: labelPrefix + 'l'.repeat(100 - labelPrefix.length),
+      question: questionPrefix + 'q'.repeat(200 - questionPrefix.length),
+      answer: `Approved answer ${number}.`,
+    };
+  });
+}
+
+function expectSafePublicChunks(
+  fake: Readonly<{
+    replies: readonly ReplyPayload[];
+    followUps: readonly ReplyPayload[];
+  }>,
+  expectedContent: string,
+): void {
+  expect(fake.replies).toHaveLength(1);
+  expect(fake.followUps.length).toBeGreaterThan(0);
+  const payloads = [...fake.replies, ...fake.followUps];
+
+  expect(payloads.map((payload) => payload.content).join('')).toBe(
+    expectedContent,
+  );
+  for (const payload of payloads) {
+    expect(payload).toEqual({
+      content: expect.any(String),
+      ephemeral: false,
+      allowedMentions: safeMentions,
+    });
+    expect(payload.content?.length).toBeLessThanOrEqual(2_000);
+  }
 }
 
 function faqDependencies(
