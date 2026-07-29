@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Pending release: optional administrator-created anonymous polls with fixed
+- Shipped: optional administrator-created anonymous polls with fixed
   durations, live aggregate totals, vote changes, local SQLite recovery,
   bounded expiry/synchronization maintenance, and `/poll-close`.
 - Comprehensive project documentation, policy guidance, GitHub intake forms, and the `docs:check` validation gate.
