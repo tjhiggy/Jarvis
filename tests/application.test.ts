@@ -107,6 +107,19 @@ describe('reportStartupFailure', () => {
     ]);
     expect(messages.join('\n')).not.toContain('discord-token-secret');
   });
+
+  it('suppresses a newline-suffixed FAQ configuration lookalike', () => {
+    const messages: string[] = [];
+
+    reportStartupFailure(
+      new Error('Invalid FAQ catalog configuration: FAQ_CATALOG_PATH\n'),
+      (message) => {
+        messages.push(message);
+      },
+    );
+
+    expect(messages).toEqual(['Application startup failed.']);
+  });
 });
 
 describe('createApplication', () => {

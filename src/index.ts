@@ -33,8 +33,8 @@ import { createLogger, projectOperationalError } from './utils/logger.js';
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
   /^Invalid environment configuration: (?:[A-Z][A-Z0-9_]*|unknown)(?:, (?:[A-Z][A-Z0-9_]*|unknown))*$/;
-const safeFaqConfigurationError =
-  /^Invalid FAQ catalog configuration: FAQ_CATALOG_PATH$/;
+const safeFaqConfigurationErrorMessage =
+  'Invalid FAQ catalog configuration: FAQ_CATALOG_PATH';
 let dotenvLoaded = false;
 
 interface RuntimeDiscordClient {
@@ -344,7 +344,7 @@ export const reportStartupFailure = (
   const message =
     error instanceof Error &&
     (safeConfigurationError.test(error.message) ||
-      safeFaqConfigurationError.test(error.message))
+      error.message === safeFaqConfigurationErrorMessage)
       ? error.message
       : 'Application startup failed.';
   write(message);
