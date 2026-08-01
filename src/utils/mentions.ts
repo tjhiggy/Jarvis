@@ -20,4 +20,5 @@ export const replaceUnverifiedUserMentions = (content: string): string =>
 export const neutralizeDiscordMentions = (content: string): string =>
   content
     .replace(/@(?=everyone\b|here\b)/gi, '@\u200b')
-    .replace(/<@(?=[!&]?\d+>)/g, '<@\u200b');
+    .replace(/<@(?=[!&]?\d+>)/g, '<@\u200b')
+    .replace(/<#(?=\d+>)/g, '<#\u200b');

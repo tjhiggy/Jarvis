@@ -172,6 +172,24 @@ access, and restart one process. If a poll was orphaned after bounded retries,
 preserve the database for authorized recovery and use a new poll instead of
 manual row edits.
 
+## Reminder is missing, delayed, uncertain, or cannot be cancelled
+
+**Likely cause.** The original channel or thread was removed or is no longer
+allowlisted, permissions changed, Discord returned a transient failure, the
+send outcome was ambiguous, or the reminder is already terminal.
+
+**Safe diagnosis.** Use `/status` for reminder store and scheduler health and
+inspect only content-free operation categories. Confirm the original destination
+still exists and is allowed. Do not paste reminder text, IDs, user IDs, or raw
+Discord errors into tickets. A delivered or failed reminder is intentionally
+not cancellable; unknown and non-owned IDs receive the same safe response.
+
+**Resolution.** Restore the minimum destination access if appropriate and leave
+one process running through the bounded retry cycle. An uncertain outcome is
+not reposted because a duplicate public reminder is worse than a little
+ambiguity. For persistent store failure, stop duplicate processes, restore local
+database access, then restart gracefully. Do not edit SQLite rows manually.
+
 ## Responses are long or arrive in several messages
 
 **Likely cause.** The response approaches Discord's message limit. Jarvis caps

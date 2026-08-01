@@ -39,6 +39,16 @@ reviewed data-minimization design that excludes message content and secrets.
 
 ## Later
 
+**Planned, not implemented.** Shared and administrator-created reminders.
+
+**Planned, not implemented.** Recurring reminders.
+
+**Planned, not implemented.** Exact date/time scheduling and per-user timezones.
+
+**Planned, not implemented.** Reminder DM delivery with channel fallback.
+
+**Planned, not implemented.** Account-wide reminder deletion and export.
+
 **Planned, not implemented.** Introduce read-only integrations for approved
 repositories, MCP context, pull-request summaries, recurring recaps, gaming
 scores, and image-related assistance. Each must begin with explicit

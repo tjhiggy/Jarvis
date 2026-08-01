@@ -1,5 +1,6 @@
-const reminderLimitation =
-  'I cannot schedule reminders, alarms, timers, or future messages yet.';
+const reminderGuidance = 'Use /reminder set to create a personal reminder.';
+const schedulingLimitation =
+  'I cannot schedule alarms, timers, or future messages yet.';
 const communicationLimitation =
   'I cannot place calls, send messages, or contact people.';
 const executionLimitation =
@@ -85,11 +86,19 @@ export const classifyUnsupportedAction = (
   }
 
   if (
-    /\b(?:remind\s+me|set(?:\s+up)?\s+(?:(?:my|a|an|the)\s+)?(?:reminder|alarm|timer)|start\s+(?:a\s+)?timer|schedule\s+(?:me\s+)?(?:(?:a|an|the)\s+)?(?:reminder|alarm|message|recap|post|event))\b/i.test(
+    /\b(?:remind\s+me|set(?:\s+up)?\s+(?:(?:my|a|an|the)\s+)?reminder|schedule\s+(?:me\s+)?(?:(?:a|an|the)\s+)?reminder)\b/i.test(
       action,
     )
   ) {
-    return reminderLimitation;
+    return reminderGuidance;
+  }
+
+  if (
+    /\b(?:set(?:\s+up)?\s+(?:(?:my|a|an|the)\s+)?(?:alarm|timer)|start\s+(?:a\s+)?timer|schedule\s+(?:me\s+)?(?:(?:a|an|the)\s+)?(?:alarm|message|recap|post|event))\b/i.test(
+      action,
+    )
+  ) {
+    return schedulingLimitation;
   }
 
   if (

@@ -40,6 +40,19 @@ import { DurablePollService, type PollService } from './polls/poll-service.js';
 import { PollScheduler } from './polls/poll-scheduler.js';
 import type { PollStore } from './polls/poll-store.js';
 import { SQLitePollStore } from './polls/sqlite-poll-store.js';
+import {
+  DiscordReminderDeliveryGateway,
+  type ReminderDeliveryChannel,
+  type ReminderDeliveryGateway,
+  type ReminderMessagePayload,
+} from './reminders/reminder-delivery-gateway.js';
+import {
+  ReminderScheduler,
+  type ReminderSchedulerDependencies,
+} from './reminders/reminder-scheduler.js';
+import { ReminderService } from './reminders/reminder-service.js';
+import type { ReminderStore } from './reminders/reminder-store.js';
+import { SQLiteReminderStore } from './reminders/sqlite-reminder-store.js';
 import { createLogger, projectOperationalError } from './utils/logger.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
@@ -93,6 +106,14 @@ export interface ApplicationDependencies {
       logger: Logger;
     }>,
   ) => PollScheduler;
+  readonly createReminderStore?: (databasePath: string) => ReminderStore;
+  readonly createReminderGateway?: (dependencies: {
+    readonly client: RuntimeDiscordClient;
+    readonly allowedChannelIds: ReadonlySet<string>;
+  }) => ReminderDeliveryGateway;
+  readonly createReminderScheduler?: (
+    dependencies: ReminderSchedulerDependencies,
+  ) => ReminderScheduler;
   readonly createAIService?: (config: AppConfig) => AIService;
   readonly createDiscordClient?: () => RuntimeDiscordClient;
   readonly createLogger?: (level: string) => Logger;
@@ -190,6 +211,50 @@ const isPollChannelTarget = (value: unknown): value is PollChannelTarget =>
   'messages' in value &&
   typeof (value as { readonly messages?: unknown }).messages === 'object';
 
+const createDefaultReminderGateway = (dependencies: {
+  readonly client: RuntimeDiscordClient;
+  readonly allowedChannelIds: ReadonlySet<string>;
+}): ReminderDeliveryGateway =>
+  new DiscordReminderDeliveryGateway({
+    allowedChannelIds: dependencies.allowedChannelIds,
+    fetchChannel: async (channelId) =>
+      toReminderDeliveryChannel(
+        await dependencies.client.channels?.fetch(channelId),
+      ),
+  });
+
+const toReminderDeliveryChannel = (
+  value: unknown,
+): ReminderDeliveryChannel | undefined => {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('id' in value) ||
+    typeof value.id !== 'string' ||
+    !('guildId' in value) ||
+    typeof value.guildId !== 'string' ||
+    !('send' in value) ||
+    typeof value.send !== 'function'
+  ) {
+    return undefined;
+  }
+  const parentId =
+    'parentId' in value &&
+    typeof value.parentId === 'string' &&
+    value.parentId.trim() !== ''
+      ? value.parentId
+      : undefined;
+  const send = value.send as (
+    payload: ReminderMessagePayload,
+  ) => Promise<unknown>;
+  return {
+    id: value.id,
+    guildId: value.guildId,
+    ...(parentId === undefined ? {} : { parentId }),
+    send: (payload) => send.call(value, payload),
+  };
+};
+
 const registerProcessSignal = (
   signal: NodeJS.Signals,
   handler: () => void | Promise<void>,
@@ -232,6 +297,8 @@ export const createApplication = async (
   let store: ConversationStore | undefined;
   let pollStore: PollStore | undefined;
   let pollScheduler: PollScheduler | undefined;
+  let reminderStore: ReminderStore | undefined;
+  let reminderScheduler: ReminderScheduler | undefined;
   let client: RuntimeDiscordClient | undefined;
   let cleanupTimer: unknown;
   let acceptingWork = false;
@@ -245,6 +312,17 @@ export const createApplication = async (
         cleanupTimer = undefined;
       }
 
+      if (reminderScheduler !== undefined) {
+        try {
+          await reminderScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'reminder_scheduler_shutdown'),
+            'Reminder scheduler stop failed during shutdown.',
+          );
+        }
+      }
+
       if (pollScheduler !== undefined) {
         try {
           await pollScheduler.stop();
@@ -252,6 +330,17 @@ export const createApplication = async (
           logger?.warn(
             { error },
             'Poll scheduler stop failed during shutdown.',
+          );
+        }
+      }
+
+      if (reminderStore !== undefined) {
+        try {
+          await reminderStore.closeConnection();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'reminder_storage_shutdown'),
+            'Reminder storage close failed during shutdown.',
           );
         }
       }
@@ -297,6 +386,10 @@ export const createApplication = async (
       config.storage.maxStoredMessages,
     );
     const initializedStore = store;
+    reminderStore =
+      dependencies.createReminderStore?.(config.storage.databasePath) ??
+      new SQLiteReminderStore(config.storage.databasePath);
+    const initializedReminderStore = reminderStore;
     const ai = aiFactory(config);
     client = discordFactory();
 
@@ -327,6 +420,13 @@ export const createApplication = async (
           : config.openai.apiKey,
       logger,
       elapsedNow,
+    });
+    const reminderService = new ReminderService({
+      store: initializedReminderStore,
+      rateLimiter: new RateLimiter(
+        config.security.rateLimitRequests,
+        config.security.rateLimitWindowMs,
+      ),
     });
     const cleanup = async (): Promise<void> => {
       try {
@@ -414,6 +514,30 @@ export const createApplication = async (
         });
     }
 
+    const reminderGateway =
+      dependencies.createReminderGateway?.({
+        client,
+        allowedChannelIds: config.security.allowedChannelIds,
+      }) ??
+      createDefaultReminderGateway({
+        client,
+        allowedChannelIds: config.security.allowedChannelIds,
+      });
+    reminderScheduler =
+      dependencies.createReminderScheduler?.({
+        store: initializedReminderStore,
+        gateway: reminderGateway,
+        timers,
+        logger,
+      }) ??
+      new ReminderScheduler({
+        store: initializedReminderStore,
+        gateway: reminderGateway,
+        timers,
+        logger,
+      });
+    const initializedReminderScheduler = reminderScheduler;
+
     handlerState.handlers = createDiscordHandlers({
       botUserId,
       allowedChannelIds: config.security.allowedChannelIds,
@@ -423,6 +547,11 @@ export const createApplication = async (
           config,
           conversationService,
           store: initializedStore,
+          reminderService,
+          reminderHealth: {
+            store: initializedReminderStore,
+            scheduler: initializedReminderScheduler,
+          },
           faq,
           ...(pollController === undefined ? {} : { pollController }),
           ...(pollStore === undefined || pollScheduler === undefined
@@ -438,6 +567,7 @@ export const createApplication = async (
     });
 
     pollScheduler?.start();
+    reminderScheduler.start();
 
     cleanupTimer = timers.setInterval(() => {
       void cleanup();

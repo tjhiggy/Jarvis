@@ -3,7 +3,7 @@ import { registerCommands } from '../scripts/register-commands.js';
 import type { FaqCatalog } from '../src/faq/faq-catalog.js';
 
 describe('registerCommands', () => {
-  it('bulk-overwrites six disabled-poll commands only on the configured guild route', async () => {
+  it('bulk-overwrites seven disabled-poll commands only on the configured guild route', async () => {
     const calls: Array<{
       route: string;
       options: Readonly<{ body: readonly unknown[] }>;
@@ -52,7 +52,7 @@ describe('registerCommands', () => {
           ? definition.name
           : undefined,
       ),
-    ).toEqual(['ask', 'search', 'forget', 'help', 'status', 'faq']);
+    ).toEqual(['ask', 'search', 'forget', 'help', 'status', 'faq', 'reminder']);
     expect(JSON.stringify(calls[0]?.options.body)).not.toContain(
       'POLL_VOTER_SECRET',
     );
@@ -98,6 +98,7 @@ describe('registerCommands', () => {
       'help',
       'status',
       'faq',
+      'reminder',
       'poll',
       'poll-close',
     ]);

@@ -465,11 +465,11 @@ describe('ConversationService', () => {
   it.each([
     [
       'Can you set a reminder for me?',
-      'I cannot schedule reminders, alarms, timers, or future messages yet.',
+      'Use /reminder set to create a personal reminder.',
     ],
     [
       'Remind me in two minutes',
-      'I cannot schedule reminders, alarms, timers, or future messages yet.',
+      'Use /reminder set to create a personal reminder.',
     ],
     [
       'Call my mom in five seconds',
@@ -509,11 +509,11 @@ describe('ConversationService', () => {
     ],
     [
       'Set up a reminder for me',
-      'I cannot schedule reminders, alarms, timers, or future messages yet.',
+      'Use /reminder set to create a personal reminder.',
     ],
     [
       'Schedule me a reminder tomorrow',
-      'I cannot schedule reminders, alarms, timers, or future messages yet.',
+      'Use /reminder set to create a personal reminder.',
     ],
     [
       'Ban that user',
@@ -533,7 +533,23 @@ describe('ConversationService', () => {
     ],
     [
       'Set my timer for five minutes',
-      'I cannot schedule reminders, alarms, timers, or future messages yet.',
+      'I cannot schedule alarms, timers, or future messages yet.',
+    ],
+    [
+      'Set an alarm for five minutes',
+      'I cannot schedule alarms, timers, or future messages yet.',
+    ],
+    [
+      'Schedule a recap tomorrow',
+      'I cannot schedule alarms, timers, or future messages yet.',
+    ],
+    [
+      'Schedule an event for Friday',
+      'I cannot schedule alarms, timers, or future messages yet.',
+    ],
+    [
+      'Schedule me a DM tomorrow',
+      'I cannot place calls, send messages, or contact people.',
     ],
   ])(
     'blocks unsupported action request %j before the AI',

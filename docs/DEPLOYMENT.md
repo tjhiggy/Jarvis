@@ -25,6 +25,11 @@ only in the ignored `.env` file or an approved secret manager.
    Command registration bulk-overwrites this application's command set in the
    configured guild. It is an operator action, not a health check.
 
+   A reminder-capable revision requires registration before `/reminder set`,
+   `list`, and `cancel` appear. Back up the stopped SQLite database or
+   persistent volume before an upgrade. Registration and live Discord tests are
+   operator actions, never deployment side effects.
+
 4. Choose and prepare the configured provider. For local Ollama, pull the
    configured model using Ollama's supported workflow. For OpenAI, set the
    project-scoped key and verify the configured model is available to that
@@ -37,6 +42,18 @@ only in the ignored `.env` file or an approved secret manager.
 
    Keep that console available and stop the process with `Ctrl+C`. This manual
    native start and stop flow is the supported path.
+
+### Reminder rollout and rollback
+
+After deployment and registration, check `/status` for healthy reminder store
+and scheduler lines. In one allowed non-sensitive channel, set a controlled
+`/reminder` for one minute, confirm the ephemeral acknowledgement and one
+owner-only delivery in that original channel or thread, then cancel any active
+test row. Do not use real reminder text.
+
+If this fails, stop Jarvis, restore the prior approved revision and command
+definitions, and register that prior command set. Keep the SQLite database and
+reminder tables intact unless an authorized backup restore is required.
 
 ### Workstation-specific convenience helper
 

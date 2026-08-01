@@ -15,16 +15,16 @@ enhancements.
 
 ## What ships
 
-| Verified capability                                                                | Current boundary                                                                                                                      |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `/ask`, `/search`, `/forget`, `/faq`, `/help`, and `/status`, plus direct mentions | Server channels only; `/ask`, `/search`, `/forget`, and `/faq` enforce the configured channel allowlist                               |
-| Optional `/poll` and `/poll-close` commands                                        | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls        |
-| Short conversation context stored in SQLite                                        | Isolated by guild and channel or thread; not encrypted by the application                                                             |
-| Local Ollama and OpenAI Responses providers                                        | Exactly one provider is selected at startup                                                                                           |
-| Optional balanced Tavily grounding                                                 | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence |
-| Bounded input, output, retries, rate limits, retention, and stored rows            | Single-process controls, not distributed coordination                                                                                 |
-| Local responses for clearly unsupported action requests                            | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                     |
-| Native Node.js and hardened Docker Compose deployment paths                        | One active Jarvis process and one SQLite database are the supported topology                                                          |
+| Verified capability                                                                             | Current boundary                                                                                                                      |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, and `/reminder`, plus direct mentions | Server channels only; commands enforce the configured channel allowlist, and reminders remain personal to their owner                 |
+| Optional `/poll` and `/poll-close` commands                                                     | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls        |
+| Short conversation context stored in SQLite                                                     | Isolated by guild and channel or thread; not encrypted by the application                                                             |
+| Local Ollama and OpenAI Responses providers                                                     | Exactly one provider is selected at startup                                                                                           |
+| Optional balanced Tavily grounding                                                              | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence |
+| Bounded input, output, retries, rate limits, retention, and stored rows                         | Single-process controls, not distributed coordination                                                                                 |
+| Local responses for clearly unsupported action requests                                         | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                     |
+| Native Node.js and hardened Docker Compose deployment paths                                     | One active Jarvis process and one SQLite database are the supported topology                                                          |
 
 Jarvis does not moderate Discord, change roles or channels, edit content owned
 by others, execute shell commands, access arbitrary files, write to GitHub, or
@@ -105,7 +105,7 @@ Then use this four-command local quick start:
    npm run register-commands
    ```
 
-   Polls disabled produces the six core commands. Configuring both poll
+   Polls disabled produces the seven core commands. Configuring both poll
    credentials adds `/poll` and `/poll-close`. The script replaces only this
    application's commands in the configured development guild.
 
@@ -173,6 +173,9 @@ gate reduce risk but cannot make language-model output infallible; use
 | `/faq topic:<approved topic>`                                           | Posts the selected answer from the active approved local catalog publicly without provider usage cost or stored conversation history.               |
 | `/help`                                                                 | Lists the available commands and safety boundary.                                                                                                   |
 | `/status`                                                               | Reports Discord configuration, SQLite health, selected provider configuration, web-search configuration, and FAQ readiness without a model request. |
+| `/reminder set in:<duration> message:<text>`                            | Creates a personal reminder for the original allowed channel or thread. `in` accepts 1 minute through 30 days; text is trimmed to 500 characters.   |
+| `/reminder list`                                                        | Privately lists this user's retained reminders in the current server.                                                                               |
+| `/reminder cancel id:<id>`                                              | Privately cancels one of this user's active reminders. Delivered or failed reminders cannot be cancelled.                                           |
 | `/poll question:<text> option1:<text> option2:<text> duration:<preset>` | Configured administrators create an anonymous two-to-five-option poll. Available only when polls are enabled.                                       |
 | `/poll-close poll_id:<id>`                                              | Configured administrators close an open poll early. Available only when polls are enabled.                                                          |
 
@@ -180,6 +183,21 @@ All commands are server-only. `/ask`, `/search`, `/forget`, and `/faq` enforce
 `ALLOWED_CHANNEL_IDS`; an allowlisted parent channel also permits its threads.
 Each thread still keeps separate history. FAQ replies still pass through the
 same mention-neutralizing delivery boundary as other replies.
+
+### Personal reminders
+
+`/reminder set`, `list`, and `cancel` are personal, server-only commands. Their
+validation, confirmation, list, and error responses are ephemeral. A user may
+hold at most 10 active reminders per guild; each is due after a whole number of
+minutes, hours, or days from 1 minute through 30 days and has at most 500
+trimmed characters. `/forget` clears conversation history only, not reminders.
+
+When due, delivery returns only to its original allowed channel or thread after
+revalidation. The public payload may mention only the verified owner; supplied
+mentions are inert. Transient failures retry after about 1, 5, and 15 minutes;
+ambiguous post-send outcomes stay uncertain instead of being reposted. Terminal
+records are retained for seven days. No DMs, recurring schedules, exact-time or
+timezone input, administrator override, or extra Discord permissions exist.
 
 ### Optional anonymous polls
 

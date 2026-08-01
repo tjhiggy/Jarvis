@@ -103,6 +103,14 @@ invalid content fails closed with a sanitized error that names
   messages. It does not delete messages or gain authority over roles, channels,
   permissions, members, moderation, server settings, or webhooks. Poll text is
   untrusted content and does not enter poll telemetry.
+- **Personal reminder boundary.** `/reminder` is owner-scoped, ephemeral at
+  command time, and delivers only to the original allowed channel or thread
+  after live revalidation. Its public payload permits only the verified owner
+  mention; reminder text cannot activate mass, member, role, or channel
+  mentions. There is no DM, recurring, exact-time, timezone, administrator
+  override, webhook, or external delivery path. SQLite reminder statements are
+  parameterized; lease and uncertain-delivery state prevent unsafe replay, and
+  logs exclude reminder content and Discord identities.
 
 ## Safety identifier
 
