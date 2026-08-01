@@ -54,7 +54,7 @@ After creating `.env` and installing dependencies, register the definitions in t
 npm run register-commands
 ```
 
-The script sends the complete current command set to Discord's guild-command route for `DISCORD_CLIENT_ID` and `DISCORD_GUILD_ID`. Treat it as an operator action: it replaces only this application's registered commands in that guild with the set in `src/commands/definitions.ts`. It does not affect commands owned by other applications, roles, channels, permissions, messages, or server settings. When both poll credentials are configured, the set includes `/poll` and `/poll-close`; otherwise it contains only the six core commands.
+The script sends the complete current command set to Discord's guild-command route for `DISCORD_CLIENT_ID` and `DISCORD_GUILD_ID`. Treat it as an operator action: it replaces only this application's registered commands in that guild with the set in `src/commands/definitions.ts`. It does not affect commands owned by other applications, roles, channels, permissions, messages, or server settings. When both poll credentials are configured, the set includes `/poll` and `/poll-close`; otherwise it contains only the seven core commands.
 
 Global registration is not implemented as a runtime toggle. It is a future, manual deployment change: review and intentionally change the route in `scripts/register-commands.ts` from `Routes.applicationGuildCommands` to `Routes.applicationCommands`, test it, then register deliberately. Do not register both scopes casually; guild commands are the development-safe path.
 

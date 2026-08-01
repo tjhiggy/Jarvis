@@ -105,7 +105,7 @@ Then use this four-command local quick start:
    npm run register-commands
    ```
 
-   Polls disabled produces the six core commands. Configuring both poll
+   Polls disabled produces the seven core commands. Configuring both poll
    credentials adds `/poll` and `/poll-close`. The script replaces only this
    application's commands in the configured development guild.
 
