@@ -165,6 +165,26 @@ describe('SQLiteReminderStore schema and creation', () => {
       [{ id: 'owned', status: 'pending' }],
     );
   });
+
+  it.each(['delivered', 'failed'] as const)(
+    'does not report a terminal %s reminder as cancelled',
+    async (terminalStatus) => {
+      await store.create(reminder({ id: 'terminal' }), 10);
+      await store.claimDue(date(60), 'lease-one', 10);
+      if (terminalStatus === 'delivered') {
+        await store.markDelivered('terminal', 'lease-one', date(61));
+      } else {
+        await store.markFailed('terminal', 'lease-one', date(61), 'service');
+      }
+
+      await expect(
+        store.cancelOwned('guild-1', 'user-1', 'terminal', date(62)),
+      ).resolves.toBeUndefined();
+      await expect(
+        store.listByOwner('guild-1', 'user-1'),
+      ).resolves.toMatchObject([{ id: 'terminal', status: terminalStatus }]);
+    },
+  );
 });
 
 describe('SQLiteReminderStore claims and lifecycle', () => {

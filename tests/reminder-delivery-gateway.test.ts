@@ -176,7 +176,7 @@ describe('DiscordReminderDeliveryGateway', () => {
       ],
     ];
 
-    for (const [_name, result, expected] of cases) {
+    for (const [, result, expected] of cases) {
       const gateway = new DiscordReminderDeliveryGateway({
         allowedChannelIds: new Set(['channel-1']),
         fetchChannel: async () => {

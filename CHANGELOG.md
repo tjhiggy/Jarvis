@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Personal `/reminder set`, `/reminder list`, and `/reminder cancel` commands with owner-only delivery to the original allowed channel or thread, durable SQLite state, bounded retries, and seven-day terminal retention. Not shipped until live deployment verification.
 - Shipped: optional administrator-created anonymous polls with fixed
   durations, live aggregate totals, vote changes, local SQLite recovery,
   bounded expiry/synchronization maintenance, and `/poll-close`.

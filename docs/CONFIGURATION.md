@@ -102,3 +102,15 @@ or poll enablement change because the registration script derives slash-option
 lengths, topic choices, and optional poll commands from those settings.
 
 See [Architecture](ARCHITECTURE.md) for how these settings are consumed and [Development](DEVELOPMENT.md) for a safe local workflow.
+
+## Personal reminder behavior
+
+Reminders add no environment variables, gateway intents, or Discord
+permissions. They use `DATABASE_PATH`, `ALLOWED_CHANNEL_IDS`, and the existing
+rate-limit settings: up to 10 active reminders per guild and owner, a 1-minute
+to 30-day duration, and 500 trimmed characters. Responses are ephemeral;
+delivery returns to the original allowed channel or thread and mentions only its
+owner. `/forget` remains separate conversation-history deletion. The scheduler
+retries transient delivery around 1, 5, and 15 minutes and retains terminal
+rows for seven days. DMs, recurring schedules, exact date/time or timezones,
+and administrator overrides are not configurable because they do not exist.

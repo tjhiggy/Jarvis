@@ -191,3 +191,18 @@ previously approved application version, and run that version's
 `npm run register-commands` once to restore its prior command set. Then start
 one process and repeat the controlled checks. The catalog has no database
 migration, so do not restore or delete SQLite merely to roll back `/faq`.
+
+## Personal reminder operations
+
+Back up the stopped SQLite database or persistent volume before a reminder
+upgrade. After deployment, run command registration, inspect `/status` for
+reminder store and scheduler health, and perform one controlled one-minute test
+in an allowed non-sensitive channel. Confirm one ephemeral acknowledgement and
+one owner-only delivery in the original channel or thread. The scheduler uses
+leases, bounded batches, retries near 1, 5, and 15 minutes, and seven-day
+terminal retention; logs must contain only counts and failure categories.
+
+For a bad rollout, stop the process, restore the prior approved revision and
+command set, re-register, then restart one process. Do not delete reminder
+tables as rollback. `/forget` only clears conversation history and cannot be
+used as account-wide reminder deletion.

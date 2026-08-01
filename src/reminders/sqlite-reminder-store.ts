@@ -151,7 +151,13 @@ export class SQLiteReminderStore implements ReminderStore {
           )
           .get(reminderId, guildId, ownerUserId) as ReminderRow | undefined;
         if (row === undefined) return undefined;
-        if (row.status !== 'cancelled') {
+        if (row.status === 'cancelled') {
+          return toReminderView(row);
+        }
+        if (row.status === 'delivered' || row.status === 'failed') {
+          return undefined;
+        }
+        {
           this.database
             .prepare(
               `
@@ -168,7 +174,6 @@ export class SQLiteReminderStore implements ReminderStore {
             .get(reminderId) as ReminderRow;
           return toReminderView(cancelled);
         }
-        return toReminderView(row);
       })
       .immediate();
   }

@@ -117,7 +117,7 @@ const reminderActiveLimitMessage =
 const reminderRateLimitMessage =
   'Too many reminder requests. Please try again shortly.';
 const reminderNotFoundMessage =
-  'That reminder was not found or you do not own it.';
+  'That reminder was not found, you do not own it, or it can no longer be cancelled.';
 const helpMessage = (pollsEnabled: boolean): string =>
   [
     '/ask prompt:<question> asks Jarvis a question.',

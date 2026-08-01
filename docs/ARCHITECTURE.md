@@ -16,6 +16,7 @@ Jarvis is a single Node.js process. It receives Discord gateway events, applies 
 | Web grounding           | Uses Tavily only when configured and either forced by `/search` or selected by the balanced evidence-routing heuristic.                                                                                                                                  | `src/search/web-search.ts`                                                                                                |
 | Storage                 | Defines the conversation-store boundary and provides the SQLite implementation.                                                                                                                                                                          | `src/storage/conversation-store.ts`, `src/storage/sqlite-conversation-store.ts`                                           |
 | Polls                   | Provides opt-in administrator-created anonymous polls, HMAC voter tokens, aggregate storage, safe bot-owned message updates, and bounded lifecycle maintenance.                                                                                          | `src/polls/`                                                                                                              |
+| Personal reminders      | Separates request validation, durable records, owner-only Discord delivery, and non-overlapping maintenance from conversations and polls.                                                                                                                | `src/reminders/`                                                                                                          |
 | Disabled extensions     | Declares disabled-by-default, operator-approved extension shapes; it does not implement or wire tools.                                                                                                                                                   | `src/extensions/contracts.ts`                                                                                             |
 | Command registration    | Bulk-registers this application's command definitions in the configured development guild.                                                                                                                                                               | `scripts/register-commands.ts`                                                                                            |
 
@@ -77,6 +78,26 @@ buttons, and preserves final totals. `PollScheduler` starts after Discord login,
 never overlaps a tick, closes overdue polls, retries pending bot-message edits,
 marks irrecoverable messages orphaned, and removes terminal rows after
 `POLL_RETENTION_DAYS`.
+
+## Personal reminders
+
+`/reminder set`, `list`, and `cancel` use a dedicated store, service, gateway,
+and non-overlapping scheduler. The service validates strict relative duration,
+500-character text, opaque IDs, and 10 active reminders per guild and owner;
+list and cancellation stay owner-scoped. Active reminders cancel idempotently,
+while delivered and failed rows return no cancellable result.
+
+`SQLiteReminderStore` owns additive `reminders` and
+`reminder_schema_migrations` tables without changing `PRAGMA user_version`.
+It uses parameterized statements, claims due rows with leases, recovers expired
+claims, retries transient delivery around 1, 5, and 15 minutes, preserves
+ambiguous send outcomes as `delivery_uncertain`, and removes terminal rows in
+bounded seven-day cleanup. The gateway revalidates the live guild, channel, and
+thread parent against the allowlist, then permits only the stored owner mention.
+Logs contain only safe counts and categories, never reminder content or IDs.
+Startup opens storage before login and starts the scheduler after handlers;
+shutdown stops new work, awaits reminder then poll schedulers, closes stores,
+then destroys the Discord client.
 
 ## Web-grounding boundary
 
