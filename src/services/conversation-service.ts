@@ -22,6 +22,8 @@ import {
 } from '../utils/logger.js';
 import { replaceUnverifiedUserMentions } from '../utils/mentions.js';
 import { classifyResponseStyle } from './response-style.js';
+import { classifyRuntimeQuestion } from './runtime-question.js';
+import type { RuntimeIdentity } from '../config/runtime-identity.js';
 
 export interface ConversationRequest {
   readonly eventId: string;
@@ -78,6 +80,7 @@ export interface ConversationServiceOptions {
   readonly elapsedNow?: () => number;
   readonly logger?: OperationalLogger;
   readonly maxActiveConversations?: number;
+  readonly runtimeIdentity?: RuntimeIdentity;
 }
 
 interface NormalizedRequest {
@@ -219,7 +222,11 @@ export class ConversationService {
         classifyResponseStyle(normalized.prompt),
       );
 
-      const localResponse = classifyUnsupportedAction(normalized.prompt);
+      const localResponse =
+        classifyRuntimeQuestion(
+          normalized.prompt,
+          this.options.runtimeIdentity,
+        ) ?? classifyUnsupportedAction(normalized.prompt);
       const response =
         localResponse === undefined
           ? await (async () => {
