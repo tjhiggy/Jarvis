@@ -1,13 +1,15 @@
 import type { RuntimeIdentity } from '../config/runtime-identity.js';
 
 const runtimeQuestion =
-  /\b(what|which|tell me|are you)\b.*\b(version|build|release|commit|deployment|running|operating system|os|host|machine|hardware|uptime|model)\b|\b(version|build|release|commit|deployment|operating system|os|host|machine|hardware|uptime|model)\b.*\b(you|jarvis|running)\b/i;
+  /\b(version|build|release|commit|deployment|running|operating system|os|host|machine|hardware|uptime|model)\b/i;
+const selfReference =
+  /\b(jarvis|mutha\s*ship|ship diagnostics|you|your|you're|are you)\b/i;
 
 export const classifyRuntimeQuestion = (
   prompt: string,
   identity: RuntimeIdentity | undefined,
 ): string | undefined => {
-  if (!runtimeQuestion.test(prompt)) {
+  if (!runtimeQuestion.test(prompt) || !selfReference.test(prompt)) {
     return undefined;
   }
 
