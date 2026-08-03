@@ -471,7 +471,26 @@ const reminderDestination = (reminder: ReminderView): string =>
   `<#${reminder.channelId}>`;
 
 const reminderStatus = (reminder: ReminderView): string =>
-  reminder.status.replaceAll('_', ' ');
+  reminder.failureCategory === undefined
+    ? reminder.status.replaceAll('_', ' ')
+    : `${reminder.status.replaceAll('_', ' ')} (${formatReminderFailure(reminder.failureCategory)})`;
+
+const formatReminderFailure = (
+  category: NonNullable<ReminderView['failureCategory']>,
+): string => {
+  switch (category) {
+    case 'unknown-channel':
+      return 'destination unavailable';
+    case 'permission':
+      return 'destination access denied';
+    case 'rate-limit':
+      return 'rate limited';
+    case 'network':
+      return 'network failure';
+    case 'service':
+      return 'Discord service failure';
+  }
+};
 
 const shortReminderText = (message: string): string => {
   const characters = Array.from(message.trim());
