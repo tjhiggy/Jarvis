@@ -22,6 +22,8 @@ export interface ReminderView {
   readonly deliveredAt?: Date;
   readonly cancelledAt?: Date;
   readonly failedAt?: Date;
+  readonly failureCategory?:
+    'unknown-channel' | 'permission' | 'rate-limit' | 'network' | 'service';
 }
 
 export interface ReminderStatusCounts {

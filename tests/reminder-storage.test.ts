@@ -265,7 +265,12 @@ describe('SQLiteReminderStore claims and lifecycle', () => {
     await expect(store.listByOwner('guild-1', 'user-1')).resolves.toMatchObject(
       [
         { id: 'delivered', status: 'delivered', deliveredAt: date(61) },
-        { id: 'failed', status: 'failed', failedAt: date(63) },
+        {
+          id: 'failed',
+          status: 'failed',
+          failedAt: date(63),
+          failureCategory: 'permission',
+        },
         {
           id: 'retry',
           status: 'retry_pending',

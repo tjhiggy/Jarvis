@@ -507,6 +507,9 @@ function toReminderView(row: ReminderRow): ReminderView {
       ? {}
       : { cancelledAt: new Date(row.cancelled_at) }),
     ...(row.failed_at === null ? {} : { failedAt: new Date(row.failed_at) }),
+    ...(row.failure_category === null
+      ? {}
+      : { failureCategory: row.failure_category }),
   };
 }
 
