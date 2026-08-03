@@ -12,6 +12,7 @@ import {
 import type { ReminderScheduler } from '../reminders/reminder-scheduler.js';
 import type { ReminderStore } from '../reminders/reminder-store.js';
 import type { ReminderView } from '../reminders/reminder-types.js';
+import type { RuntimeIdentity } from '../config/runtime-identity.js';
 import { isAllowedChannel } from '../discord/access.js';
 import {
   allowedMentions,
@@ -47,6 +48,7 @@ export interface CommandInteraction extends ReplyTarget, DeferredReplyTarget {
 
 export interface CommandDependencies {
   readonly config: Readonly<{
+    runtimeIdentity?: RuntimeIdentity;
     discord: Readonly<{ token: string; clientId: string; guildId: string }>;
     openai: Readonly<{ apiKey: string }>;
     ai: Readonly<{ provider: 'openai' | 'ollama' }>;
@@ -678,6 +680,11 @@ const handleStatus = async (
       `Database: ${databaseHealthy ? 'healthy' : 'unhealthy'}`,
       `AI provider: ${provider === 'ollama' ? 'Ollama' : 'OpenAI'}`,
       `AI configuration: ${aiConfigured ? 'configured' : 'not configured'}`,
+      ...(dependencies.config.runtimeIdentity === undefined
+        ? []
+        : [
+            `Jarvis version: ${dependencies.config.runtimeIdentity.version} (${dependencies.config.runtimeIdentity.environment})`,
+          ]),
       `Web search: ${
         dependencies.config.webSearch.apiKey.trim() !== ''
           ? 'configured'
