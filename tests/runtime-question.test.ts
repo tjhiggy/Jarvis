@@ -35,5 +35,11 @@ describe('runtime identity and self-question handling', () => {
     expect(
       classifyRuntimeQuestion('How do I check my Windows version?', identity),
     ).toBeUndefined();
+    expect(
+      classifyRuntimeQuestion(
+        "How do I check which version of Windows I'm running?",
+        identity,
+      ),
+    ).toBeUndefined();
   });
 });
