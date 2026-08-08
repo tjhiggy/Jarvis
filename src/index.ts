@@ -71,6 +71,7 @@ import type { EngagementCard } from './engagement/discord-ui.js';
 import { EventService, type EventGateway } from './engagement/events.js';
 import { EventScheduler } from './engagement/event-scheduler.js';
 import { RecapScheduler, RecapService } from './engagement/recap.js';
+import { TriviaService } from './engagement/activity.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -417,6 +418,7 @@ export const createApplication = async (
   let engagementRepository: EngagementRepository | undefined;
   let eventScheduler: EventScheduler | undefined;
   let recapScheduler: RecapScheduler | undefined;
+  let triviaService: TriviaService | undefined;
   let client: RuntimeDiscordClient | undefined;
   let cleanupTimer: unknown;
   let acceptingWork = false;
@@ -644,6 +646,25 @@ export const createApplication = async (
               Pick<EngagementRepository, 'recapSource'>
             >,
           });
+    triviaService =
+      engagementRepository === undefined
+        ? undefined
+        : new TriviaService({
+            repository: engagementRepository as Required<
+              Pick<
+                EngagementRepository,
+                | 'getOptOut'
+                | 'createTriviaRound'
+                | 'getTriviaRound'
+                | 'findOpenTriviaRound'
+                | 'recordTriviaAnswer'
+                | 'getTriviaResults'
+                | 'expireTriviaRounds'
+              >
+            >,
+            createId: () => randomUUID(),
+            maxParticipants: config.engagement.maxParticipants,
+          });
     const cleanup = async (): Promise<void> => {
       try {
         await initializedStore.cleanup(
@@ -701,6 +722,7 @@ export const createApplication = async (
     if (botUserId === undefined || botUserId === '') {
       throw new Error('Discord client did not expose a bot user after login.');
     }
+    await triviaService?.recover();
     await cleanup();
     let pollController: PollController | undefined;
     if (pollStore !== undefined) {
@@ -792,6 +814,7 @@ export const createApplication = async (
                   Pick<EngagementRepository, 'setRecapEnabled'>
                 >,
               }),
+          ...(triviaService === undefined ? {} : { triviaService }),
           ...(config.sleeper?.leagueId === undefined ||
           config.sleeper.leagueId === ''
             ? {}
@@ -822,6 +845,12 @@ export const createApplication = async (
       ...(eventService === undefined
         ? {}
         : { eventService, eventChannelId: config.engagement.channels.eventId }),
+      ...(triviaService === undefined
+        ? {}
+        : {
+            triviaService,
+            activityChannelId: config.engagement.channels.activityId,
+          }),
     });
 
     const schedulerClient = client;

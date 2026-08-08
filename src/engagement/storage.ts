@@ -8,6 +8,7 @@ import type {
   Suggestion,
   SuggestionStatus,
 } from './domain.js';
+import type { TriviaAnswer, TriviaResults, TriviaRound } from './activity.js';
 
 export type EngagementIdempotencyScope = 'interaction' | 'scheduled-job';
 
@@ -144,6 +145,18 @@ export interface EngagementRepository {
     updatedAt: Date,
   ): Promise<Event | undefined>;
   upsertRsvp(input: Rsvp): Promise<Rsvp>;
+  createTriviaRound?(input: TriviaRound): Promise<TriviaRound>;
+  getTriviaRound?(
+    guildId: string,
+    roundId: string,
+  ): Promise<TriviaRound | undefined>;
+  findOpenTriviaRound?(
+    guildId: string,
+    channelId: string,
+  ): Promise<TriviaRound | undefined>;
+  recordTriviaAnswer?(input: TriviaAnswer): Promise<TriviaAnswer>;
+  getTriviaResults?(guildId: string, roundId: string): Promise<TriviaResults>;
+  expireTriviaRounds?(now: Date): Promise<number>;
   respondToEvent?(input: Rsvp): Promise<Rsvp>;
   updateEventMessageId?(
     guildId: string,

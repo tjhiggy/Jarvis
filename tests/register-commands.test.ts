@@ -3,7 +3,7 @@ import { registerCommands } from '../scripts/register-commands.js';
 import type { FaqCatalog } from '../src/faq/faq-catalog.js';
 
 describe('registerCommands', () => {
-  it('bulk-overwrites seven disabled-poll commands only on the configured guild route', async () => {
+  it('bulk-overwrites the configured guild command set when polls are disabled', async () => {
     const calls: Array<{
       route: string;
       options: Readonly<{ body: readonly unknown[] }>;
@@ -67,6 +67,7 @@ describe('registerCommands', () => {
       'suggestion',
       'event',
       'recap',
+      'trivia',
     ]);
     expect(JSON.stringify(calls[0]?.options.body)).not.toContain(
       'POLL_VOTER_SECRET',
@@ -123,6 +124,7 @@ describe('registerCommands', () => {
       'suggestion',
       'event',
       'recap',
+      'trivia',
     ]);
     const payload = JSON.stringify(calls[0]?.options.body);
     expect(payload).not.toContain(voterSecret);

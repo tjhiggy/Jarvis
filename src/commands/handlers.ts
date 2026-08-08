@@ -41,6 +41,8 @@ import type { EventService } from '../engagement/events.js';
 import { handleRecapCommand } from './recap.js';
 import type { RecapService } from '../engagement/recap.js';
 import type { EngagementRepository } from '../engagement/storage.js';
+import { handleTriviaCommand } from './activity.js';
+import type { TriviaService } from '../engagement/activity.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -88,6 +90,7 @@ export interface CommandDependencies {
         suggestionId: string;
         eventId: string;
         recapId: string;
+        activityId: string;
       }>;
       recapSchedule: string;
       adminRoleIds: ReadonlySet<string>;
@@ -132,6 +135,7 @@ export interface CommandDependencies {
   readonly recapRepository?: Required<
     Pick<EngagementRepository, 'setRecapEnabled'>
   >;
+  readonly triviaService?: TriviaService;
 }
 
 const dmMessage = 'This command is available only in a server channel.';
@@ -262,6 +266,15 @@ export const handleCommand = async (
         ...(dependencies.recapRepository === undefined
           ? {}
           : { repository: dependencies.recapRepository }),
+      });
+      return;
+    case 'trivia':
+      await handleTriviaCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId: dependencies.config.engagement?.channels.activityId ?? '',
+        ...(dependencies.triviaService === undefined
+          ? {}
+          : { service: dependencies.triviaService }),
       });
       return;
     case 'help':

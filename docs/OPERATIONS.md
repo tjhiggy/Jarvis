@@ -122,6 +122,17 @@ history only for the current guild channel or thread. These are the
 application's intentional data deletions; do not run manual database cleanup
 as routine maintenance.
 
+## Trivia operations
+
+Trivia is available only in `ENGAGEMENT_ACTIVITY_CHANNEL_ID`. `/trivia start`
+posts a bot-owned one-minute question from the checked-in curated catalog.
+Buttons are valid only on that bot-owned card in its configured guild and
+channel. A restart expires overdue persisted rounds before new work begins.
+The ordinary engagement cleanup removes round results and participant IDs after
+`ENGAGEMENT_RETENTION_DAYS`; owner-data deletion and guild opt-out also remove
+future participation. Do not use this feature for XP, leaderboards, or member
+profiling. That would turn a friendly quiz into surveillance with confetti.
+
 ## Poll lifecycle, recovery, and rollback
 
 When polls are enabled, their tables share `DATABASE_PATH` but are separate

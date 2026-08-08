@@ -114,6 +114,11 @@ interface RecapSubcommandDefinition {
   readonly name: 'preview' | 'enable' | 'pause' | 'resume';
   readonly description: string;
 }
+interface TriviaSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'start';
+  readonly description: string;
+}
 
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
@@ -129,7 +134,8 @@ export type CommandOptionDefinition =
   | SuggestionSubcommandDefinition
   | EventOptionDefinition
   | EventSubcommandDefinition
-  | RecapSubcommandDefinition;
+  | RecapSubcommandDefinition
+  | TriviaSubcommandDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -149,7 +155,8 @@ export interface CommandDefinition {
     | 'suggest'
     | 'suggestion'
     | 'event'
-    | 'recap';
+    | 'recap'
+    | 'trivia';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -635,6 +642,18 @@ export const createCommandDefinitions = (
           type: 1,
           name: 'resume',
           description: 'Resume scheduled weekly recaps.',
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'trivia',
+      description: 'Start one short optional trivia round.',
+      options: [
+        {
+          type: 1,
+          name: 'start',
+          description: 'Open a one-minute curated trivia round.',
         },
       ],
     },

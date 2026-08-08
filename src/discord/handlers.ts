@@ -6,6 +6,7 @@ import {
   type SuggestionService,
 } from '../engagement/suggestions.js';
 import { EventService, EventServiceError } from '../engagement/events.js';
+import { TriviaService, TriviaServiceError } from '../engagement/activity.js';
 import { isAllowedChannel } from './permissions.js';
 import {
   replySafely,
@@ -60,7 +61,7 @@ interface DiscordButtonInteraction extends DiscordInteraction, ReplyTarget {
     parentId: string | null;
     isThread?(): boolean;
   }> | null;
-  readonly user: Readonly<{ id: string }>;
+  readonly user: Readonly<{ id: string; bot?: boolean }>;
   readonly member?: Readonly<{
     roles?: Readonly<{ cache?: Readonly<{ has(roleId: string): boolean }> }>;
   }> | null;
@@ -95,6 +96,8 @@ export interface MessageHandlerDependencies {
   readonly suggestionChannelId?: string;
   readonly eventService?: EventService;
   readonly eventChannelId?: string;
+  readonly triviaService?: TriviaService;
+  readonly activityChannelId?: string;
 }
 
 export interface DiscordHandlers {
@@ -146,6 +149,8 @@ export const createDiscordHandlers = (
           await handleSuggestionButton(button, dependencies);
         } else if (button.customId.trim().startsWith('event:v1:')) {
           await handleEventButton(button, dependencies);
+        } else if (button.customId.trim().startsWith('trivia:v1:')) {
+          await handleTriviaButton(button, dependencies);
         } else {
           await handlePollButton(button, dependencies);
         }
@@ -177,6 +182,85 @@ export const parseEventCustomId = (
           match[2] === 'remind' ? 'yes' : (match[2]! as 'yes' | 'maybe' | 'no'),
         reminderOptIn: match[2] === 'remind',
       };
+};
+export const parseTriviaCustomId = (
+  customId: string,
+): { readonly roundId: string; readonly answerIndex: number } | undefined => {
+  const match = /^trivia:v1:([a-zA-Z0-9-]{1,64}):([0-3])$/.exec(
+    customId.trim(),
+  );
+  return match === null
+    ? undefined
+    : { roundId: match[1]!, answerIndex: Number(match[2]) };
+};
+const handleTriviaButton = async (
+  interaction: DiscordButtonInteraction,
+  dependencies: MessageHandlerDependencies,
+): Promise<void> => {
+  const parsed = parseTriviaCustomId(interaction.customId);
+  const guildId = interaction.guildId?.trim();
+  const channelId = interaction.channelId.trim();
+  if (
+    !parsed ||
+    !dependencies.triviaService ||
+    !guildId ||
+    channelId !== dependencies.activityChannelId?.trim() ||
+    interaction.message.guildId?.trim() !== guildId ||
+    interaction.message.channelId.trim() !== channelId ||
+    interaction.message.author.id.trim() !== dependencies.botUserId.trim()
+  )
+    return replySafely(
+      interaction,
+      'This trivia control is unavailable.',
+      true,
+    );
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const answer = await dependencies.triviaService.answer({
+      guildId,
+      channelId,
+      roundId: parsed.roundId,
+      userId: interaction.user.id,
+      answerIndex: parsed.answerIndex,
+      isBot: interaction.user.bot === true,
+    });
+    await interaction.editReply({
+      content: answer.correct
+        ? 'Answer recorded. Correct.'
+        : 'Answer recorded. Not quite.',
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  } catch (error) {
+    const message =
+      error instanceof TriviaServiceError && error.code === 'expired'
+        ? await triviaResultsMessage(
+            dependencies.triviaService,
+            guildId,
+            parsed.roundId,
+          )
+        : error instanceof TriviaServiceError &&
+            error.code === 'duplicate-answer'
+          ? 'You already answered this round.'
+          : error instanceof TriviaServiceError && error.code === 'opted-out'
+            ? 'You have opted out of engagement collection.'
+            : 'This trivia control is unavailable.';
+    await interaction.editReply({
+      content: message,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  }
+};
+const triviaResultsMessage = async (
+  service: TriviaService,
+  guildId: string,
+  roundId: string,
+): Promise<string> => {
+  try {
+    const results = await service.results(guildId, roundId);
+    return `Round closed: ${results.correctCount}/${results.participantCount} correct.`;
+  } catch {
+    return 'This trivia round has closed.';
+  }
 };
 const handleEventButton = async (
   interaction: DiscordButtonInteraction,

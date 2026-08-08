@@ -40,6 +40,8 @@ describe('SQLiteEngagementRepository', () => {
       'engagement_rsvps',
       'engagement_schema_migrations',
       'engagement_suggestions',
+      'engagement_trivia_answers',
+      'engagement_trivia_rounds',
     ]);
     expect(
       database

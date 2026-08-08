@@ -13,6 +13,11 @@ import type {
   Suggestion,
   SuggestionStatus,
 } from '../engagement/domain.js';
+import type {
+  TriviaAnswer,
+  TriviaResults,
+  TriviaRound,
+} from '../engagement/activity.js';
 import {
   EngagementOptOutError,
   EngagementRecordConflictError,
@@ -76,6 +81,17 @@ interface OptOutRow {
   guild_id: string;
   user_id: string;
   opted_out_at: number;
+}
+interface TriviaRoundRow {
+  id: string;
+  guild_id: string;
+  channel_id: string;
+  owner_user_id: string;
+  question_id: string;
+  status: 'open' | 'expired';
+  expires_at: number;
+  created_at: number;
+  updated_at: number;
 }
 
 export class SQLiteEngagementRepository implements EngagementRepository {
@@ -161,6 +177,104 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       participantUserIds,
       botActivity,
     };
+  }
+
+  async createTriviaRound(input: TriviaRound): Promise<TriviaRound> {
+    this.ensureOpen();
+    this.assertNotOptedOut(input.guildId, input.ownerUserId);
+    try {
+      this.database
+        .prepare(
+          'INSERT INTO engagement_trivia_rounds (id, guild_id, channel_id, owner_user_id, question_id, status, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          input.id,
+          input.guildId,
+          input.channelId,
+          input.ownerUserId,
+          input.questionId,
+          input.status,
+          milliseconds(input.expiresAt),
+          milliseconds(input.createdAt),
+          milliseconds(input.updatedAt),
+        );
+    } catch (error) {
+      this.handleConflict(error);
+    }
+    return input;
+  }
+  async getTriviaRound(
+    guildId: string,
+    roundId: string,
+  ): Promise<TriviaRound | undefined> {
+    this.ensureOpen();
+    const row = this.database
+      .prepare(
+        'SELECT * FROM engagement_trivia_rounds WHERE guild_id = ? AND id = ?',
+      )
+      .get(guildId, roundId) as TriviaRoundRow | undefined;
+    return row === undefined ? undefined : triviaRound(row);
+  }
+  async findOpenTriviaRound(
+    guildId: string,
+    channelId: string,
+  ): Promise<TriviaRound | undefined> {
+    this.ensureOpen();
+    const row = this.database
+      .prepare(
+        "SELECT * FROM engagement_trivia_rounds WHERE guild_id = ? AND channel_id = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(guildId, channelId) as TriviaRoundRow | undefined;
+    return row === undefined ? undefined : triviaRound(row);
+  }
+  async recordTriviaAnswer(input: TriviaAnswer): Promise<TriviaAnswer> {
+    this.ensureOpen();
+    try {
+      this.database
+        .prepare(
+          'INSERT INTO engagement_trivia_answers (guild_id, round_id, user_id, correct, answered_at) SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM engagement_opt_outs WHERE guild_id = ? AND user_id = ?)',
+        )
+        .run(
+          input.guildId,
+          input.roundId,
+          input.userId,
+          input.correct ? 1 : 0,
+          milliseconds(input.answeredAt),
+          input.guildId,
+          input.userId,
+        );
+    } catch (error) {
+      this.handleConflict(error);
+    }
+    return input;
+  }
+  async getTriviaResults(
+    guildId: string,
+    roundId: string,
+  ): Promise<TriviaResults> {
+    this.ensureOpen();
+    const row = this.database
+      .prepare(
+        'SELECT count(*) AS participant_count, coalesce(sum(correct), 0) AS correct_count FROM engagement_trivia_answers WHERE guild_id = ? AND round_id = ?',
+      )
+      .get(guildId, roundId) as {
+      participant_count: number;
+      correct_count: number;
+    };
+    return {
+      guildId,
+      roundId,
+      participantCount: Number(row.participant_count),
+      correctCount: Number(row.correct_count),
+    };
+  }
+  async expireTriviaRounds(now: Date): Promise<number> {
+    this.ensureOpen();
+    return this.database
+      .prepare(
+        "UPDATE engagement_trivia_rounds SET status = 'expired', updated_at = ? WHERE status = 'open' AND expires_at <= ?",
+      )
+      .run(milliseconds(now), milliseconds(now)).changes;
   }
 
   async recapEnabled(guildId: string): Promise<boolean> {
@@ -852,6 +966,16 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           'DELETE FROM engagement_rsvps WHERE guild_id = ? AND user_id = ?',
         )
         .run(guildId, userId).changes;
+      const triviaAnswers = this.database
+        .prepare(
+          'DELETE FROM engagement_trivia_answers WHERE guild_id = ? AND user_id = ?',
+        )
+        .run(guildId, userId).changes;
+      const triviaRounds = this.database
+        .prepare(
+          'DELETE FROM engagement_trivia_rounds WHERE guild_id = ? AND owner_user_id = ?',
+        )
+        .run(guildId, userId).changes;
       const events = this.database
         .prepare(
           'DELETE FROM engagement_events WHERE guild_id = ? AND owner_user_id = ?',
@@ -862,7 +986,15 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           'DELETE FROM engagement_opt_outs WHERE guild_id = ? AND user_id = ?',
         )
         .run(guildId, userId).changes;
-      return introductions + suggestions + rsvps + events + optOut;
+      return (
+        introductions +
+        suggestions +
+        rsvps +
+        triviaAnswers +
+        triviaRounds +
+        events +
+        optOut
+      );
     })();
   }
 
@@ -902,6 +1034,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         `DELETE FROM engagement_introductions WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_introductions WHERE status = 'deleted' AND updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
         `DELETE FROM engagement_suggestions WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_suggestions WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
         `DELETE FROM engagement_events WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_events WHERE status IN ('cancelled', 'completed') AND updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
+        `DELETE FROM engagement_trivia_rounds WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_trivia_rounds WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
         `DELETE FROM engagement_idempotency_keys WHERE rowid IN (SELECT rowid FROM engagement_idempotency_keys WHERE created_at < ? ORDER BY created_at ASC, key ASC LIMIT ?)`,
         `DELETE FROM engagement_opt_outs WHERE rowid IN (SELECT rowid FROM engagement_opt_outs WHERE opted_out_at < ? ORDER BY opted_out_at ASC, guild_id ASC, user_id ASC LIMIT ?)`,
       ]) {
@@ -1080,6 +1213,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           "CREATE TABLE IF NOT EXISTS engagement_recap_runs (guild_id TEXT NOT NULL, run_key TEXT NOT NULL, state TEXT NOT NULL CHECK (state IN ('pending', 'completed')), claimed_at INTEGER NOT NULL, lease_token TEXT, completed_at INTEGER, PRIMARY KEY (guild_id, run_key))",
         );
         this.recordMigration(13);
+      }
+      if (!this.hasMigration(14)) {
+        this.database.exec(
+          "CREATE TABLE IF NOT EXISTS engagement_trivia_rounds (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, question_id TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('open', 'expired')), expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id)); CREATE TABLE IF NOT EXISTS engagement_trivia_answers (guild_id TEXT NOT NULL, round_id TEXT NOT NULL, user_id TEXT NOT NULL, correct INTEGER NOT NULL CHECK (correct IN (0, 1)), answered_at INTEGER NOT NULL, PRIMARY KEY (guild_id, round_id, user_id), FOREIGN KEY (guild_id, round_id) REFERENCES engagement_trivia_rounds(guild_id, id) ON DELETE CASCADE); CREATE INDEX IF NOT EXISTS engagement_trivia_expiry ON engagement_trivia_rounds (status, expires_at);",
+        );
+        this.recordMigration(14);
       }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
@@ -1480,6 +1619,19 @@ function toRsvp(row: RsvpRow): Rsvp {
     response: row.response,
     attendance: row.attendance,
     reminderOptIn: row.reminder_opt_in === 1,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+function triviaRound(row: TriviaRoundRow): TriviaRound {
+  return {
+    id: row.id,
+    guildId: row.guild_id,
+    channelId: row.channel_id,
+    ownerUserId: row.owner_user_id,
+    questionId: row.question_id,
+    status: row.status,
+    expiresAt: new Date(row.expires_at),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
