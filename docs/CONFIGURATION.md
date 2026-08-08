@@ -136,8 +136,9 @@ introduction channel. `/introduce` posts only to
 `ENGAGEMENT_INTRODUCTION_CHANNEL_ID`; `/introduce preview` creates a private
 draft and `/introduce confirm` posts it, while `/introduction id:<id>` is the
 owner-only deletion path for its SQLite record and bot-owned card. Retention
-cleanup removes expired bot-owned cards before deleting their records; a card
-that cannot be removed leaves its record in place for the next bounded retry.
+cleanup runs after Discord is ready, removes expired bot-owned cards before
+deleting their records, and marks a failed card deletion `cleanup_pending` so
+generic SQLite cleanup cannot erase the retry state.
 
 ## Retry, persona, and restart rules
 

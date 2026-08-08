@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { IntroductionService } from '../src/engagement/introductions.js';
 import type { EngagementRepository } from '../src/engagement/storage.js';
 import { EngagementRecordConflictError } from '../src/engagement/storage.js';
 import { RateLimiter } from '../src/security/rate-limiter.js';
+import { SQLiteEngagementRepository } from '../src/storage/engagement-sqlite.js';
 
 describe('IntroductionService', () => {
   it('keeps a preview private until its owner confirms and lets the owner cancel it', async () => {
@@ -123,28 +127,36 @@ describe('IntroductionService', () => {
   });
 
   it('allows only one concurrent confirmation for the same owner', async () => {
-    const repository = new MemoryRepository();
-    const service = createService(repository, new Gateway());
-    const first = await service.preview(introductionInput());
-    const second = await service.preview(introductionInput());
-    const results = await Promise.allSettled([
-      service.confirm({
-        guildId: 'guild-1',
-        ownerUserId: 'user-1',
-        draftId: first.id,
-      }),
-      service.confirm({
-        guildId: 'guild-1',
-        ownerUserId: 'user-1',
-        draftId: second.id,
-      }),
-    ]);
-    expect(
-      results.filter((result) => result.status === 'fulfilled'),
-    ).toHaveLength(1);
-    expect(
-      results.filter((result) => result.status === 'rejected'),
-    ).toHaveLength(1);
+    const directory = await mkdtemp(join(tmpdir(), 'jarvis-introduction-'));
+    const repository = new SQLiteEngagementRepository(
+      join(directory, 'engagement.db'),
+    );
+    try {
+      const service = createService(repository, new Gateway());
+      const first = await service.preview(introductionInput());
+      const second = await service.preview(introductionInput());
+      const results = await Promise.allSettled([
+        service.confirm({
+          guildId: 'guild-1',
+          ownerUserId: 'user-1',
+          draftId: first.id,
+        }),
+        service.confirm({
+          guildId: 'guild-1',
+          ownerUserId: 'user-1',
+          draftId: second.id,
+        }),
+      ]);
+      expect(
+        results.filter((result) => result.status === 'fulfilled'),
+      ).toHaveLength(1);
+      expect(
+        results.filter((result) => result.status === 'rejected'),
+      ).toHaveLength(1);
+    } finally {
+      await repository.closeConnection();
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 
   it('deletes expired bot-owned cards before removing retained introductions', async () => {
@@ -166,6 +178,25 @@ describe('IntroductionService', () => {
       repository.getIntroduction('guild-1', created.id),
     ).resolves.toBeUndefined();
   });
+
+  it('retains cleanup-pending records when Discord cannot delete their cards', async () => {
+    const repository = new MemoryRepository();
+    const gateway = new Gateway();
+    gateway.delete = async () => {
+      throw new Error('Discord unavailable');
+    };
+    const service = createService(repository, gateway);
+    const created = await service.submit(introductionInput());
+    repository.introductions.get(`guild-1:${created.id}`).updatedAt = new Date(
+      '2026-01-01T00:00:00.000Z',
+    );
+    await expect(
+      service.cleanup(new Date('2026-08-01T00:00:00.000Z'), 10),
+    ).resolves.toBe(0);
+    expect(repository.introductions.get(`guild-1:${created.id}`)).toMatchObject(
+      { status: 'cleanup_pending' },
+    );
+  });
 });
 
 function introductionInput() {
@@ -180,7 +211,7 @@ function introductionInput() {
 }
 
 function createService(
-  repository: MemoryRepository,
+  repository: EngagementRepository,
   gateway: Gateway,
   capacity = 5,
 ) {
@@ -201,9 +232,9 @@ class Gateway {
     this.posts.push({ channelId, content });
     return { id: 'message-1' };
   }
-  async delete(channelId: string, messageId: string) {
+  delete = async (channelId: string, messageId: string) => {
     this.deletes.push({ channelId, messageId });
-  }
+  };
 }
 
 class MemoryRepository implements EngagementRepository {
@@ -263,7 +294,11 @@ class MemoryRepository implements EngagementRepository {
   }
   async listExpiredIntroductions(cutoff: Date, limit: number) {
     return [...this.introductions.values()]
-      .filter((value) => value.updatedAt < cutoff)
+      .filter(
+        (value) =>
+          value.status === 'cleanup_pending' ||
+          (value.status === 'active' && value.updatedAt < cutoff),
+      )
       .slice(0, limit);
   }
   async deleteIntroductionRecord(guildId: string, id: string) {

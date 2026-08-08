@@ -539,8 +539,6 @@ export const createApplication = async (
         }
       }
     };
-    await cleanup();
-
     const handlerState: {
       handlers: ReturnType<typeof createDiscordHandlers> | undefined;
     } = { handlers: undefined };
@@ -573,6 +571,7 @@ export const createApplication = async (
     if (botUserId === undefined || botUserId === '') {
       throw new Error('Discord client did not expose a bot user after login.');
     }
+    await cleanup();
     let pollController: PollController | undefined;
     if (pollStore !== undefined) {
       const pollService = new DurablePollService({

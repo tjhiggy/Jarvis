@@ -26,3 +26,14 @@ delete expired bot-owned cards before removing their records, retaining a record
 when Discord deletion fails so the bounded cleanup can retry. The follow-up
 coverage includes preview/cancel, concurrent confirmation, and card-safe
 retention cleanup.
+
+## Re-review follow-up
+
+Failed Discord-card deletion now transitions an expired introduction to
+`cleanup_pending`; generic repository cleanup deletes only already-deleted
+introduction rows and cannot erase the retry record. Startup cleanup runs only
+after Discord login, so configured channel operations have a ready client.
+Migration safely retains the newest duplicate legacy active introduction and
+marks earlier duplicates `cleanup_pending` for later bot-card removal. The
+concurrent-confirmation regression now uses SQLite rather than an in-memory
+stand-in.

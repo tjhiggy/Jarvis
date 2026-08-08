@@ -1,4 +1,4 @@
-export type IntroductionStatus = 'active' | 'deleted';
+export type IntroductionStatus = 'active' | 'deleted' | 'cleanup_pending';
 export type SuggestionStatus =
   'open' | 'acknowledged' | 'deferred' | 'resolved' | 'archived';
 export type EventStatus = 'scheduled' | 'cancelled' | 'completed';

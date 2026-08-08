@@ -162,6 +162,15 @@ export class IntroductionService {
     let removed = 0;
     for (const value of expired) {
       try {
+        if (value.status === 'active') {
+          await this.dependencies.repository.updateIntroductionStatus(
+            value.guildId,
+            value.ownerUserId,
+            value.id,
+            'cleanup_pending',
+            (this.dependencies.now ?? (() => new Date()))(),
+          );
+        }
         if (value.messageId?.trim())
           await this.dependencies.gateway.delete(
             value.channelId,

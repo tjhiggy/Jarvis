@@ -529,8 +529,8 @@ describe('createApplication', () => {
       'store',
       'ai',
       'client',
-      'cleanup',
       'login',
+      'cleanup',
     ]);
     await application.shutdown();
   });
@@ -946,7 +946,7 @@ describe('createApplication', () => {
     expect(JSON.stringify(warnings)).not.toContain(internalDetail);
   });
 
-  it('finishes startup cleanup before login and accepts events immediately after ready', async () => {
+  it('runs startup cleanup after Discord login and accepts events immediately after ready', async () => {
     const listeners = new Map<string, (...args: unknown[]) => unknown>();
     let releaseCleanup = (): void => undefined;
     let signalCleanupStarted = (): void => undefined;
@@ -1013,7 +1013,7 @@ describe('createApplication', () => {
     });
 
     await cleanupStarted;
-    expect(loginCalls).toBe(0);
+    expect(loginCalls).toBe(1);
     releaseCleanup();
     const application = await starting;
     expect(loginCalls).toBe(1);

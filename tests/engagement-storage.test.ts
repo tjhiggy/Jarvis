@@ -79,6 +79,34 @@ describe('SQLiteEngagementRepository', () => {
     }
   });
 
+  it('migrates duplicate legacy active introductions by retaining the newest and queuing the other card for safe cleanup', async () => {
+    const legacyPath = join(directory, 'duplicate-active.db');
+    const legacy = new Database(legacyPath);
+    legacy.exec(`
+      CREATE TABLE engagement_schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);
+      INSERT INTO engagement_schema_migrations VALUES (1, 0), (2, 0), (3, 0);
+      CREATE TABLE engagement_introductions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, display_name TEXT NOT NULL, interests TEXT NOT NULL, introduction TEXT NOT NULL, message_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('active', 'deleted')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
+      INSERT INTO engagement_introductions VALUES ('old', 'guild-1', 'channel-1', 'user-1', 'Old', 'Cats', 'Old hello', 'message-old', 'active', 1, 1);
+      INSERT INTO engagement_introductions VALUES ('new', 'guild-1', 'channel-1', 'user-1', 'New', 'Dogs', 'New hello', 'message-new', 'active', 2, 2);
+    `);
+    legacy.close();
+
+    const migrated = new SQLiteEngagementRepository(legacyPath);
+    try {
+      await expect(
+        migrated.getIntroduction('guild-1', 'new'),
+      ).resolves.toMatchObject({ status: 'active' });
+      await expect(
+        migrated.getIntroduction('guild-1', 'old'),
+      ).resolves.toMatchObject({
+        status: 'cleanup_pending',
+        messageId: 'message-old',
+      });
+    } finally {
+      await migrated.closeConnection();
+    }
+  });
+
   it('creates, reads, and changes engagement record statuses without using text as identity', async () => {
     await repository.createIntroduction(introduction());
     await repository.createSuggestion(suggestion());
@@ -297,10 +325,10 @@ describe('SQLiteEngagementRepository', () => {
       at(0),
     );
 
-    await expect(repository.cleanup(at(10), 10)).resolves.toBe(3);
+    await expect(repository.cleanup(at(10), 10)).resolves.toBe(2);
     await expect(
       repository.getIntroduction('guild-1', 'old-intro'),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ status: 'active' });
     await expect(
       repository.getEvent('guild-1', 'old-event'),
     ).resolves.toBeUndefined();
@@ -350,7 +378,7 @@ describe('SQLiteEngagementRepository', () => {
       event({ id: 'shared-retention', guildId: 'guild-2', updatedAt: at(20) }),
     );
 
-    await expect(repository.cleanup(at(10), 10)).resolves.toBe(3);
+    await expect(repository.cleanup(at(10), 10)).resolves.toBe(2);
     await expect(
       repository.getIntroduction('guild-2', 'shared-retention'),
     ).resolves.toBeDefined();
