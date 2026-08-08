@@ -30,7 +30,7 @@ enhancements.
 
 | Verified capability                                                                             | Current boundary                                                                                                                      |
 | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, and read-only `/fantasy standings`, plus direct mentions | Server channels only; commands enforce the configured channel allowlist, and reminders remain personal to their owner |
+| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, and read-only `/fantasy standings`, plus direct mentions | AI requests, reminders, and mentions enforce the configured channel allowlist; fantasy standings is read-only league data available in server channels |
 | Optional `/poll` and `/poll-close` commands                                                     | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls        |
 | Short conversation context stored in SQLite                                                     | Isolated by guild and channel or thread; not encrypted by the application                                                             |
 | Local Ollama and OpenAI Responses providers                                                     | Exactly one provider is selected at startup                                                                                           |
