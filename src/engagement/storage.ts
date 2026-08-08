@@ -272,6 +272,11 @@ export interface EngagementRepository {
   listPendingCardDeletions?(
     limit: number,
   ): Promise<readonly EngagementCardDeletion[]>;
+  listPendingCardDeletionsForOwner?(
+    guildId: string,
+    userId: string,
+    limit: number,
+  ): Promise<readonly EngagementCardDeletion[]>;
   completeCardDeletion?(deletion: EngagementCardDeletion): Promise<boolean>;
   claimIdempotencyKey(
     guildId: string,

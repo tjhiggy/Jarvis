@@ -7,7 +7,9 @@ type DeletionRepository = EngagementRepository &
   Required<
     Pick<
       EngagementRepository,
-      'listPendingCardDeletions' | 'completeCardDeletion'
+      | 'listPendingCardDeletions'
+      | 'listPendingCardDeletionsForOwner'
+      | 'completeCardDeletion'
     >
   >;
 
@@ -80,11 +82,10 @@ export class EngagementDeletionService {
     userId: string,
     limit: number,
   ): Promise<readonly EngagementCardDeletion[]> {
-    return (
-      await this.dependencies.repository.listPendingCardDeletions(limit)
-    ).filter(
-      (deletion) =>
-        deletion.guildId === guildId && deletion.ownerUserId === userId,
+    return this.dependencies.repository.listPendingCardDeletionsForOwner(
+      guildId,
+      userId,
+      limit,
     );
   }
 }

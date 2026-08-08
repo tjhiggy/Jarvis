@@ -132,4 +132,71 @@ describe('engagement owner data deletion', () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it('reports the target owner pending even when more than 100 other jobs sort first', async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), 'jarvis-engagement-delete-scope-'),
+    );
+    const repository = new SQLiteEngagementRepository(
+      join(directory, 'engagement.db'),
+    );
+    const old = new Date('2026-08-01T12:00:00.000Z');
+    try {
+      for (let index = 0; index < 101; index += 1) {
+        const ownerUserId = `other-${String(index).padStart(3, '0')}`;
+        const id = `other-intro-${String(index).padStart(3, '0')}`;
+        await repository.createIntroduction({
+          id,
+          guildId: 'guild-1',
+          channelId: 'intro-channel',
+          ownerUserId,
+          displayName: 'Other',
+          interests: 'Space',
+          introduction: 'Hello',
+          status: 'active',
+          createdAt: new Date(old.getTime() + index),
+          updatedAt: old,
+        });
+        await repository.updateIntroductionMessageId(
+          'guild-1',
+          id,
+          `other-message-${index}`,
+        );
+        await repository.deleteOwnerData('guild-1', ownerUserId);
+      }
+      await repository.createIntroduction({
+        id: 'target-intro',
+        guildId: 'guild-1',
+        channelId: 'intro-channel',
+        ownerUserId: 'target-owner',
+        displayName: 'Target',
+        interests: 'Space',
+        introduction: 'Hello',
+        status: 'active',
+        createdAt: new Date(old.getTime() + 10_000),
+        updatedAt: old,
+      });
+      await repository.updateIntroductionMessageId(
+        'guild-1',
+        'target-intro',
+        'target-message',
+      );
+
+      const service = new EngagementDeletionService({
+        repository,
+        gateway: {
+          delete: async () => {
+            throw new Error('Discord unavailable');
+          },
+        },
+      });
+
+      await expect(
+        service.deleteOwnerData('guild-1', 'target-owner'),
+      ).resolves.toEqual({ completed: 0, pending: 1 });
+    } finally {
+      await repository.closeConnection();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });

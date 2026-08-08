@@ -1324,6 +1324,39 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     }));
   }
 
+  async listPendingCardDeletionsForOwner(
+    guildId: string,
+    userId: string,
+    limit: number,
+  ): Promise<readonly EngagementCardDeletion[]> {
+    this.ensureOpen();
+    validateIdentifier('guildId', guildId);
+    validateIdentifier('userId', userId);
+    return (
+      this.database
+        .prepare(
+          'SELECT kind, guild_id, record_id, owner_user_id, channel_id, message_id, created_at FROM engagement_card_deletions WHERE guild_id = ? AND owner_user_id = ? ORDER BY created_at ASC, record_id ASC LIMIT ?',
+        )
+        .all(guildId, userId, limit) as Array<{
+        kind: EngagementCardDeletion['kind'];
+        guild_id: string;
+        record_id: string;
+        owner_user_id: string;
+        channel_id: string;
+        message_id: string;
+        created_at: number;
+      }>
+    ).map((row) => ({
+      kind: row.kind,
+      guildId: row.guild_id,
+      recordId: row.record_id,
+      ownerUserId: row.owner_user_id,
+      channelId: row.channel_id,
+      messageId: row.message_id,
+      createdAt: new Date(row.created_at),
+    }));
+  }
+
   async completeCardDeletion(
     deletion: EngagementCardDeletion,
   ): Promise<boolean> {

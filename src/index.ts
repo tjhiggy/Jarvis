@@ -771,6 +771,7 @@ export const createApplication = async (
             EngagementRepository,
             | 'deleteOwnerData'
             | 'listPendingCardDeletions'
+            | 'listPendingCardDeletionsForOwner'
             | 'completeCardDeletion'
           >
         > &
