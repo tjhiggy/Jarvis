@@ -31,12 +31,37 @@ export class HttpSleeperService implements SleeperService {
       if (!response.ok) throw new SleeperServiceError('unavailable', 'Sleeper is unavailable.');
       const payload: unknown = await response.json();
       if (!Array.isArray(payload)) throw new SleeperServiceError('invalid-data', 'Sleeper returned invalid standings data.');
-      return payload.map(parseStanding);
+      const standings = payload.map(parseStanding);
+      const names = await this.getOwnerNames(leagueId, controller.signal);
+      return standings.map((standing) => {
+        const ownerName = names.get(standing.ownerId);
+        return ownerName === undefined ? standing : { ...standing, ownerName };
+      });
     } catch (error) {
       if (error instanceof SleeperServiceError) throw error;
       throw new SleeperServiceError('unavailable', 'Sleeper is unavailable.');
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  private async getOwnerNames(leagueId: string, signal: AbortSignal): Promise<ReadonlyMap<string, string>> {
+    try {
+      const response = await this.http.fetch(`${apiBaseUrl}/league/${encodeURIComponent(leagueId)}/users`, { signal });
+      if (!response.ok) return new Map();
+      const payload: unknown = await response.json();
+      if (!Array.isArray(payload)) return new Map();
+      const names = new Map<string, string>();
+      for (const value of payload) {
+        if (typeof value !== 'object' || value === null) continue;
+        const item = value as Record<string, unknown>;
+        if (typeof item.user_id === 'string' && typeof item.display_name === 'string' && item.display_name.trim() !== '') {
+          names.set(item.user_id, item.display_name.trim());
+        }
+      }
+      return names;
+    } catch {
+      return new Map();
     }
   }
 }
