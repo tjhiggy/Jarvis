@@ -95,6 +95,20 @@ interface SuggestionSubcommandDefinition {
   readonly description: string;
   readonly options?: readonly SuggestionOptionDefinition[];
 }
+interface EventOptionDefinition {
+  readonly type: 3;
+  readonly name:
+    'title' | 'description' | 'start' | 'timezone' | 'capacity' | 'end' | 'id';
+  readonly description: string;
+  readonly required: boolean;
+  readonly max_length: number;
+}
+interface EventSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'create' | 'list' | 'details' | 'cancel';
+  readonly description: string;
+  readonly options?: readonly EventOptionDefinition[];
+}
 
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
@@ -107,7 +121,9 @@ export type CommandOptionDefinition =
   | IntroductionOptionDefinition
   | IntroductionSubcommandDefinition
   | SuggestionOptionDefinition
-  | SuggestionSubcommandDefinition;
+  | SuggestionSubcommandDefinition
+  | EventOptionDefinition
+  | EventSubcommandDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -125,7 +141,8 @@ export interface CommandDefinition {
     | 'introduce'
     | 'introduction'
     | 'suggest'
-    | 'suggestion';
+    | 'suggestion'
+    | 'event';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -495,6 +512,91 @@ export const createCommandDefinitions = (
               type: 3,
               name: 'id',
               description: 'Suggestion ID to archive.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'event',
+      description: 'Create, browse, and manage MuthaShip events.',
+      options: [
+        {
+          type: 1,
+          name: 'create',
+          description: 'Create an event as an administrator.',
+          options: [
+            {
+              type: 3,
+              name: 'title',
+              description: 'Event title.',
+              required: true,
+              max_length: 200,
+            },
+            {
+              type: 3,
+              name: 'description',
+              description: 'Event details.',
+              required: true,
+              max_length: 2000,
+            },
+            {
+              type: 3,
+              name: 'start',
+              description: 'Local start: YYYY-MM-DD HH:mm.',
+              required: true,
+              max_length: 16,
+            },
+            {
+              type: 3,
+              name: 'timezone',
+              description: 'IANA timezone, such as America/New_York.',
+              required: true,
+              max_length: 100,
+            },
+            {
+              type: 3,
+              name: 'capacity',
+              description: 'Confirmed seat count.',
+              required: true,
+              max_length: 4,
+            },
+            {
+              type: 3,
+              name: 'end',
+              description: 'Optional local end: YYYY-MM-DD HH:mm.',
+              required: false,
+              max_length: 16,
+            },
+          ],
+        },
+        { type: 1, name: 'list', description: 'List upcoming events.' },
+        {
+          type: 1,
+          name: 'details',
+          description: 'Show event RSVP totals.',
+          options: [
+            {
+              type: 3,
+              name: 'id',
+              description: 'Event ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'cancel',
+          description: 'Cancel an event as an administrator.',
+          options: [
+            {
+              type: 3,
+              name: 'id',
+              description: 'Event ID.',
               required: true,
               max_length: 128,
             },

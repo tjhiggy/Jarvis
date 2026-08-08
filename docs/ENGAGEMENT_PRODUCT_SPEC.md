@@ -2,9 +2,9 @@
 
 ## Status and decision
 
-This document freezes the proposed engagement V1 contract. It is **planned,
-not implemented**. Existing Jarvis commands and permissions remain unchanged
-until the corresponding work is reviewed, merged, and released.
+This document freezes the proposed engagement V1 contract. Events and RSVP are
+implemented behind the explicit engagement configuration; the remaining V1
+features remain planned until reviewed, merged, and released.
 
 V1 is a small, privacy-aware loop for the Muthaship: a member can introduce
 themselves, submit an idea, discover and RSVP to an event, read a recap, and
@@ -14,13 +14,13 @@ It does not silently collect or summarize every channel's conversation.
 
 ## V1 member stories
 
-| Member need | V1 outcome | Boundary |
-| --- | --- | --- |
-| Introduce myself | I can submit a short guided introduction, preview it, and post it only to the configured introduction channel. | I can cancel, opt out, or delete my own active introduction. |
-| Submit a suggestion | I can submit a title and description, review a private confirmation, and publish a normalized suggestion card to the configured suggestion channel. | The card stays in Discord and SQLite; it does not create or edit a GitHub issue. |
-| Browse and RSVP to an event | I can list configured events, read details, and choose yes, maybe, or no through a bounded bot-owned control. | RSVPs are event-scoped, capacity-aware, and never trigger role or server changes. |
-| View a recap | I can read a concise recap of configured engagement activity for its stated source window. | It uses only configured engagement records and bot-owned activity, observes minimum-group thresholds, and says when data is incomplete. |
-| Join one activity | I can opt into one lightweight activity, initially trivia unless the product owner explicitly selects community challenges. | The activity uses curated local content or an approved provider interface, has no XP, streak, economy, or public profile. |
+| Member need                 | V1 outcome                                                                                                                                          | Boundary                                                                                                                                |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Introduce myself            | I can submit a short guided introduction, preview it, and post it only to the configured introduction channel.                                      | I can cancel, opt out, or delete my own active introduction.                                                                            |
+| Submit a suggestion         | I can submit a title and description, review a private confirmation, and publish a normalized suggestion card to the configured suggestion channel. | The card stays in Discord and SQLite; it does not create or edit a GitHub issue.                                                        |
+| Browse and RSVP to an event | I can list configured events, read details, and choose yes, maybe, or no through a bounded bot-owned control.                                       | RSVPs are event-scoped, capacity-aware, and never trigger role or server changes.                                                       |
+| View a recap                | I can read a concise recap of configured engagement activity for its stated source window.                                                          | It uses only configured engagement records and bot-owned activity, observes minimum-group thresholds, and says when data is incomplete. |
+| Join one activity           | I can opt into one lightweight activity, initially trivia unless the product owner explicitly selects community challenges.                         | The activity uses curated local content or an approved provider interface, has no XP, streak, economy, or public profile.               |
 
 ## Scope, consent, and access
 
@@ -57,13 +57,13 @@ safe operational metadata, never contribution text or tokens.
 Retention is administrator-configured within documented safe bounds and must
 be enforced by scheduled cleanup. The initial product contract is:
 
-| Record class | Retention rule |
-| --- | --- |
-| Introductions and suggestions | Retain active records for up to 90 days; owner deletion removes the SQLite record and the bot-owned card where possible. |
-| Events and RSVPs | Retain until the event ends, then for up to 30 days for recovery and recap generation. |
-| Activity participation and round results | Retain for up to 30 days; do not retain answer text beyond the active round. |
-| Recap aggregates | Retain for up to 90 days; exclude personal text and suppress low-volume member-level detail. |
-| Opt-out and deletion audit markers | Retain only long enough to enforce the request and prevent duplicate processing, up to 30 days. |
+| Record class                             | Retention rule                                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Introductions and suggestions            | Retain active records for up to 90 days; owner deletion removes the SQLite record and the bot-owned card where possible. |
+| Events and RSVPs                         | Retain until the event ends, then for up to 30 days for recovery and recap generation.                                   |
+| Activity participation and round results | Retain for up to 30 days; do not retain answer text beyond the active round.                                             |
+| Recap aggregates                         | Retain for up to 90 days; exclude personal text and suppress low-volume member-level detail.                             |
+| Opt-out and deletion audit markers       | Retain only long enough to enforce the request and prevent duplicate processing, up to 30 days.                          |
 
 The implementation must provide explicit owner deletion and authorized
 administrator cleanup controls. Backups are operational copies of SQLite and
@@ -117,14 +117,14 @@ V1 excludes:
 
 ## Traceability
 
-| Product contract area | Backlog issue | What the issue must preserve |
-| --- | --- | --- |
-| Suggestions | [#27](https://github.com/tjhiggy/Jarvis/issues/27) | Private confirmation, configured destination, bot-owned state, and no GitHub writes. |
-| Events and RSVP | [#28](https://github.com/tjhiggy/Jarvis/issues/28) | Admin-only event setup, opt-in RSVP/reminders, capacity, and retention-limited records. |
-| Guided introductions | [#30](https://github.com/tjhiggy/Jarvis/issues/30) | Preview, configured channel, member opt-out, and owner deletion. |
-| Weekly recap | [#43](https://github.com/tjhiggy/Jarvis/issues/43) | Configured data only, privacy thresholds, source window, and incomplete-data notice. |
-| Bounded first activity | [#16](https://github.com/tjhiggy/Jarvis/issues/16) | Curated trivia, opt-out, bounded participation, and no XP. |
-| Alternative first activity | [#18](https://github.com/tjhiggy/Jarvis/issues/18) | Community challenges only if explicitly selected with the same privacy boundaries. |
+| Product contract area      | Backlog issue                                      | What the issue must preserve                                                            |
+| -------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Suggestions                | [#27](https://github.com/tjhiggy/Jarvis/issues/27) | Private confirmation, configured destination, bot-owned state, and no GitHub writes.    |
+| Events and RSVP            | [#28](https://github.com/tjhiggy/Jarvis/issues/28) | Admin-only event setup, opt-in RSVP/reminders, capacity, and retention-limited records. |
+| Guided introductions       | [#30](https://github.com/tjhiggy/Jarvis/issues/30) | Preview, configured channel, member opt-out, and owner deletion.                        |
+| Weekly recap               | [#43](https://github.com/tjhiggy/Jarvis/issues/43) | Configured data only, privacy thresholds, source window, and incomplete-data notice.    |
+| Bounded first activity     | [#16](https://github.com/tjhiggy/Jarvis/issues/16) | Curated trivia, opt-out, bounded participation, and no XP.                              |
+| Alternative first activity | [#18](https://github.com/tjhiggy/Jarvis/issues/18) | Community challenges only if explicitly selected with the same privacy boundaries.      |
 
 ## Acceptance gate
 

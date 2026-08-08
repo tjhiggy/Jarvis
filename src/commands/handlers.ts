@@ -36,6 +36,8 @@ import {
   handleSuggestionCommand,
   handleSuggestionDeletionCommand,
 } from './suggestion.js';
+import { handleEventCommand } from './event.js';
+import type { EventService } from '../engagement/events.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -49,6 +51,9 @@ export interface CommandInteraction extends ReplyTarget, DeferredReplyTarget {
     isThread?(): boolean;
   }> | null;
   readonly user: Readonly<{ id: string }>;
+  readonly member?: Readonly<{
+    roles?: Readonly<{ cache?: Readonly<{ has(id: string): boolean }> }>;
+  }> | null;
   readonly options: Readonly<{
     getSubcommand(): string;
     getString(name: string): string | null;
@@ -75,7 +80,12 @@ export interface CommandDependencies {
     }>;
     engagement?: Readonly<{
       enabled: boolean;
-      channels: Readonly<{ introductionId: string; suggestionId: string }>;
+      channels: Readonly<{
+        introductionId: string;
+        suggestionId: string;
+        eventId: string;
+      }>;
+      adminRoleIds: ReadonlySet<string>;
     }>;
   }>;
   readonly conversationService: Readonly<{
@@ -112,6 +122,7 @@ export interface CommandDependencies {
   }>;
   readonly introductionService?: IntroductionService;
   readonly suggestionService?: SuggestionService;
+  readonly eventService?: EventService;
 }
 
 const dmMessage = 'This command is available only in a server channel.';
@@ -219,6 +230,16 @@ export const handleCommand = async (
         interaction,
         dependencies.suggestionService,
       );
+      return;
+    case 'event':
+      await handleEventCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId: dependencies.config.engagement?.channels.eventId ?? '',
+        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        ...(dependencies.eventService === undefined
+          ? {}
+          : { service: dependencies.eventService }),
+      });
       return;
     case 'help':
       if (await rejectDirectMessage(interaction)) {

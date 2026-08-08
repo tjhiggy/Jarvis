@@ -45,8 +45,11 @@ export interface Event {
   readonly title: string;
   readonly description: string;
   readonly scheduledAt: Date;
+  readonly endsAt?: Date;
   readonly timezone: string;
   readonly capacity: number;
+  readonly messageId?: string;
+  readonly destinationMissed?: boolean;
   readonly status: EventStatus;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -57,6 +60,8 @@ export interface Rsvp {
   readonly guildId: string;
   readonly userId: string;
   readonly response: RsvpResponse;
+  readonly attendance?: 'confirmed' | 'waitlisted' | 'none';
+  readonly reminderOptIn?: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }

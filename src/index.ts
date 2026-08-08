@@ -68,6 +68,8 @@ import {
   type SuggestionGateway,
 } from './engagement/suggestions.js';
 import type { EngagementCard } from './engagement/discord-ui.js';
+import { EventService, type EventGateway } from './engagement/events.js';
+import { EventScheduler } from './engagement/event-scheduler.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -103,6 +105,24 @@ interface SuggestionChannel {
   send(payload: EngagementCard): Promise<Readonly<{ id: string }>>;
   messages: Readonly<{ delete(messageId: string): Promise<unknown> }>;
 }
+interface EventChannel {
+  send(payload: unknown): Promise<Readonly<{ id: string }>>;
+}
+const createDefaultEventGateway = (
+  client: RuntimeDiscordClient,
+): EventGateway => ({
+  async post(channelId, card) {
+    const channel = await client.channels?.fetch(channelId);
+    if (!isEventChannel(channel))
+      throw new Error('Configured event channel is unavailable.');
+    return channel.send(card);
+  },
+});
+const isEventChannel = (value: unknown): value is EventChannel =>
+  typeof value === 'object' &&
+  value !== null &&
+  'send' in value &&
+  typeof value.send === 'function';
 
 const createDefaultSuggestionGateway = (
   client: RuntimeDiscordClient,
@@ -394,6 +414,7 @@ export const createApplication = async (
   let reminderStore: ReminderStore | undefined;
   let reminderScheduler: ReminderScheduler | undefined;
   let engagementRepository: EngagementRepository | undefined;
+  let eventScheduler: EventScheduler | undefined;
   let client: RuntimeDiscordClient | undefined;
   let cleanupTimer: unknown;
   let acceptingWork = false;
@@ -414,6 +435,16 @@ export const createApplication = async (
           logger?.warn(
             projectOperationalError(error, 'reminder_scheduler_shutdown'),
             'Reminder scheduler stop failed during shutdown.',
+          );
+        }
+      }
+      if (eventScheduler !== undefined) {
+        try {
+          await eventScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            { error },
+            'Event scheduler stop failed during shutdown.',
           );
         }
       }
@@ -584,6 +615,15 @@ export const createApplication = async (
                 'Suggestion persistence requires cleanup.',
               ),
           });
+    const eventService =
+      engagementRepository === undefined
+        ? undefined
+        : new EventService({
+            repository: engagementRepository as any,
+            createId: () => randomUUID(),
+            adminRoleIds: config.engagement.adminRoleIds,
+            gateway: createDefaultEventGateway(client),
+          });
     const cleanup = async (): Promise<void> => {
       try {
         await initializedStore.cleanup(
@@ -723,6 +763,7 @@ export const createApplication = async (
           faq,
           ...(introductionService === undefined ? {} : { introductionService }),
           ...(suggestionService === undefined ? {} : { suggestionService }),
+          ...(eventService === undefined ? {} : { eventService }),
           ...(config.sleeper?.leagueId === undefined ||
           config.sleeper.leagueId === ''
             ? {}
@@ -750,10 +791,39 @@ export const createApplication = async (
             engagementAdminRoleIds: config.engagement.adminRoleIds,
             suggestionChannelId: config.engagement.channels.suggestionId,
           }),
+      ...(eventService === undefined
+        ? {}
+        : { eventService, eventChannelId: config.engagement.channels.eventId }),
     });
+
+    const schedulerClient = client;
+    if (schedulerClient === undefined)
+      throw new Error('Discord client is unavailable for event scheduling.');
+    if (eventService !== undefined)
+      eventScheduler = new EventScheduler({
+        repository: engagementRepository as any,
+        gateway: {
+          deliver: async (reminder) => {
+            const channel = await schedulerClient.channels?.fetch(
+              reminder.channelId,
+            );
+            if (!isEventChannel(channel))
+              throw new Error('Configured event channel is unavailable.');
+            await channel.send({
+              content: `<@${reminder.userId}> reminder: ${reminder.title} is due now.`,
+              allowedMentions: {
+                parse: [],
+                users: [reminder.userId],
+                repliedUser: false,
+              },
+            });
+          },
+        },
+      });
 
     pollScheduler?.start();
     reminderScheduler.start();
+    eventScheduler?.start();
 
     cleanupTimer = timers.setInterval(() => {
       void cleanup();

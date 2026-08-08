@@ -100,6 +100,8 @@ export interface EngagementRepository {
   listCleanupPendingSuggestions(limit: number): Promise<Suggestion[]>;
   createEvent(input: Event): Promise<Event>;
   getEvent(guildId: string, eventId: string): Promise<Event | undefined>;
+  listEvents?(guildId: string, now: Date, limit: number): Promise<Event[]>;
+  listRsvps?(guildId: string, eventId: string): Promise<Rsvp[]>;
   updateEventStatus(
     guildId: string,
     eventId: string,
@@ -107,6 +109,42 @@ export interface EngagementRepository {
     updatedAt: Date,
   ): Promise<Event | undefined>;
   upsertRsvp(input: Rsvp): Promise<Rsvp>;
+  respondToEvent?(input: Rsvp): Promise<Rsvp>;
+  updateEventMessageId?(
+    guildId: string,
+    eventId: string,
+    messageId: string,
+  ): Promise<Event | undefined>;
+  markEventDestinationMissed?(
+    guildId: string,
+    eventId: string,
+    updatedAt: Date,
+  ): Promise<void>;
+  claimDueEventReminders?(
+    now: Date,
+    limit: number,
+  ): Promise<
+    readonly {
+      eventId: string;
+      guildId: string;
+      channelId: string;
+      userId: string;
+      title: string;
+      scheduledAt: Date;
+    }[]
+  >;
+  markEventReminderDelivered?(
+    eventId: string,
+    guildId: string,
+    userId: string,
+    now: Date,
+  ): Promise<boolean>;
+  markEventReminderFailed?(
+    eventId: string,
+    guildId: string,
+    userId: string,
+    now: Date,
+  ): Promise<boolean>;
   getOptOut(
     guildId: string,
     userId: string,

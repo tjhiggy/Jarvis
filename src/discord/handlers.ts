@@ -5,6 +5,7 @@ import {
   type SuggestionModerationAction,
   type SuggestionService,
 } from '../engagement/suggestions.js';
+import { EventService, EventServiceError } from '../engagement/events.js';
 import { isAllowedChannel } from './permissions.js';
 import {
   replySafely,
@@ -92,6 +93,8 @@ export interface MessageHandlerDependencies {
   readonly suggestionService?: SuggestionService;
   readonly engagementAdminRoleIds?: ReadonlySet<string>;
   readonly suggestionChannelId?: string;
+  readonly eventService?: EventService;
+  readonly eventChannelId?: string;
 }
 
 export interface DiscordHandlers {
@@ -141,6 +144,8 @@ export const createDiscordHandlers = (
       try {
         if (button.customId.trim().startsWith('suggestion:v1:')) {
           await handleSuggestionButton(button, dependencies);
+        } else if (button.customId.trim().startsWith('event:v1:')) {
+          await handleEventButton(button, dependencies);
         } else {
           await handlePollButton(button, dependencies);
         }
@@ -150,6 +155,77 @@ export const createDiscordHandlers = (
       }
     },
   };
+};
+
+export const parseEventCustomId = (
+  customId: string,
+):
+  | {
+      eventId: string;
+      response: 'yes' | 'maybe' | 'no';
+      reminderOptIn: boolean;
+    }
+  | undefined => {
+  const match = /^event:v1:([a-zA-Z0-9-]{1,64}):(yes|maybe|no|remind)$/.exec(
+    customId.trim(),
+  );
+  return match === null
+    ? undefined
+    : {
+        eventId: match[1]!,
+        response:
+          match[2] === 'remind' ? 'yes' : (match[2]! as 'yes' | 'maybe' | 'no'),
+        reminderOptIn: match[2] === 'remind',
+      };
+};
+const handleEventButton = async (
+  interaction: DiscordButtonInteraction,
+  dependencies: MessageHandlerDependencies,
+): Promise<void> => {
+  const parsed = parseEventCustomId(interaction.customId);
+  const guildId = interaction.guildId?.trim();
+  const channelId = interaction.channelId.trim();
+  if (
+    !parsed ||
+    !dependencies.eventService ||
+    !guildId ||
+    channelId !== dependencies.eventChannelId?.trim() ||
+    interaction.message.guildId?.trim() !== guildId ||
+    interaction.message.channelId.trim() !== channelId ||
+    interaction.message.author.id.trim() !== dependencies.botUserId.trim()
+  ) {
+    await replySafely(interaction, 'This event control is unavailable.', true);
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const rsvp = await dependencies.eventService.rsvp({
+      guildId,
+      eventId: parsed.eventId,
+      userId: interaction.user.id,
+      response: parsed.response,
+      interactionId: interaction.id,
+      reminderOptIn: parsed.reminderOptIn,
+    });
+    await interaction.editReply({
+      content:
+        rsvp.attendance === 'waitlisted'
+          ? 'The confirmed seats are full. You are on the waitlist.'
+          : `RSVP recorded: ${rsvp.response}.`,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  } catch (error) {
+    const message =
+      error instanceof EventServiceError && error.code === 'duplicate-action'
+        ? 'This RSVP was already recorded.'
+        : error instanceof EventServiceError && error.code === 'cancelled'
+          ? 'This event is no longer accepting RSVPs.'
+          : 'The RSVP could not be completed. Please retry later.';
+    await interaction.editReply({
+      content: message,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  }
 };
 
 export const parseSuggestionCustomId = (
