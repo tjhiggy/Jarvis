@@ -36,4 +36,42 @@ describe('/recap', () => {
     );
     expect(dependencies.repository.setRecapEnabled).not.toHaveBeenCalled();
   });
+
+  it('allows an administrator to pause without a schedule', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const setRecapEnabled = vi.fn().mockResolvedValue(undefined);
+    await handleRecapCommand(
+      {
+        guildId: 'guild-1',
+        member: {
+          roles: { cache: { has: (role: string) => role === 'admin' } },
+        },
+        options: { getSubcommand: () => 'pause' },
+        reply,
+      },
+      {
+        enabled: true,
+        channelId: 'recaps',
+        schedule: '',
+        adminRoleIds: new Set(['admin']),
+        service: {
+          preview: async () => ({
+            status: 'quiet' as const,
+            content: 'unused',
+          }),
+        } as any,
+        repository: { setRecapEnabled } as any,
+      },
+    );
+    expect(setRecapEnabled).toHaveBeenCalledWith(
+      'guild-1',
+      false,
+      expect.any(Date),
+    );
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Weekly recaps are paused for this guild.',
+      }),
+    );
+  });
 });

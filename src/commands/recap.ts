@@ -50,7 +50,10 @@ export const handleRecapCommand = async (
     subcommand === 'pause' ||
     subcommand === 'resume'
   ) {
-    if (!dependencies.schedule.trim())
+    if (
+      (subcommand === 'enable' || subcommand === 'resume') &&
+      !dependencies.schedule.trim()
+    )
       return replySafely(
         interaction,
         'Configure a weekly recap schedule and timezone before enabling scheduled recaps. Preview remains available.',
