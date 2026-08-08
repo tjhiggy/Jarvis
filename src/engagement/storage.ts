@@ -63,6 +63,21 @@ export interface EngagementRepository {
     guildId: string,
     suggestionId: string,
   ): Promise<boolean>;
+  claimOpenSuggestionForDeletion(
+    guildId: string,
+    ownerUserId: string,
+    suggestionId: string,
+    updatedAt: Date,
+  ): Promise<Suggestion | undefined>;
+  deletePendingSuggestionRecord(
+    guildId: string,
+    suggestionId: string,
+  ): Promise<boolean>;
+  restorePendingSuggestion(
+    guildId: string,
+    suggestionId: string,
+    updatedAt: Date,
+  ): Promise<Suggestion | undefined>;
   updateSuggestionStatus(
     guildId: string,
     suggestionId: string,

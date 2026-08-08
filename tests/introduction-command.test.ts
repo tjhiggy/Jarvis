@@ -326,6 +326,15 @@ class MemoryRepository implements EngagementRepository {
   async deleteSuggestionRecord(): Promise<boolean> {
     return false;
   }
+  async claimOpenSuggestionForDeletion(): Promise<any> {
+    return undefined;
+  }
+  async deletePendingSuggestionRecord(): Promise<boolean> {
+    return false;
+  }
+  async restorePendingSuggestion(): Promise<any> {
+    return undefined;
+  }
   async updateSuggestionStatus(): Promise<any> {
     return undefined;
   }

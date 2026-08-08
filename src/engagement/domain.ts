@@ -1,6 +1,11 @@
 export type IntroductionStatus = 'active' | 'deleted' | 'cleanup_pending';
 export type SuggestionStatus =
-  'open' | 'acknowledged' | 'deferred' | 'resolved' | 'archived';
+  | 'open'
+  | 'acknowledged'
+  | 'deferred'
+  | 'resolved'
+  | 'archived'
+  | 'deletion_pending';
 export type EventStatus = 'scheduled' | 'cancelled' | 'completed';
 export type RsvpResponse = 'yes' | 'maybe' | 'no';
 

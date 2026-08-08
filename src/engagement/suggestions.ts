@@ -162,11 +162,13 @@ export class SuggestionService {
       throw error;
     }
     this.drafts.delete(value.id);
+    let messageId: string | undefined;
     try {
       const message = await this.dependencies.gateway.post(
         value.channelId,
         buildSuggestionCard(value),
       );
+      messageId = message.id;
       return (
         (await this.dependencies.repository.updateSuggestionMessageId(
           value.guildId,
@@ -175,10 +177,18 @@ export class SuggestionService {
         )) ?? value
       );
     } catch (error) {
-      await this.dependencies.repository.deleteSuggestionRecord(
-        value.guildId,
-        value.id,
-      );
+      if (messageId !== undefined) {
+        try {
+          await this.dependencies.gateway.delete(value.channelId, messageId);
+        } catch {
+          // Keep the persisted record when Discord cannot remove a posted card.
+        }
+      } else {
+        await this.dependencies.repository.deleteSuggestionRecord(
+          value.guildId,
+          value.id,
+        );
+      }
       throw error;
     }
   }
@@ -222,22 +232,32 @@ export class SuggestionService {
       suggestionId: string;
     }>,
   ): Promise<boolean> {
-    const value = await this.dependencies.repository.getSuggestion(
-      input.guildId.trim(),
-      input.suggestionId.trim(),
-    );
-    if (
-      value === undefined ||
-      value.ownerUserId !== input.ownerUserId.trim() ||
-      value.status !== 'open'
-    )
-      return false;
-    if (value.messageId?.trim())
-      await this.dependencies.gateway.delete(value.channelId, value.messageId);
-    return await this.dependencies.repository.deleteSuggestionRecord(
-      value.guildId,
-      value.id,
-    );
+    const value =
+      await this.dependencies.repository.claimOpenSuggestionForDeletion(
+        input.guildId.trim(),
+        input.ownerUserId.trim(),
+        input.suggestionId.trim(),
+        this.now(),
+      );
+    if (value === undefined) return false;
+    try {
+      if (value.messageId?.trim())
+        await this.dependencies.gateway.delete(
+          value.channelId,
+          value.messageId,
+        );
+      return await this.dependencies.repository.deletePendingSuggestionRecord(
+        value.guildId,
+        value.id,
+      );
+    } catch (error) {
+      await this.dependencies.repository.restorePendingSuggestion(
+        value.guildId,
+        value.id,
+        this.now(),
+      );
+      throw error;
+    }
   }
 
   async moderate(
@@ -267,7 +287,8 @@ export class SuggestionService {
     if (
       value === undefined ||
       value.channelId !== channelId ||
-      value.status === 'archived'
+      value.status === 'archived' ||
+      value.status === 'deletion_pending'
     )
       throw new SuggestionServiceError('not-found');
     const now = input.now ?? this.now();

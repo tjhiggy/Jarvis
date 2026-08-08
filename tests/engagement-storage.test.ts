@@ -171,6 +171,27 @@ describe('SQLiteEngagementRepository', () => {
     ).toHaveLength(1);
   });
 
+  it('atomically claims only an open owner suggestion for deletion', async () => {
+    await repository.createSuggestion(suggestion());
+    await repository.updateSuggestionStatus(
+      'guild-1',
+      'suggestion-1',
+      'acknowledged',
+      at(2),
+    );
+    await expect(
+      repository.claimOpenSuggestionForDeletion(
+        'guild-1',
+        'user-1',
+        'suggestion-1',
+        at(3),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.getSuggestion('guild-1', 'suggestion-1'),
+    ).resolves.toMatchObject({ status: 'acknowledged' });
+  });
+
   it('persists opt-outs and rejects further collection for that guild and owner', async () => {
     await repository.setOptOut({
       guildId: 'guild-1',

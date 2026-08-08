@@ -77,6 +77,37 @@ describe('SuggestionService', () => {
     ).resolves.toMatchObject({ title: 'Another idea' });
   });
 
+  it('does not remove a suggestion that loses the delete claim to triage', async () => {
+    const repository = new SuggestionsRepository();
+    const service = createService(repository, new SuggestionGateway());
+    const created = await service.submit(input());
+    repository.suggestions.get(`guild-1:${created.id}`).status = 'acknowledged';
+    await expect(
+      service.delete({
+        guildId: 'guild-1',
+        ownerUserId: 'user-1',
+        suggestionId: created.id,
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      repository.getSuggestion('guild-1', created.id),
+    ).resolves.toMatchObject({ status: 'acknowledged' });
+  });
+
+  it('compensates for message-id persistence failure by deleting the posted card', async () => {
+    const repository = new SuggestionsRepository();
+    repository.failMessageUpdate = true;
+    const gateway = new SuggestionGateway();
+    const service = createService(repository, gateway);
+    await expect(service.submit(input())).rejects.toThrow();
+    expect(gateway.deletes).toEqual([
+      { channelId: 'suggestions', messageId: 'message-1' },
+    ]);
+    await expect(
+      repository.getSuggestion('guild-1', 'suggestion-1'),
+    ).resolves.toMatchObject({ id: 'suggestion-1' });
+  });
+
   it('restricts status controls to configured roles, expires controls, and records safe audits', async () => {
     const repository = new SuggestionsRepository();
     const events: unknown[] = [];
@@ -189,6 +220,7 @@ class SuggestionGateway {
 }
 class SuggestionsRepository implements EngagementRepository {
   suggestions = new Map<string, any>();
+  failMessageUpdate = false;
   optedOut = new Map<string, any>();
   claimed = new Set<string>();
   async createSuggestion(value: any) {
@@ -226,12 +258,39 @@ class SuggestionsRepository implements EngagementRepository {
     id: string,
     messageId: string,
   ) {
+    if (this.failMessageUpdate) throw new Error('database unavailable');
     const value = await this.getSuggestion(guildId, id);
     if (value !== undefined) value.messageId = messageId;
     return value;
   }
   async deleteSuggestionRecord(guildId: string, id: string) {
     return this.suggestions.delete(`${guildId}:${id}`);
+  }
+  async claimOpenSuggestionForDeletion(
+    guildId: string,
+    ownerUserId: string,
+    id: string,
+    updatedAt: Date,
+  ) {
+    const value = await this.getSuggestion(guildId, id);
+    if (value?.ownerUserId !== ownerUserId || value.status !== 'open')
+      return undefined;
+    value.status = 'deletion_pending';
+    value.updatedAt = updatedAt;
+    return value;
+  }
+  async deletePendingSuggestionRecord(guildId: string, id: string) {
+    const value = await this.getSuggestion(guildId, id);
+    return (
+      value?.status === 'deletion_pending' &&
+      this.suggestions.delete(`${guildId}:${id}`)
+    );
+  }
+  async restorePendingSuggestion(guildId: string, id: string, updatedAt: Date) {
+    const value = await this.getSuggestion(guildId, id);
+    if (value?.status === 'deletion_pending')
+      Object.assign(value, { status: 'open', updatedAt });
+    return value;
   }
   async getOptOut(guildId: string, userId: string) {
     return this.optedOut.get(`${guildId}:${userId}`);
