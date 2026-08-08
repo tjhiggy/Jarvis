@@ -85,7 +85,16 @@ export class EventScheduler {
           reminder.leaseToken,
           now,
         );
-        } catch {
+        } catch (error) {
+        this.dependencies.logger?.warn(
+          {
+            operation: 'event_reminder_delivery',
+            guildId: reminder.guildId,
+            eventId: reminder.eventId,
+            ...projectOperationalError(error, 'event_reminder_delivery'),
+          },
+          'Event reminder delivery failed.',
+        );
         await this.dependencies.repository.markEventReminderFailed(
           reminder.eventId,
           reminder.guildId,

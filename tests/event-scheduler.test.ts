@@ -6,6 +6,21 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 describe('event scheduler', () => {
+  it('logs a content-free operational failure before marking a reminder failed', async () => {
+    const warnings: Array<Record<string, string | number>> = [];
+    await new EventScheduler({
+      repository: {
+        claimDueEventReminders: async () => [{ eventId: 'event-1', guildId: 'guild-1', channelId: 'events', userId: 'user-1', title: 'Secret title', scheduledAt: new Date(), leaseToken: 'lease-1' }],
+        markEventReminderDelivered: async () => true,
+        markEventReminderFailed: async () => true,
+        cleanup: async () => 0,
+      } as any,
+      gateway: { deliver: async () => { throw new Error('Secret RSVP reason'); } },
+      logger: { warn: (fields) => warnings.push(fields) },
+    }).tick();
+    expect(warnings).toEqual([expect.objectContaining({ operation: 'event_reminder_delivery', guildId: 'guild-1', eventId: 'event-1', errorClass: 'Error' })]);
+    expect(JSON.stringify(warnings)).not.toContain('Secret');
+  });
   it('re-checks a persisted pause immediately before delivering a claimed reminder', async () => {
     const deliver = vi.fn();
     await new EventScheduler({
