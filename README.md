@@ -4,7 +4,7 @@
 
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5%2B-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-555%20passing-2ea44f)](tests/)
+[![CI](https://github.com/tjhiggy/Jarvis/actions/workflows/ci.yml/badge.svg)](https://github.com/tjhiggy/Jarvis/actions/workflows/ci.yml)
 [![Security policy](https://img.shields.io/badge/security-policy-blue)](SECURITY.md)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey)](LICENSE.md)
 
@@ -30,7 +30,7 @@ enhancements.
 
 | Verified capability                                                                             | Current boundary                                                                                                                      |
 | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, and `/reminder`, plus direct mentions | Server channels only; commands enforce the configured channel allowlist, and reminders remain personal to their owner                 |
+| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, and read-only `/fantasy standings`, plus direct mentions | Server channels only; commands enforce the configured channel allowlist, and reminders remain personal to their owner |
 | Optional `/poll` and `/poll-close` commands                                                     | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls        |
 | Short conversation context stored in SQLite                                                     | Isolated by guild and channel or thread; not encrypted by the application                                                             |
 | Local Ollama and OpenAI Responses providers                                                     | Exactly one provider is selected at startup                                                                                           |
@@ -132,7 +132,7 @@ Then use this four-command local quick start:
    npm run register-commands
    ```
 
-   Polls disabled produces the seven core commands. Configuring both poll
+   Polls disabled produces the eight core commands. Configuring both poll
    credentials adds `/poll` and `/poll-close`. The script replaces only this
    application's commands in the configured development guild.
 

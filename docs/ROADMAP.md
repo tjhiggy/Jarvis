@@ -9,6 +9,8 @@ dates, promises, or claims that an interface declaration is a working feature.
   no inbound web port.
 - `/ask`, `/search`, `/forget`, `/faq`, `/help`, and `/status` commands plus
   direct mention handling in server channels.
+- Personal reminders with owner-scoped delivery, and read-only Sleeper
+  standings with resolved owner display names when available.
 - Channel allowlists, parent-thread handling, minimum reply permissions,
   per-guild/user rate limiting, event de-duplication, input bounds, and safe
   response delivery with mass mentions disabled.
@@ -37,9 +39,14 @@ data, and require explicit human authorization.
 **Planned, not implemented.** Add operational dashboards or metrics only with a
 reviewed data-minimization design that excludes message content and secrets.
 
+**Shipped, bounded.** Sleeper integration currently supports one configured
+league's read-only standings. Matchups, weekly recaps, player lookup, and
+additional fantasy features remain planned under [Issue #95](https://github.com/tjhiggy/Jarvis/issues/95).
+
 ## Later
 
-**Planned, not implemented.** Shared and administrator-created reminders.
+**Planned, not implemented.** Shared and administrator-created reminders; the
+current reminder system is personal and owner-scoped.
 
 **Planned, not implemented.** Recurring reminders.
 

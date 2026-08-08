@@ -34,6 +34,8 @@ only in the ignored `.env` file or an approved secret manager.
    configured model using Ollama's supported workflow. For OpenAI, set the
    project-scoped key and verify the configured model is available to that
    project.
+   If `SLEEPER_LEAGUE_ID` is set, `/fantasy standings` is enabled as a
+   read-only integration; it requires no additional credential.
 5. Start Jarvis manually from the deployment directory in an owning console:
 
    ```powershell

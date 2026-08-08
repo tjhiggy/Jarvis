@@ -160,6 +160,14 @@ native Ollama avoids keeping Docker Desktop's WSL VM resident.
 
 ## Outage handling and triage
 
+### Sleeper standings
+
+Set `SLEEPER_LEAGUE_ID` to the 8-to-20 digit league ID and restart Jarvis. No
+Sleeper API key is required. Verify with `/fantasy standings`. A pre-draft
+league can legitimately show unassigned roster slots and zero scores. Sleeper
+outages, rate limits, and invalid responses produce a safe unavailable message;
+Jarvis does not guess or perform any Sleeper write operation.
+
 Provider and storage failures return a generic maintenance-themed retry message
 to users. It intentionally avoids exposing credentials, provider details, or
 internal errors. Treat the message as a service symptom, not a diagnosis.
