@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import type {
   EngagementOptOut,
@@ -613,49 +614,70 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         scheduled_at: number;
       }>;
       const claim = this.database.prepare(
-        "UPDATE engagement_rsvps SET reminder_claimed_at = ? WHERE event_id = ? AND guild_id = ? AND user_id = ? AND reminder_state = 'pending' AND (reminder_claimed_at IS NULL OR reminder_claimed_at < ?)",
+        "UPDATE engagement_rsvps SET reminder_claimed_at = ?, reminder_lease_token = ? WHERE event_id = ? AND guild_id = ? AND user_id = ? AND reminder_state = 'pending' AND (reminder_claimed_at IS NULL OR reminder_claimed_at < ?)",
       );
-      return candidates
-        .filter(
-          (row) =>
-            claim.run(
-              claimedAt,
-              row.event_id,
-              row.guild_id,
-              row.user_id,
-              staleBefore,
-            ).changes === 1,
-        )
-        .map((row) => ({
-          eventId: row.event_id,
-          guildId: row.guild_id,
-          channelId: row.channel_id,
-          userId: row.user_id,
-          title: row.title,
-          scheduledAt: new Date(row.scheduled_at),
-        }));
+      return candidates.flatMap((row) => {
+        const leaseToken = randomUUID();
+        return claim.run(
+          claimedAt,
+          leaseToken,
+          row.event_id,
+          row.guild_id,
+          row.user_id,
+          staleBefore,
+        ).changes === 1
+          ? [
+              {
+                eventId: row.event_id,
+                guildId: row.guild_id,
+                channelId: row.channel_id,
+                userId: row.user_id,
+                title: row.title,
+                scheduledAt: new Date(row.scheduled_at),
+                leaseToken,
+              },
+            ]
+          : [];
+      });
     })();
   }
   async markEventReminderDelivered(
     eventId: string,
     guildId: string,
     userId: string,
+    leaseToken: string,
     now: Date,
   ): Promise<boolean> {
-    return this.markReminder(eventId, guildId, userId, 'delivered', now);
+    return this.markReminder(
+      eventId,
+      guildId,
+      userId,
+      leaseToken,
+      'delivered',
+      now,
+    );
   }
   async markEventReminderFailed(
     eventId: string,
     guildId: string,
     userId: string,
+    leaseToken: string,
     now: Date,
   ): Promise<boolean> {
-    return this.markReminder(eventId, guildId, userId, 'failed', now);
+    return this.markReminder(
+      eventId,
+      guildId,
+      userId,
+      leaseToken,
+      'failed',
+      now,
+    );
   }
   private async markReminder(
     eventId: string,
     guildId: string,
     userId: string,
+    leaseToken: string,
     state: string,
     now: Date,
   ): Promise<boolean> {
@@ -663,9 +685,10 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return (
       this.database
         .prepare(
-          "UPDATE engagement_rsvps SET reminder_state = ?, reminder_claimed_at = NULL, updated_at = ? WHERE event_id = ? AND guild_id = ? AND user_id = ? AND reminder_state = 'pending'",
+          "UPDATE engagement_rsvps SET reminder_state = ?, reminder_claimed_at = NULL, reminder_lease_token = NULL, updated_at = ? WHERE event_id = ? AND guild_id = ? AND user_id = ? AND reminder_state = 'pending' AND reminder_lease_token = ?",
         )
-        .run(state, milliseconds(now), eventId, guildId, userId).changes === 1
+        .run(state, milliseconds(now), eventId, guildId, userId, leaseToken)
+        .changes === 1
     );
   }
 
@@ -925,6 +948,16 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           );
         this.recordMigration(10);
       }
+      if (!this.hasMigration(11)) {
+        if (
+          this.hasTable('engagement_rsvps') &&
+          !this.hasColumn('engagement_rsvps', 'reminder_lease_token')
+        )
+          this.database.exec(
+            'ALTER TABLE engagement_rsvps ADD COLUMN reminder_lease_token TEXT',
+          );
+        this.recordMigration(11);
+      }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
       );
@@ -1104,7 +1137,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       INSERT INTO engagement_introductions (id, guild_id, channel_id, owner_user_id, display_name, interests, introduction, status, created_at, updated_at) SELECT id, guild_id, channel_id, owner_user_id, display_name, interests, introduction, status, created_at, updated_at FROM engagement_introductions_legacy;
       INSERT INTO engagement_suggestions (id, guild_id, channel_id, owner_user_id, title, description, message_id, status, created_at, updated_at) SELECT id, guild_id, channel_id, owner_user_id, title, description, '', status, created_at, updated_at FROM engagement_suggestions_legacy;
       INSERT INTO engagement_events (id, guild_id, channel_id, owner_user_id, title, description, scheduled_at, timezone, capacity, status, created_at, updated_at) SELECT id, guild_id, channel_id, owner_user_id, title, description, scheduled_at, timezone, capacity, status, created_at, updated_at FROM engagement_events_legacy;
-      INSERT INTO engagement_rsvps (event_id, guild_id, user_id, response, attendance, reminder_opt_in, reminder_state, reminder_claimed_at, created_at, updated_at) SELECT event_id, guild_id, user_id, response, CASE WHEN response = 'yes' THEN 'confirmed' ELSE 'none' END, 0, 'pending', NULL, created_at, updated_at FROM engagement_rsvps_legacy;
+      INSERT INTO engagement_rsvps (event_id, guild_id, user_id, response, attendance, reminder_opt_in, reminder_state, reminder_claimed_at, reminder_lease_token, created_at, updated_at) SELECT event_id, guild_id, user_id, response, CASE WHEN response = 'yes' THEN 'confirmed' ELSE 'none' END, 0, 'pending', NULL, NULL, created_at, updated_at FROM engagement_rsvps_legacy;
       DROP TABLE engagement_rsvps_legacy;
       DROP TABLE engagement_introductions_legacy;
       DROP TABLE engagement_suggestions_legacy;
@@ -1117,7 +1150,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       CREATE TABLE IF NOT EXISTS engagement_introductions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, display_name TEXT NOT NULL, interests TEXT NOT NULL, introduction TEXT NOT NULL, message_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('active', 'deleted', 'cleanup_pending')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
       CREATE TABLE IF NOT EXISTS engagement_suggestions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, message_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('open', 'acknowledged', 'deferred', 'resolved', 'archived', 'deletion_pending', 'cleanup_pending')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
       CREATE TABLE IF NOT EXISTS engagement_events (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, scheduled_at INTEGER NOT NULL, ends_at INTEGER, timezone TEXT NOT NULL, capacity INTEGER NOT NULL CHECK (capacity > 0), message_id TEXT NOT NULL DEFAULT '', destination_missed INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL CHECK (status IN ('scheduled', 'cancelled', 'completed')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
-      CREATE TABLE IF NOT EXISTS engagement_rsvps (event_id TEXT NOT NULL, guild_id TEXT NOT NULL, user_id TEXT NOT NULL, response TEXT NOT NULL CHECK (response IN ('yes', 'maybe', 'no')), attendance TEXT NOT NULL DEFAULT 'none' CHECK (attendance IN ('confirmed', 'waitlisted', 'none')), reminder_opt_in INTEGER NOT NULL DEFAULT 0, reminder_state TEXT NOT NULL DEFAULT 'pending' CHECK (reminder_state IN ('pending', 'delivered', 'failed')), reminder_claimed_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, event_id, user_id), FOREIGN KEY (guild_id, event_id) REFERENCES engagement_events(guild_id, id) ON DELETE CASCADE);
+      CREATE TABLE IF NOT EXISTS engagement_rsvps (event_id TEXT NOT NULL, guild_id TEXT NOT NULL, user_id TEXT NOT NULL, response TEXT NOT NULL CHECK (response IN ('yes', 'maybe', 'no')), attendance TEXT NOT NULL DEFAULT 'none' CHECK (attendance IN ('confirmed', 'waitlisted', 'none')), reminder_opt_in INTEGER NOT NULL DEFAULT 0, reminder_state TEXT NOT NULL DEFAULT 'pending' CHECK (reminder_state IN ('pending', 'delivered', 'failed')), reminder_claimed_at INTEGER, reminder_lease_token TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, event_id, user_id), FOREIGN KEY (guild_id, event_id) REFERENCES engagement_events(guild_id, id) ON DELETE CASCADE);
       CREATE TABLE IF NOT EXISTS engagement_opt_outs (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, opted_out_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id));
       CREATE TABLE IF NOT EXISTS engagement_idempotency_keys (guild_id TEXT NOT NULL, scope TEXT NOT NULL CHECK (scope IN ('interaction', 'scheduled-job')), key TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (guild_id, scope, key));
       CREATE INDEX IF NOT EXISTS engagement_introductions_status_retention ON engagement_introductions (status, updated_at, id);

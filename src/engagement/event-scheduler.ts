@@ -7,6 +7,7 @@ export interface EventReminderGateway {
     userId: string;
     title: string;
     scheduledAt: Date;
+    leaseToken: string;
     allowedMentions: { parse: readonly []; repliedUser: false };
   }): Promise<void>;
 }
@@ -56,6 +57,7 @@ export class EventScheduler {
           reminder.eventId,
           reminder.guildId,
           reminder.userId,
+          reminder.leaseToken,
           now,
         );
       } catch {
@@ -63,6 +65,7 @@ export class EventScheduler {
           reminder.eventId,
           reminder.guildId,
           reminder.userId,
+          reminder.leaseToken,
           now,
         );
       }

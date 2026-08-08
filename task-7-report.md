@@ -12,3 +12,5 @@ Implemented the event slice only. Recaps and trivia were deliberately left out.
 Verification: focused event tests, engagement storage tests, command-registration tests, full test suite, TypeScript build, documentation validation, and diff whitespace checks.
 
 Follow-up: `ends_at` is now persisted on create and covered by a reopen round-trip. Reminder delivery now atomically claims RSVP rows with a durable, recoverable lease before sending; a concurrent scheduler regression test proves a due RSVP is delivered once.
+
+Fencing follow-up: each reminder claim carries a unique persisted lease token. Delivery or failure completion requires that token to match the current lease, so an expired worker cannot overwrite a reclaimed worker's outcome.

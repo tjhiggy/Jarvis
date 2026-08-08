@@ -131,18 +131,21 @@ export interface EngagementRepository {
       userId: string;
       title: string;
       scheduledAt: Date;
+      leaseToken: string;
     }[]
   >;
   markEventReminderDelivered?(
     eventId: string,
     guildId: string,
     userId: string,
+    leaseToken: string,
     now: Date,
   ): Promise<boolean>;
   markEventReminderFailed?(
     eventId: string,
     guildId: string,
     userId: string,
+    leaseToken: string,
     now: Date,
   ): Promise<boolean>;
   getOptOut(

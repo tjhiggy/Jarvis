@@ -87,4 +87,67 @@ describe('event scheduler', () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it('fences a stale worker after its lease is reclaimed', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jarvis-event-fence-'));
+    const repository = new SQLiteEngagementRepository(
+      join(directory, 'events.db'),
+    );
+    const startedAt = new Date('2026-08-08T12:00:00Z');
+    try {
+      await repository.createEvent({
+        id: 'event-fence',
+        guildId: 'guild-1',
+        channelId: 'events',
+        ownerUserId: 'owner',
+        title: 'Raid',
+        description: 'Boarding party',
+        scheduledAt: startedAt,
+        timezone: 'UTC',
+        capacity: 1,
+        status: 'scheduled',
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      });
+      await repository.respondToEvent({
+        eventId: 'event-fence',
+        guildId: 'guild-1',
+        userId: 'user-1',
+        response: 'yes',
+        attendance: 'none',
+        reminderOptIn: true,
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      });
+      const first = (await repository.claimDueEventReminders(startedAt, 1))[0]!;
+      const reclaimed = (
+        await repository.claimDueEventReminders(
+          new Date('2026-08-08T12:06:00Z'),
+          1,
+        )
+      )[0]!;
+      expect(reclaimed.leaseToken).not.toBe(first.leaseToken);
+      await expect(
+        repository.markEventReminderDelivered(
+          first.eventId,
+          first.guildId,
+          first.userId,
+          first.leaseToken,
+          new Date('2026-08-08T12:06:00Z'),
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        repository.markEventReminderDelivered(
+          reclaimed.eventId,
+          reclaimed.guildId,
+          reclaimed.userId,
+          reclaimed.leaseToken,
+          new Date('2026-08-08T12:06:00Z'),
+        ),
+      ).resolves.toBe(true);
+    } finally {
+      await repository.closeConnection();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
