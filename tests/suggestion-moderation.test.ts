@@ -94,18 +94,42 @@ describe('SuggestionService', () => {
     ).resolves.toMatchObject({ status: 'acknowledged' });
   });
 
-  it('compensates for message-id persistence failure by deleting the posted card', async () => {
+  it('does not let moderation overwrite a deletion-pending suggestion', async () => {
+    const repository = new SuggestionsRepository();
+    const service = createService(repository, new SuggestionGateway());
+    const created = await service.submit(input());
+    repository.suggestions.get(`guild-1:${created.id}`).status =
+      'deletion_pending';
+    await expect(
+      service.moderate({
+        guildId: 'guild-1',
+        channelId: 'suggestions',
+        moderatorUserId: 'admin-1',
+        moderatorRoleIds: new Set(['role-admin']),
+        suggestionId: created.id,
+        action: 'resolve',
+        interactionId: 'race-click',
+      }),
+    ).rejects.toMatchObject({ code: 'not-found' });
+    await expect(
+      repository.getSuggestion('guild-1', created.id),
+    ).resolves.toMatchObject({ status: 'deletion_pending' });
+  });
+
+  it('persists a cleanup-pending record when message-id persistence fails after posting', async () => {
     const repository = new SuggestionsRepository();
     repository.failMessageUpdate = true;
     const gateway = new SuggestionGateway();
     const service = createService(repository, gateway);
     await expect(service.submit(input())).rejects.toThrow();
-    expect(gateway.deletes).toEqual([
-      { channelId: 'suggestions', messageId: 'message-1' },
-    ]);
+    expect(gateway.deletes).toEqual([]);
     await expect(
       repository.getSuggestion('guild-1', 'suggestion-1'),
-    ).resolves.toMatchObject({ id: 'suggestion-1' });
+    ).resolves.toMatchObject({
+      id: 'suggestion-1',
+      messageId: 'message-1',
+      status: 'cleanup_pending',
+    });
   });
 
   it('restricts status controls to configured roles, expires controls, and records safe audits', async () => {
@@ -253,6 +277,18 @@ class SuggestionsRepository implements EngagementRepository {
     if (value !== undefined) Object.assign(value, { status, updatedAt });
     return value;
   }
+  async transitionSuggestionStatus(
+    guildId: string,
+    id: string,
+    expectedStatus: any,
+    status: any,
+    updatedAt: Date,
+  ) {
+    const value = await this.getSuggestion(guildId, id);
+    if (value?.status !== expectedStatus) return undefined;
+    Object.assign(value, { status, updatedAt });
+    return value;
+  }
   async updateSuggestionMessageId(
     guildId: string,
     id: string,
@@ -262,6 +298,22 @@ class SuggestionsRepository implements EngagementRepository {
     const value = await this.getSuggestion(guildId, id);
     if (value !== undefined) value.messageId = messageId;
     return value;
+  }
+  async markSuggestionCleanupPending(
+    guildId: string,
+    id: string,
+    messageId: string,
+    updatedAt: Date,
+  ) {
+    const value = await this.getSuggestion(guildId, id);
+    if (value !== undefined)
+      Object.assign(value, { messageId, status: 'cleanup_pending', updatedAt });
+    return value;
+  }
+  async listCleanupPendingSuggestions() {
+    return [...this.suggestions.values()].filter(
+      (value) => value.status === 'cleanup_pending',
+    );
   }
   async deleteSuggestionRecord(guildId: string, id: string) {
     return this.suggestions.delete(`${guildId}:${id}`);

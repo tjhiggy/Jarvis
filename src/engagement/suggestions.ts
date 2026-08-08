@@ -179,9 +179,14 @@ export class SuggestionService {
     } catch (error) {
       if (messageId !== undefined) {
         try {
-          await this.dependencies.gateway.delete(value.channelId, messageId);
+          await this.dependencies.repository.markSuggestionCleanupPending(
+            value.guildId,
+            value.id,
+            messageId,
+            this.now(),
+          );
         } catch {
-          // Keep the persisted record when Discord cannot remove a posted card.
+          // Keep the persisted record rather than risk orphaning a posted card.
         }
       } else {
         await this.dependencies.repository.deleteSuggestionRecord(
@@ -304,12 +309,14 @@ export class SuggestionService {
     )
       throw new SuggestionServiceError('duplicate-action');
     const status = statusFor(input.action);
-    const updated = await this.dependencies.repository.updateSuggestionStatus(
-      guildId,
-      value.id,
-      status,
-      now,
-    );
+    const updated =
+      await this.dependencies.repository.transitionSuggestionStatus(
+        guildId,
+        value.id,
+        value.status,
+        status,
+        now,
+      );
     if (updated === undefined) throw new SuggestionServiceError('not-found');
     this.dependencies.audit?.({
       operation: 'suggestion-moderation',
@@ -331,6 +338,31 @@ export class SuggestionService {
       if (draft.expiresAt.getTime() <= now.getTime()) {
         this.drafts.delete(id);
         removed += 1;
+      }
+    }
+    return removed;
+  }
+
+  async cleanupPostedCards(limit = 100): Promise<number> {
+    let removed = 0;
+    for (const value of await this.dependencies.repository.listCleanupPendingSuggestions(
+      limit,
+    )) {
+      try {
+        if (value.messageId?.trim())
+          await this.dependencies.gateway.delete(
+            value.channelId,
+            value.messageId,
+          );
+        if (
+          await this.dependencies.repository.deleteSuggestionRecord(
+            value.guildId,
+            value.id,
+          )
+        )
+          removed += 1;
+      } catch {
+        // Preserve durable cleanup state for the next bounded retry.
       }
     }
     return removed;

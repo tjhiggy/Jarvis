@@ -5,7 +5,8 @@ export type SuggestionStatus =
   | 'deferred'
   | 'resolved'
   | 'archived'
-  | 'deletion_pending';
+  | 'deletion_pending'
+  | 'cleanup_pending';
 export type EventStatus = 'scheduled' | 'cancelled' | 'completed';
 export type RsvpResponse = 'yes' | 'maybe' | 'no';
 

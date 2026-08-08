@@ -84,6 +84,20 @@ export interface EngagementRepository {
     status: SuggestionStatus,
     updatedAt: Date,
   ): Promise<Suggestion | undefined>;
+  transitionSuggestionStatus(
+    guildId: string,
+    suggestionId: string,
+    expectedStatus: SuggestionStatus,
+    status: SuggestionStatus,
+    updatedAt: Date,
+  ): Promise<Suggestion | undefined>;
+  markSuggestionCleanupPending(
+    guildId: string,
+    suggestionId: string,
+    messageId: string,
+    updatedAt: Date,
+  ): Promise<Suggestion | undefined>;
+  listCleanupPendingSuggestions(limit: number): Promise<Suggestion[]>;
   createEvent(input: Event): Promise<Event>;
   getEvent(guildId: string, eventId: string): Promise<Event | undefined>;
   updateEventStatus(

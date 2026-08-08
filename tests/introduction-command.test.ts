@@ -338,6 +338,15 @@ class MemoryRepository implements EngagementRepository {
   async updateSuggestionStatus(): Promise<any> {
     return undefined;
   }
+  async transitionSuggestionStatus(): Promise<any> {
+    return undefined;
+  }
+  async markSuggestionCleanupPending(): Promise<any> {
+    return undefined;
+  }
+  async listCleanupPendingSuggestions(): Promise<any[]> {
+    return [];
+  }
   async createEvent(): Promise<any> {
     throw new Error('unused');
   }

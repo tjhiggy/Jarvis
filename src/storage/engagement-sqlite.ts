@@ -340,6 +340,48 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return this.getSuggestion(guildId, id);
   }
 
+  async transitionSuggestionStatus(
+    guildId: string,
+    id: string,
+    expectedStatus: SuggestionStatus,
+    status: SuggestionStatus,
+    updatedAt: Date,
+  ): Promise<Suggestion | undefined> {
+    this.ensureOpen();
+    const result = this.database
+      .prepare(
+        'UPDATE engagement_suggestions SET status = ?, updated_at = ? WHERE guild_id = ? AND id = ? AND status = ?',
+      )
+      .run(status, milliseconds(updatedAt), guildId, id, expectedStatus);
+    return result.changes === 1 ? this.getSuggestion(guildId, id) : undefined;
+  }
+
+  async markSuggestionCleanupPending(
+    guildId: string,
+    id: string,
+    messageId: string,
+    updatedAt: Date,
+  ): Promise<Suggestion | undefined> {
+    this.ensureOpen();
+    const result = this.database
+      .prepare(
+        "UPDATE engagement_suggestions SET message_id = ?, status = 'cleanup_pending', updated_at = ? WHERE guild_id = ? AND id = ?",
+      )
+      .run(messageId, milliseconds(updatedAt), guildId, id);
+    return result.changes === 1 ? this.getSuggestion(guildId, id) : undefined;
+  }
+
+  async listCleanupPendingSuggestions(limit: number): Promise<Suggestion[]> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          "SELECT * FROM engagement_suggestions WHERE status = 'cleanup_pending' ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?",
+        )
+        .all(limit) as SuggestionRow[]
+    ).map(toSuggestion);
+  }
+
   async createEvent(input: Event): Promise<Event> {
     this.ensureOpen();
     const value = copyEvent(input);
@@ -609,6 +651,14 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           this.upgradeSuggestionStatusSchema();
         this.recordMigration(7);
       }
+      if (!this.hasMigration(8)) {
+        if (
+          this.hasTable('engagement_suggestions') &&
+          !this.hasSuggestionCleanupPendingStatus()
+        )
+          this.upgradeSuggestionStatusSchema();
+        this.recordMigration(8);
+      }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
       );
@@ -682,12 +732,21 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return row?.sql?.includes('deletion_pending') === true;
   }
 
+  private hasSuggestionCleanupPendingStatus(): boolean {
+    const row = this.database
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'engagement_suggestions'",
+      )
+      .get() as { sql?: string } | undefined;
+    return row?.sql?.includes('cleanup_pending') === true;
+  }
+
   private upgradeSuggestionStatusSchema(): void {
     this.database.exec(`
       DROP INDEX IF EXISTS engagement_active_suggestion_content;
       DROP INDEX IF EXISTS engagement_suggestions_status_retention;
       ALTER TABLE engagement_suggestions RENAME TO engagement_suggestions_status_legacy;
-      CREATE TABLE engagement_suggestions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, message_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('open', 'acknowledged', 'deferred', 'resolved', 'archived', 'deletion_pending')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
+      CREATE TABLE engagement_suggestions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, message_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('open', 'acknowledged', 'deferred', 'resolved', 'archived', 'deletion_pending', 'cleanup_pending')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
       INSERT INTO engagement_suggestions SELECT * FROM engagement_suggestions_status_legacy;
       DROP TABLE engagement_suggestions_status_legacy;
       CREATE INDEX engagement_suggestions_status_retention ON engagement_suggestions (status, updated_at, id);
@@ -783,7 +842,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
   private createSchema(): void {
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS engagement_introductions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, display_name TEXT NOT NULL, interests TEXT NOT NULL, introduction TEXT NOT NULL, message_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('active', 'deleted', 'cleanup_pending')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
-      CREATE TABLE IF NOT EXISTS engagement_suggestions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, message_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('open', 'acknowledged', 'deferred', 'resolved', 'archived', 'deletion_pending')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
+      CREATE TABLE IF NOT EXISTS engagement_suggestions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, message_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('open', 'acknowledged', 'deferred', 'resolved', 'archived', 'deletion_pending', 'cleanup_pending')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
       CREATE TABLE IF NOT EXISTS engagement_events (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, scheduled_at INTEGER NOT NULL, timezone TEXT NOT NULL, capacity INTEGER NOT NULL CHECK (capacity > 0), status TEXT NOT NULL CHECK (status IN ('scheduled', 'cancelled', 'completed')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
       CREATE TABLE IF NOT EXISTS engagement_rsvps (event_id TEXT NOT NULL, guild_id TEXT NOT NULL, user_id TEXT NOT NULL, response TEXT NOT NULL CHECK (response IN ('yes', 'maybe', 'no')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, event_id, user_id), FOREIGN KEY (guild_id, event_id) REFERENCES engagement_events(guild_id, id) ON DELETE CASCADE);
       CREATE TABLE IF NOT EXISTS engagement_opt_outs (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, opted_out_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id));

@@ -597,6 +597,7 @@ export const createApplication = async (
         try {
           await introductionService?.cleanup(cutoff, 100);
           suggestionService?.cleanupDrafts();
+          await suggestionService?.cleanupPostedCards(100);
           await engagementRepository.cleanup(cutoff, 100);
         } catch (error) {
           logger?.warn({ error }, 'Engagement retention cleanup failed.');
