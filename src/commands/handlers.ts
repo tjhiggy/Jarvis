@@ -38,6 +38,9 @@ import {
 } from './suggestion.js';
 import { handleEventCommand } from './event.js';
 import type { EventService } from '../engagement/events.js';
+import { handleRecapCommand } from './recap.js';
+import type { RecapService } from '../engagement/recap.js';
+import type { EngagementRepository } from '../engagement/storage.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -84,6 +87,7 @@ export interface CommandDependencies {
         introductionId: string;
         suggestionId: string;
         eventId: string;
+        recapId: string;
       }>;
       adminRoleIds: ReadonlySet<string>;
     }>;
@@ -123,6 +127,10 @@ export interface CommandDependencies {
   readonly introductionService?: IntroductionService;
   readonly suggestionService?: SuggestionService;
   readonly eventService?: EventService;
+  readonly recapService?: RecapService;
+  readonly recapRepository?: Required<
+    Pick<EngagementRepository, 'setRecapEnabled'>
+  >;
 }
 
 const dmMessage = 'This command is available only in a server channel.';
@@ -239,6 +247,19 @@ export const handleCommand = async (
         ...(dependencies.eventService === undefined
           ? {}
           : { service: dependencies.eventService }),
+      });
+      return;
+    case 'recap':
+      await handleRecapCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId: dependencies.config.engagement?.channels.recapId ?? '',
+        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        ...(dependencies.recapService === undefined
+          ? {}
+          : { service: dependencies.recapService }),
+        ...(dependencies.recapRepository === undefined
+          ? {}
+          : { repository: dependencies.recapRepository }),
       });
       return;
     case 'help':

@@ -124,6 +124,70 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return value;
   }
 
+  async recapSource(guildId: string, start: Date, end: Date) {
+    this.ensureOpen();
+    const bounds = [guildId, milliseconds(start), milliseconds(end)] as const;
+    const count = (table: string) =>
+      Number(
+        (
+          this.database
+            .prepare(
+              `SELECT count(*) AS count FROM ${table} WHERE guild_id = ? AND created_at >= ? AND created_at < ?`,
+            )
+            .get(...bounds) as { count: number }
+        ).count,
+      );
+    const participantUserIds = (
+      this.database
+        .prepare(
+          'SELECT DISTINCT user_id FROM engagement_rsvps WHERE guild_id = ? AND updated_at >= ? AND updated_at < ?',
+        )
+        .all(...bounds) as Array<{ user_id: string }>
+    ).map((row) => row.user_id);
+    const botActivity = Number(
+      (
+        this.database
+          .prepare(
+            "SELECT (SELECT count(*) FROM engagement_introductions WHERE guild_id = ? AND created_at >= ? AND created_at < ? AND message_id != '') + (SELECT count(*) FROM engagement_suggestions WHERE guild_id = ? AND created_at >= ? AND created_at < ? AND message_id != '') + (SELECT count(*) FROM engagement_events WHERE guild_id = ? AND created_at >= ? AND created_at < ? AND message_id != '') AS count",
+          )
+          .get(...bounds, ...bounds, ...bounds) as { count: number }
+      ).count,
+    );
+    return {
+      guildId,
+      introductions: count('engagement_introductions'),
+      suggestions: count('engagement_suggestions'),
+      events: count('engagement_events'),
+      participantUserIds,
+      botActivity,
+    };
+  }
+
+  async recapEnabled(guildId: string): Promise<boolean> {
+    this.ensureOpen();
+    return (
+      (
+        this.database
+          .prepare(
+            'SELECT enabled FROM engagement_recap_preferences WHERE guild_id = ?',
+          )
+          .get(guildId) as { enabled: number } | undefined
+      )?.enabled === 1
+    );
+  }
+  async setRecapEnabled(
+    guildId: string,
+    enabled: boolean,
+    updatedAt: Date,
+  ): Promise<void> {
+    this.ensureOpen();
+    this.database
+      .prepare(
+        'INSERT INTO engagement_recap_preferences (guild_id, enabled, updated_at) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at',
+      )
+      .run(guildId, enabled ? 1 : 0, milliseconds(updatedAt));
+  }
+
   async getIntroduction(
     guildId: string,
     id: string,
@@ -958,6 +1022,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           );
         this.recordMigration(11);
       }
+      if (!this.hasMigration(12)) {
+        this.database.exec(
+          'CREATE TABLE IF NOT EXISTS engagement_recap_preferences (guild_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)), updated_at INTEGER NOT NULL)',
+        );
+        this.recordMigration(12);
+      }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
       );
@@ -1153,6 +1223,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       CREATE TABLE IF NOT EXISTS engagement_rsvps (event_id TEXT NOT NULL, guild_id TEXT NOT NULL, user_id TEXT NOT NULL, response TEXT NOT NULL CHECK (response IN ('yes', 'maybe', 'no')), attendance TEXT NOT NULL DEFAULT 'none' CHECK (attendance IN ('confirmed', 'waitlisted', 'none')), reminder_opt_in INTEGER NOT NULL DEFAULT 0, reminder_state TEXT NOT NULL DEFAULT 'pending' CHECK (reminder_state IN ('pending', 'delivered', 'failed')), reminder_claimed_at INTEGER, reminder_lease_token TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, event_id, user_id), FOREIGN KEY (guild_id, event_id) REFERENCES engagement_events(guild_id, id) ON DELETE CASCADE);
       CREATE TABLE IF NOT EXISTS engagement_opt_outs (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, opted_out_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id));
       CREATE TABLE IF NOT EXISTS engagement_idempotency_keys (guild_id TEXT NOT NULL, scope TEXT NOT NULL CHECK (scope IN ('interaction', 'scheduled-job')), key TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (guild_id, scope, key));
+      CREATE TABLE IF NOT EXISTS engagement_recap_preferences (guild_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)), updated_at INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS engagement_introductions_status_retention ON engagement_introductions (status, updated_at, id);
       CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';
       CREATE INDEX IF NOT EXISTS engagement_suggestions_status_retention ON engagement_suggestions (status, updated_at, id);

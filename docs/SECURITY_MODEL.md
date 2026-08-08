@@ -120,6 +120,13 @@ invalid content fails closed with a sanitized error that names
   Discord channel permission checks. Buttons confer no role, moderation, or
   server-setting authority. The bot requests no additional privileged intent,
   and it must not read arbitrary channel history for a recap or activity.
+- **Weekly recap privacy boundary.** Recaps are opt-in per guild and publish
+  only aggregate counts from configured engagement SQLite records and
+  Jarvis-owned posts. They never read historical channel content, names, or
+  individual activity. Every category requires a minimum group of three; small
+  cohorts are replaced with a quiet-week message. Recaps state their seven-day
+  source window and that data may be incomplete, and abstain if that source is
+  unavailable.
 - **Personal reminder boundary.** `/reminder` is owner-scoped, ephemeral at
   command time, and delivers only to the original allowed channel or thread
   after live revalidation. Its public payload permits only the verified owner

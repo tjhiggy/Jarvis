@@ -109,6 +109,11 @@ interface EventSubcommandDefinition {
   readonly description: string;
   readonly options?: readonly EventOptionDefinition[];
 }
+interface RecapSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'preview' | 'enable' | 'pause' | 'resume';
+  readonly description: string;
+}
 
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
@@ -123,7 +128,8 @@ export type CommandOptionDefinition =
   | SuggestionOptionDefinition
   | SuggestionSubcommandDefinition
   | EventOptionDefinition
-  | EventSubcommandDefinition;
+  | EventSubcommandDefinition
+  | RecapSubcommandDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -142,7 +148,8 @@ export interface CommandDefinition {
     | 'introduction'
     | 'suggest'
     | 'suggestion'
-    | 'event';
+    | 'event'
+    | 'recap';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -601,6 +608,33 @@ export const createCommandDefinitions = (
               max_length: 128,
             },
           ],
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'recap',
+      description: 'Preview or control weekly community recaps.',
+      options: [
+        {
+          type: 1,
+          name: 'preview',
+          description: 'Privately preview the current weekly recap.',
+        },
+        {
+          type: 1,
+          name: 'enable',
+          description: 'Opt this guild into weekly recaps.',
+        },
+        {
+          type: 1,
+          name: 'pause',
+          description: 'Pause scheduled weekly recaps.',
+        },
+        {
+          type: 1,
+          name: 'resume',
+          description: 'Resume scheduled weekly recaps.',
         },
       ],
     },

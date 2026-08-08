@@ -64,6 +64,16 @@ containerized Jarvis together: both can receive the same Discord events.
 
 ## Logs and incident evidence
 
+## Weekly recap operations
+
+Weekly recaps require a configured `ENGAGEMENT_RECAP_CHANNEL_ID`, valid weekly
+schedule/timezone, and an explicit administrator `/recap enable` opt-in for
+each guild. Administrators can run `/recap preview` for a private, non-posting
+check, then `/recap pause` or `/recap resume` to control scheduled delivery.
+The scheduler stores a per-guild, per-week idempotency key, so restarting or
+duplicating a tick does not post a second recap. If configured engagement
+storage is unavailable, it abstains rather than publishing a partial recap.
+
 The application writes structured Pino logs to its host process output. The
 supported manual native path leaves that output in its owning console. If the
 workstation-specific convenience helper is used, it redirects Node and Ollama

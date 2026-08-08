@@ -35,6 +35,7 @@ describe('SQLiteEngagementRepository', () => {
       'engagement_idempotency_keys',
       'engagement_introductions',
       'engagement_opt_outs',
+      'engagement_recap_preferences',
       'engagement_rsvps',
       'engagement_schema_migrations',
       'engagement_suggestions',

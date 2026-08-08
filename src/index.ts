@@ -70,6 +70,7 @@ import {
 import type { EngagementCard } from './engagement/discord-ui.js';
 import { EventService, type EventGateway } from './engagement/events.js';
 import { EventScheduler } from './engagement/event-scheduler.js';
+import { RecapScheduler, RecapService } from './engagement/recap.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -415,6 +416,7 @@ export const createApplication = async (
   let reminderScheduler: ReminderScheduler | undefined;
   let engagementRepository: EngagementRepository | undefined;
   let eventScheduler: EventScheduler | undefined;
+  let recapScheduler: RecapScheduler | undefined;
   let client: RuntimeDiscordClient | undefined;
   let cleanupTimer: unknown;
   let acceptingWork = false;
@@ -445,6 +447,16 @@ export const createApplication = async (
           logger?.warn(
             { error },
             'Event scheduler stop failed during shutdown.',
+          );
+        }
+      }
+      if (recapScheduler !== undefined) {
+        try {
+          await recapScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            { error },
+            'Recap scheduler stop failed during shutdown.',
           );
         }
       }
@@ -624,6 +636,14 @@ export const createApplication = async (
             adminRoleIds: config.engagement.adminRoleIds,
             gateway: createDefaultEventGateway(client),
           });
+    const recapService =
+      engagementRepository === undefined
+        ? undefined
+        : new RecapService({
+            repository: engagementRepository as Required<
+              Pick<EngagementRepository, 'recapSource'>
+            >,
+          });
     const cleanup = async (): Promise<void> => {
       try {
         await initializedStore.cleanup(
@@ -764,6 +784,14 @@ export const createApplication = async (
           ...(introductionService === undefined ? {} : { introductionService }),
           ...(suggestionService === undefined ? {} : { suggestionService }),
           ...(eventService === undefined ? {} : { eventService }),
+          ...(recapService === undefined
+            ? {}
+            : {
+                recapService,
+                recapRepository: engagementRepository as Required<
+                  Pick<EngagementRepository, 'setRecapEnabled'>
+                >,
+              }),
           ...(config.sleeper?.leagueId === undefined ||
           config.sleeper.leagueId === ''
             ? {}
@@ -820,10 +848,37 @@ export const createApplication = async (
           },
         },
       });
+    if (
+      recapService !== undefined &&
+      config.engagement.channels.recapId !== '' &&
+      config.engagement.recapSchedule !== ''
+    )
+      recapScheduler = new RecapScheduler({
+        guildId: config.discord.guildId,
+        channelId: config.engagement.channels.recapId,
+        schedule: config.engagement.recapSchedule,
+        timezone: config.engagement.recapTimezone,
+        repository: engagementRepository as Required<
+          Pick<EngagementRepository, 'recapEnabled' | 'claimIdempotencyKey'>
+        >,
+        service: recapService,
+        gateway: {
+          post: async (channelId, content) => {
+            const channel = await schedulerClient.channels?.fetch(channelId);
+            if (!isEventChannel(channel))
+              throw new Error('Configured recap channel is unavailable.');
+            await channel.send({
+              content,
+              allowedMentions: { parse: [], repliedUser: false },
+            });
+          },
+        },
+      });
 
     pollScheduler?.start();
     reminderScheduler.start();
     eventScheduler?.start();
+    recapScheduler?.start();
 
     cleanupTimer = timers.setInterval(() => {
       void cleanup();

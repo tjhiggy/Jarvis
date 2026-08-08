@@ -15,6 +15,24 @@ export class EngagementRecordConflictError extends Error {}
 export class EngagementOptOutError extends Error {}
 
 export interface EngagementRepository {
+  recapSource?(
+    guildId: string,
+    start: Date,
+    end: Date,
+  ): Promise<{
+    readonly guildId: string;
+    readonly introductions: number;
+    readonly suggestions: number;
+    readonly events: number;
+    readonly participantUserIds: readonly string[];
+    readonly botActivity: number;
+  }>;
+  recapEnabled?(guildId: string): Promise<boolean>;
+  setRecapEnabled?(
+    guildId: string,
+    enabled: boolean,
+    updatedAt: Date,
+  ): Promise<void>;
   createIntroduction(input: Introduction): Promise<Introduction>;
   getIntroduction(
     guildId: string,
