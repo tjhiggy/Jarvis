@@ -2,9 +2,33 @@ import { describe, expect, it } from 'vitest';
 
 import { IntroductionService } from '../src/engagement/introductions.js';
 import type { EngagementRepository } from '../src/engagement/storage.js';
+import { EngagementRecordConflictError } from '../src/engagement/storage.js';
 import { RateLimiter } from '../src/security/rate-limiter.js';
 
 describe('IntroductionService', () => {
+  it('keeps a preview private until its owner confirms and lets the owner cancel it', async () => {
+    const repository = new MemoryRepository();
+    const gateway = new Gateway();
+    const service = createService(repository, gateway);
+    const draft = await service.preview(introductionInput());
+    expect(repository.introductions.size).toBe(0);
+    expect(gateway.posts).toEqual([]);
+    expect(
+      service.cancel({
+        guildId: 'guild-1',
+        ownerUserId: 'user-1',
+        draftId: draft.id,
+      }),
+    ).toBe(true);
+    await expect(
+      service.confirm({
+        guildId: 'guild-1',
+        ownerUserId: 'user-1',
+        draftId: draft.id,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-input' });
+  });
+
   it('posts a bounded opted-in introduction only to the configured channel', async () => {
     const repository = new MemoryRepository();
     const gateway = new Gateway();
@@ -32,7 +56,7 @@ describe('IntroductionService', () => {
 
   it('rejects a missing configured channel, opt-out, duplicate active introduction, and rate limit', async () => {
     const repository = new MemoryRepository();
-    const service = createService(repository, new Gateway(), 1);
+    const service = createService(repository, new Gateway());
     const input = introductionInput();
 
     await expect(
@@ -52,8 +76,11 @@ describe('IntroductionService', () => {
     await expect(service.submit(input)).rejects.toMatchObject({
       code: 'duplicate',
     });
-    repository.introductions.get('guild-1:intro-1').status = 'deleted';
-    await expect(service.submit(input)).rejects.toMatchObject({
+    const limitedRepository = new MemoryRepository();
+    const limitedService = createService(limitedRepository, new Gateway(), 1);
+    await limitedService.submit(input);
+    limitedRepository.introductions.get('guild-1:intro-1').status = 'deleted';
+    await expect(limitedService.submit(input)).rejects.toMatchObject({
       code: 'rate-limit',
     });
   });
@@ -94,6 +121,51 @@ describe('IntroductionService', () => {
       createService(repository, new Gateway()).submit(introductionInput()),
     ).rejects.toMatchObject({ code: 'duplicate' });
   });
+
+  it('allows only one concurrent confirmation for the same owner', async () => {
+    const repository = new MemoryRepository();
+    const service = createService(repository, new Gateway());
+    const first = await service.preview(introductionInput());
+    const second = await service.preview(introductionInput());
+    const results = await Promise.allSettled([
+      service.confirm({
+        guildId: 'guild-1',
+        ownerUserId: 'user-1',
+        draftId: first.id,
+      }),
+      service.confirm({
+        guildId: 'guild-1',
+        ownerUserId: 'user-1',
+        draftId: second.id,
+      }),
+    ]);
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === 'rejected'),
+    ).toHaveLength(1);
+  });
+
+  it('deletes expired bot-owned cards before removing retained introductions', async () => {
+    const repository = new MemoryRepository();
+    const gateway = new Gateway();
+    const service = createService(repository, gateway);
+    const created = await service.submit(introductionInput());
+    repository.introductions.get(`guild-1:${created.id}`).updatedAt = new Date(
+      '2026-01-01T00:00:00.000Z',
+    );
+    await expect(
+      service.cleanup(new Date('2026-08-01T00:00:00.000Z'), 10),
+    ).resolves.toBe(1);
+    expect(gateway.deletes).toContainEqual({
+      channelId: 'configured-introductions',
+      messageId: 'message-1',
+    });
+    await expect(
+      repository.getIntroduction('guild-1', created.id),
+    ).resolves.toBeUndefined();
+  });
 });
 
 function introductionInput() {
@@ -112,11 +184,12 @@ function createService(
   gateway: Gateway,
   capacity = 5,
 ) {
+  let nextId = 1;
   return new IntroductionService({
     repository,
     gateway,
     rateLimiter: new RateLimiter(capacity, 60_000),
-    createId: () => 'intro-1',
+    createId: () => `intro-${nextId++}`,
     now: () => new Date('2026-08-08T12:00:00.000Z'),
   });
 }
@@ -137,6 +210,18 @@ class MemoryRepository implements EngagementRepository {
   introductions = new Map<string, any>();
   optedOut = new Map<string, any>();
   async createIntroduction(value: any) {
+    if (
+      [...this.introductions.values()].some(
+        (existing) =>
+          existing.guildId === value.guildId &&
+          existing.ownerUserId === value.ownerUserId &&
+          existing.status === 'active',
+      )
+    ) {
+      throw new EngagementRecordConflictError(
+        'Engagement record already exists.',
+      );
+    }
     this.introductions.set(`${value.guildId}:${value.id}`, { ...value });
     return value;
   }
@@ -175,6 +260,14 @@ class MemoryRepository implements EngagementRepository {
     value.status = status;
     value.updatedAt = updatedAt;
     return value;
+  }
+  async listExpiredIntroductions(cutoff: Date, limit: number) {
+    return [...this.introductions.values()]
+      .filter((value) => value.updatedAt < cutoff)
+      .slice(0, limit);
+  }
+  async deleteIntroductionRecord(guildId: string, id: string) {
+    return this.introductions.delete(`${guildId}:${id}`);
   }
   async getOptOut(guildId: string, userId: string) {
     return this.optedOut.get(`${guildId}:${userId}`);

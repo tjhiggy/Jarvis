@@ -527,6 +527,17 @@ export const createApplication = async (
       } catch (error) {
         logger?.warn({ error }, 'Conversation retention cleanup failed.');
       }
+      if (engagementRepository !== undefined) {
+        const cutoff = new Date(
+          Date.now() - config.engagement.retentionDays * 24 * 60 * 60 * 1_000,
+        );
+        try {
+          await introductionService?.cleanup(cutoff, 100);
+          await engagementRepository.cleanup(cutoff, 100);
+        } catch (error) {
+          logger?.warn({ error }, 'Engagement retention cleanup failed.');
+        }
+      }
     };
     await cleanup();
 

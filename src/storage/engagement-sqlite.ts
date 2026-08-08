@@ -173,6 +173,34 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return this.getIntroduction(guildId, id);
   }
 
+  async listExpiredIntroductions(
+    cutoff: Date,
+    limit: number,
+  ): Promise<Introduction[]> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          'SELECT * FROM engagement_introductions WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?',
+        )
+        .all(milliseconds(cutoff), limit) as IntroductionRow[]
+    ).map(toIntroduction);
+  }
+
+  async deleteIntroductionRecord(
+    guildId: string,
+    id: string,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          'DELETE FROM engagement_introductions WHERE guild_id = ? AND id = ?',
+        )
+        .run(guildId, id).changes === 1
+    );
+  }
+
   async createSuggestion(input: Suggestion): Promise<Suggestion> {
     this.ensureOpen();
     const value = copySuggestion(input);
@@ -466,6 +494,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         }
         this.recordMigration(3);
       }
+      if (!this.hasMigration(4)) {
+        this.database.exec(
+          "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
+        );
+        this.recordMigration(4);
+      }
     })();
   }
 
@@ -538,6 +572,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       CREATE TABLE IF NOT EXISTS engagement_opt_outs (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, opted_out_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id));
       CREATE TABLE IF NOT EXISTS engagement_idempotency_keys (guild_id TEXT NOT NULL, scope TEXT NOT NULL CHECK (scope IN ('interaction', 'scheduled-job')), key TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (guild_id, scope, key));
       CREATE INDEX IF NOT EXISTS engagement_introductions_status_retention ON engagement_introductions (status, updated_at, id);
+      CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';
       CREATE INDEX IF NOT EXISTS engagement_suggestions_status_retention ON engagement_suggestions (status, updated_at, id);
       CREATE INDEX IF NOT EXISTS engagement_events_status_scheduled ON engagement_events (status, scheduled_at, id);
       CREATE INDEX IF NOT EXISTS engagement_events_retention ON engagement_events (status, updated_at, id);

@@ -68,10 +68,17 @@ interface FantasySubcommandDefinition {
 
 interface IntroductionOptionDefinition {
   readonly type: 3;
-  readonly name: 'name' | 'interests' | 'aboard' | 'id';
+  readonly name: 'name' | 'interests' | 'aboard' | 'id' | 'draft_id';
   readonly description: string;
   readonly required: true;
   readonly max_length: number;
+}
+
+interface IntroductionSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'preview' | 'confirm' | 'cancel';
+  readonly description: string;
+  readonly options?: readonly IntroductionOptionDefinition[];
 }
 
 export type CommandOptionDefinition =
@@ -82,7 +89,8 @@ export type CommandOptionDefinition =
   | PollDurationOptionDefinition
   | ReminderSubcommandDefinition
   | FantasySubcommandDefinition
-  | IntroductionOptionDefinition;
+  | IntroductionOptionDefinition
+  | IntroductionSubcommandDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -327,25 +335,60 @@ export const createCommandDefinitions = (
       description: 'Privately preview and post a guided crew introduction.',
       options: [
         {
-          type: 3,
-          name: 'name',
-          description: 'Name or nickname for the card.',
-          required: true,
-          max_length: 80,
+          type: 1,
+          name: 'preview',
+          description: 'Create a private preview before posting.',
+          options: [
+            {
+              type: 3,
+              name: 'name',
+              description: 'Name or nickname for the card.',
+              required: true,
+              max_length: 80,
+            },
+            {
+              type: 3,
+              name: 'interests',
+              description: 'A few interests to share.',
+              required: true,
+              max_length: 300,
+            },
+            {
+              type: 3,
+              name: 'aboard',
+              description: 'What brings you aboard.',
+              required: true,
+              max_length: 500,
+            },
+          ],
         },
         {
-          type: 3,
-          name: 'interests',
-          description: 'A few interests to share.',
-          required: true,
-          max_length: 300,
+          type: 1,
+          name: 'confirm',
+          description: 'Post one private preview.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
         },
         {
-          type: 3,
-          name: 'aboard',
-          description: 'What brings you aboard.',
-          required: true,
-          max_length: 500,
+          type: 1,
+          name: 'cancel',
+          description: 'Discard one private preview.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
         },
       ],
     },

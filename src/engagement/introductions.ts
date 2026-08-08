@@ -1,5 +1,8 @@
 import type { Introduction } from './domain.js';
-import type { EngagementRepository } from './storage.js';
+import {
+  EngagementRecordConflictError,
+  type EngagementRepository,
+} from './storage.js';
 import type { RateLimiter } from '../security/rate-limiter.js';
 import { neutralizeDiscordMentions } from '../utils/mentions.js';
 
@@ -22,6 +25,7 @@ export interface IntroductionGateway {
 }
 
 export class IntroductionService {
+  private readonly drafts = new Map<string, Introduction>();
   constructor(
     private readonly dependencies: Readonly<{
       repository: EngagementRepository;
@@ -32,7 +36,7 @@ export class IntroductionService {
     }>,
   ) {}
 
-  async submit(
+  async preview(
     input: Readonly<{
       guildId: string;
       ownerUserId: string;
@@ -62,19 +66,6 @@ export class IntroductionService {
       undefined
     )
       throw new IntroductionServiceError('opted-out');
-    if (
-      (await this.dependencies.repository.findActiveIntroductionByOwner(
-        guildId,
-        ownerUserId,
-      )) !== undefined
-    )
-      throw new IntroductionServiceError('duplicate');
-    if (
-      !this.dependencies.rateLimiter.consume(
-        `introduction:${guildId}:${ownerUserId}`,
-      ).allowed
-    )
-      throw new IntroductionServiceError('rate-limit');
 
     const now = (this.dependencies.now ?? (() => new Date()))();
     const value: Introduction = {
@@ -90,29 +81,122 @@ export class IntroductionService {
       createdAt: now,
       updatedAt: now,
     };
-    await this.dependencies.repository.createIntroduction(value);
+    this.drafts.set(value.id, value);
+    return value;
+  }
+
+  async confirm(
+    input: Readonly<{ guildId: string; ownerUserId: string; draftId: string }>,
+  ): Promise<Introduction> {
+    const value = this.drafts.get(input.draftId.trim());
+    if (
+      value === undefined ||
+      value.guildId !== input.guildId.trim() ||
+      value.ownerUserId !== input.ownerUserId.trim()
+    )
+      throw new IntroductionServiceError('invalid-input');
+    if (
+      (await this.dependencies.repository.getOptOut(
+        value.guildId,
+        value.ownerUserId,
+      )) !== undefined
+    )
+      throw new IntroductionServiceError('opted-out');
+    if (
+      !this.dependencies.rateLimiter.consume(
+        `introduction:${value.guildId}:${value.ownerUserId}`,
+      ).allowed
+    )
+      throw new IntroductionServiceError('rate-limit');
+    try {
+      await this.dependencies.repository.createIntroduction(value);
+    } catch (error) {
+      if (error instanceof EngagementRecordConflictError)
+        throw new IntroductionServiceError('duplicate');
+      throw error;
+    }
+    this.drafts.delete(value.id);
     try {
       const message = await this.dependencies.gateway.post(
-        channelId,
+        value.channelId,
         formatIntroduction(value),
       );
       return (
         (await this.dependencies.repository.updateIntroductionMessageId(
-          guildId,
+          value.guildId,
           value.id,
           message.id,
         )) ?? value
       );
     } catch (error) {
       await this.dependencies.repository.updateIntroductionStatus(
-        guildId,
-        ownerUserId,
+        value.guildId,
+        value.ownerUserId,
         value.id,
         'deleted',
         (this.dependencies.now ?? (() => new Date()))(),
       );
       throw error;
     }
+  }
+
+  cancel(
+    input: Readonly<{ guildId: string; ownerUserId: string; draftId: string }>,
+  ): boolean {
+    const value = this.drafts.get(input.draftId.trim());
+    if (
+      value === undefined ||
+      value.guildId !== input.guildId.trim() ||
+      value.ownerUserId !== input.ownerUserId.trim()
+    )
+      return false;
+    this.drafts.delete(value.id);
+    return true;
+  }
+
+  async cleanup(cutoff: Date, limit: number): Promise<number> {
+    const expired = await this.dependencies.repository.listExpiredIntroductions(
+      cutoff,
+      limit,
+    );
+    let removed = 0;
+    for (const value of expired) {
+      try {
+        if (value.messageId?.trim())
+          await this.dependencies.gateway.delete(
+            value.channelId,
+            value.messageId,
+          );
+        if (
+          await this.dependencies.repository.deleteIntroductionRecord(
+            value.guildId,
+            value.id,
+          )
+        )
+          removed += 1;
+      } catch {
+        // Preserve the record when its card cannot be removed so a later bounded cleanup can retry.
+      }
+    }
+    return removed;
+  }
+
+  async submit(
+    input: Readonly<{
+      guildId: string;
+      ownerUserId: string;
+      channelId: string;
+      displayName: string;
+      interests: string;
+      introduction: string;
+    }>,
+  ): Promise<Introduction> {
+    const draft = await this.preview(input);
+    return this.confirm({
+      guildId: draft.guildId,
+      ownerUserId: draft.ownerUserId,
+      draftId: draft.id,
+    });
   }
 
   async delete(

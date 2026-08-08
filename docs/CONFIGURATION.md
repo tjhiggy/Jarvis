@@ -133,8 +133,11 @@ Engagement records are retained for `ENGAGEMENT_RETENTION_DAYS`, from 1 through
 for a later handler to ignore. Restart after any engagement configuration
 change; re-register commands after enabling engagement or changing the
 introduction channel. `/introduce` posts only to
-`ENGAGEMENT_INTRODUCTION_CHANNEL_ID`; `/introduction id:<id>` is the owner-only
-deletion path for its SQLite record and bot-owned card.
+`ENGAGEMENT_INTRODUCTION_CHANNEL_ID`; `/introduce preview` creates a private
+draft and `/introduce confirm` posts it, while `/introduction id:<id>` is the
+owner-only deletion path for its SQLite record and bot-owned card. Retention
+cleanup removes expired bot-owned cards before deleting their records; a card
+that cannot be removed leaves its record in place for the next bounded retry.
 
 ## Retry, persona, and restart rules
 

@@ -1,4 +1,5 @@
 import {
+  formatIntroduction,
   IntroductionServiceError,
   type IntroductionService,
 } from '../engagement/introductions.js';
@@ -7,7 +8,10 @@ import { replySafely, type ReplyTarget } from '../discord/delivery.js';
 export interface IntroductionCommandInteraction extends ReplyTarget {
   readonly guildId: string | null;
   readonly user: Readonly<{ id: string }>;
-  readonly options: Readonly<{ getString(name: string): string | null }>;
+  readonly options: Readonly<{
+    getSubcommand(): string;
+    getString(name: string): string | null;
+  }>;
 }
 
 export const handleIntroductionCommand = async (
@@ -35,7 +39,36 @@ export const handleIntroductionCommand = async (
     return;
   }
   try {
-    const created = await dependencies.service.submit({
+    const subcommand = interaction.options.getSubcommand();
+    if (subcommand === 'confirm') {
+      const created = await dependencies.service.confirm({
+        guildId: interaction.guildId,
+        ownerUserId: interaction.user.id,
+        draftId: interaction.options.getString('draft_id') ?? '',
+      });
+      await replySafely(
+        interaction,
+        `Posted to the configured introduction channel. Your introduction ID is ${created.id}; use /introduction id:${created.id} to remove it.`,
+        true,
+      );
+      return;
+    }
+    if (subcommand === 'cancel') {
+      const cancelled = dependencies.service.cancel({
+        guildId: interaction.guildId,
+        ownerUserId: interaction.user.id,
+        draftId: interaction.options.getString('draft_id') ?? '',
+      });
+      await replySafely(
+        interaction,
+        cancelled
+          ? 'Preview cancelled. Nothing was saved or posted.'
+          : 'That private preview was not found or is not yours.',
+        true,
+      );
+      return;
+    }
+    const draft = await dependencies.service.preview({
       guildId: interaction.guildId,
       ownerUserId: interaction.user.id,
       channelId: dependencies.channelId,
@@ -45,7 +78,7 @@ export const handleIntroductionCommand = async (
     });
     await replySafely(
       interaction,
-      `Preview confirmed and posted to the configured introduction channel. Your introduction ID is ${created.id}; use /introduction delete id:${created.id} to remove it.`,
+      `Private preview:\n${formatIntroduction(draft)}\n\nNothing has been saved or posted. Use /introduce confirm draft_id:${draft.id} to post, or /introduce cancel draft_id:${draft.id} to discard it.`,
       true,
     );
   } catch (error) {

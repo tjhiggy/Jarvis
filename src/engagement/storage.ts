@@ -36,6 +36,14 @@ export interface EngagementRepository {
     status: IntroductionStatus,
     updatedAt: Date,
   ): Promise<Introduction | undefined>;
+  listExpiredIntroductions(
+    cutoff: Date,
+    limit: number,
+  ): Promise<Introduction[]>;
+  deleteIntroductionRecord(
+    guildId: string,
+    introductionId: string,
+  ): Promise<boolean>;
   createSuggestion(input: Suggestion): Promise<Suggestion>;
   getSuggestion(
     guildId: string,
