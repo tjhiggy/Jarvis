@@ -126,7 +126,9 @@ Discord role grant. Administrators must still have the channel permissions
 needed to invoke application commands. `ENGAGEMENT_RECAP_SCHEDULE` uses an
 uppercase weekday and 24-hour local time, for example `MONDAY 09:30`; it is
 valid only with enabled engagement and a configured recap channel. The timezone
-must be a valid IANA name. No schedule means no automatic recap.
+must be a valid IANA name. No schedule means no automatic recap: administrators
+may still use `/recap preview`, but `/recap enable` and `/recap resume` refuse
+to enable scheduled posting until the schedule is configured.
 
 Engagement records are retained for `ENGAGEMENT_RETENTION_DAYS`, from 1 through
 90 days. The per-user and participant caps are hard startup limits, not hints

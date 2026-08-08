@@ -12,7 +12,12 @@ describe('recap scheduler', () => {
       timezone: 'UTC',
       repository: {
         recapEnabled: async () => true,
-        claimIdempotencyKey: claim,
+        claimRecapRun: async () => {
+          claim();
+          return claim.mock.calls.length === 1 ? 'lease-1' : undefined;
+        },
+        completeRecapRun: async () => true,
+        releaseRecapRun: async () => false,
       } as any,
       service: {
         preview: async () => ({ status: 'ready', content: 'safe recap' }),
@@ -24,5 +29,84 @@ describe('recap scheduler', () => {
     await scheduler.tick();
     expect(post).toHaveBeenCalledTimes(1);
     expect(post).toHaveBeenCalledWith('recaps', 'safe recap');
+  });
+
+  it('releases a leased run after unavailable source data so a restart can retry it', async () => {
+    const release = vi.fn().mockResolvedValue(true);
+    const scheduler = new RecapScheduler({
+      guildId: 'guild-a',
+      channelId: 'recaps',
+      schedule: 'FRIDAY 12:00',
+      timezone: 'UTC',
+      repository: {
+        recapEnabled: async () => true,
+        claimRecapRun: async () => 'lease-1',
+        completeRecapRun: async () => true,
+        releaseRecapRun: release,
+      } as any,
+      service: { preview: async () => ({ status: 'unavailable' }) } as any,
+      gateway: { post: vi.fn() },
+      now: () => new Date('2026-08-07T12:05:00Z'),
+    });
+    await scheduler.tick();
+    expect(release).toHaveBeenCalledWith(
+      'guild-a',
+      'weekly-recap:2026-08-07',
+      'lease-1',
+      expect.any(Date),
+    );
+  });
+
+  it('releases a leased run after gateway failure so the next worker can retry', async () => {
+    let leased = false;
+    let completed = false;
+    const repository = {
+      recapEnabled: async () => true,
+      claimRecapRun: async () => {
+        if (leased || completed) return undefined;
+        leased = true;
+        return 'lease-2';
+      },
+      completeRecapRun: async () => {
+        completed = true;
+        return true;
+      },
+      releaseRecapRun: async () => {
+        leased = false;
+        return true;
+      },
+    };
+    const scheduler = new RecapScheduler({
+      guildId: 'guild-a',
+      channelId: 'recaps',
+      schedule: 'FRIDAY 12:00',
+      timezone: 'UTC',
+      repository: repository as any,
+      service: {
+        preview: async () => ({ status: 'ready', content: 'safe recap' }),
+      } as any,
+      gateway: {
+        post: async () => {
+          throw new Error('Discord unavailable');
+        },
+      },
+      now: () => new Date('2026-08-07T12:05:00Z'),
+    });
+    await scheduler.tick();
+    const post = vi.fn().mockResolvedValue(undefined);
+    await new RecapScheduler({
+      guildId: 'guild-a',
+      channelId: 'recaps',
+      schedule: 'FRIDAY 12:00',
+      timezone: 'UTC',
+      repository: repository as any,
+      service: {
+        preview: async () => ({ status: 'ready', content: 'safe recap' }),
+      } as any,
+      gateway: { post },
+      now: () => new Date('2026-08-07T12:05:00Z'),
+    }).tick();
+    expect(post).toHaveBeenCalledOnce();
+    expect(completed).toBe(true);
   });
 });

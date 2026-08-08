@@ -23,6 +23,15 @@
 - `git diff --check`: passed.
 - Focused recap/privacy/scheduler/storage/registration suite: 25 tests passed.
 
+## Review remediation
+
+- Replaced the pre-publication idempotency key with a persisted recap-run lease.
+  A run is completed only after Discord accepts the post; unavailable source
+  data and gateway failure release it for a later worker or restart.
+- Clarified the split between preview-only configuration and scheduled delivery:
+  `/recap preview` needs a recap channel, while `/recap enable` and
+  `/recap resume` require a configured schedule and timezone.
+
 ## Known toolchain issue
 
 `npm run lint` cannot run because the installed `typescript-eslint` rejects

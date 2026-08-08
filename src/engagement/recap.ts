@@ -83,7 +83,13 @@ export class RecapScheduler {
       schedule: string;
       timezone: string;
       repository: Required<
-        Pick<EngagementRepository, 'recapEnabled' | 'claimIdempotencyKey'>
+        Pick<
+          EngagementRepository,
+          | 'recapEnabled'
+          | 'claimRecapRun'
+          | 'completeRecapRun'
+          | 'releaseRecapRun'
+        >
       >;
       service: RecapService;
       gateway: RecapGateway;
@@ -111,24 +117,38 @@ export class RecapScheduler {
       return;
     const window = { start: new Date(now.getTime() - weekMs), end: now };
     const key = `weekly-recap:${day(window.end)}`;
-    if (
-      !(await this.dependencies.repository.claimIdempotencyKey(
-        this.dependencies.guildId,
-        'scheduled-job',
-        key,
-        now,
-      ))
-    )
-      return;
-    const recap = await this.dependencies.service.preview(
+    const leaseToken = await this.dependencies.repository.claimRecapRun(
       this.dependencies.guildId,
-      window,
+      key,
+      now,
     );
-    if (recap.status === 'ready' || recap.status === 'quiet')
+    if (leaseToken === undefined) return;
+    try {
+      const recap = await this.dependencies.service.preview(
+        this.dependencies.guildId,
+        window,
+      );
+      if (recap.status === 'unavailable') return;
       await this.dependencies.gateway.post(
         this.dependencies.channelId,
         recap.content!,
       );
+      await this.dependencies.repository.completeRecapRun(
+        this.dependencies.guildId,
+        key,
+        leaseToken,
+        now,
+      );
+    } catch {
+      // Release below makes delivery failures retryable on a later tick.
+    } finally {
+      await this.dependencies.repository.releaseRecapRun(
+        this.dependencies.guildId,
+        key,
+        leaseToken,
+        now,
+      );
+    }
   }
 }
 

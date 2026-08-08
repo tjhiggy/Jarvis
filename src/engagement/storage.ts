@@ -33,6 +33,23 @@ export interface EngagementRepository {
     enabled: boolean,
     updatedAt: Date,
   ): Promise<void>;
+  claimRecapRun?(
+    guildId: string,
+    key: string,
+    now: Date,
+  ): Promise<string | undefined>;
+  completeRecapRun?(
+    guildId: string,
+    key: string,
+    leaseToken: string,
+    now: Date,
+  ): Promise<boolean>;
+  releaseRecapRun?(
+    guildId: string,
+    key: string,
+    leaseToken: string,
+    now: Date,
+  ): Promise<boolean>;
   createIntroduction(input: Introduction): Promise<Introduction>;
   getIntroduction(
     guildId: string,

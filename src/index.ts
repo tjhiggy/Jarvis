@@ -859,7 +859,13 @@ export const createApplication = async (
         schedule: config.engagement.recapSchedule,
         timezone: config.engagement.recapTimezone,
         repository: engagementRepository as Required<
-          Pick<EngagementRepository, 'recapEnabled' | 'claimIdempotencyKey'>
+          Pick<
+            EngagementRepository,
+            | 'recapEnabled'
+            | 'claimRecapRun'
+            | 'completeRecapRun'
+            | 'releaseRecapRun'
+          >
         >,
         service: recapService,
         gateway: {

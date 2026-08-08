@@ -188,6 +188,53 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       .run(guildId, enabled ? 1 : 0, milliseconds(updatedAt));
   }
 
+  async claimRecapRun(
+    guildId: string,
+    key: string,
+    now: Date,
+  ): Promise<string | undefined> {
+    this.ensureOpen();
+    const leaseToken = randomUUID();
+    const timestamp = milliseconds(now);
+    const staleBefore = timestamp - 5 * 60 * 1_000;
+    const result = this.database
+      .prepare(
+        "INSERT INTO engagement_recap_runs (guild_id, run_key, state, claimed_at, lease_token, completed_at) VALUES (?, ?, 'pending', ?, ?, NULL) ON CONFLICT(guild_id, run_key) DO UPDATE SET state = 'pending', claimed_at = excluded.claimed_at, lease_token = excluded.lease_token WHERE engagement_recap_runs.state = 'pending' AND engagement_recap_runs.claimed_at < ?",
+      )
+      .run(guildId, key, timestamp, leaseToken, staleBefore);
+    return result.changes === 1 ? leaseToken : undefined;
+  }
+  async completeRecapRun(
+    guildId: string,
+    key: string,
+    leaseToken: string,
+    now: Date,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          "UPDATE engagement_recap_runs SET state = 'completed', completed_at = ? WHERE guild_id = ? AND run_key = ? AND state = 'pending' AND lease_token = ?",
+        )
+        .run(milliseconds(now), guildId, key, leaseToken).changes === 1
+    );
+  }
+  async releaseRecapRun(
+    guildId: string,
+    key: string,
+    leaseToken: string,
+    _now: Date,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          "DELETE FROM engagement_recap_runs WHERE guild_id = ? AND run_key = ? AND state = 'pending' AND lease_token = ?",
+        )
+        .run(guildId, key, leaseToken).changes === 1
+    );
+  }
+
   async getIntroduction(
     guildId: string,
     id: string,
@@ -1028,6 +1075,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         );
         this.recordMigration(12);
       }
+      if (!this.hasMigration(13)) {
+        this.database.exec(
+          "CREATE TABLE IF NOT EXISTS engagement_recap_runs (guild_id TEXT NOT NULL, run_key TEXT NOT NULL, state TEXT NOT NULL CHECK (state IN ('pending', 'completed')), claimed_at INTEGER NOT NULL, lease_token TEXT, completed_at INTEGER, PRIMARY KEY (guild_id, run_key))",
+        );
+        this.recordMigration(13);
+      }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
       );
@@ -1224,6 +1277,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       CREATE TABLE IF NOT EXISTS engagement_opt_outs (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, opted_out_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id));
       CREATE TABLE IF NOT EXISTS engagement_idempotency_keys (guild_id TEXT NOT NULL, scope TEXT NOT NULL CHECK (scope IN ('interaction', 'scheduled-job')), key TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (guild_id, scope, key));
       CREATE TABLE IF NOT EXISTS engagement_recap_preferences (guild_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)), updated_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS engagement_recap_runs (guild_id TEXT NOT NULL, run_key TEXT NOT NULL, state TEXT NOT NULL CHECK (state IN ('pending', 'completed')), claimed_at INTEGER NOT NULL, lease_token TEXT, completed_at INTEGER, PRIMARY KEY (guild_id, run_key));
       CREATE INDEX IF NOT EXISTS engagement_introductions_status_retention ON engagement_introductions (status, updated_at, id);
       CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';
       CREATE INDEX IF NOT EXISTS engagement_suggestions_status_retention ON engagement_suggestions (status, updated_at, id);

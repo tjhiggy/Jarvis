@@ -89,6 +89,7 @@ export interface CommandDependencies {
         eventId: string;
         recapId: string;
       }>;
+      recapSchedule: string;
       adminRoleIds: ReadonlySet<string>;
     }>;
   }>;
@@ -254,6 +255,7 @@ export const handleCommand = async (
         enabled: dependencies.config.engagement?.enabled ?? false,
         channelId: dependencies.config.engagement?.channels.recapId ?? '',
         adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        schedule: dependencies.config.engagement?.recapSchedule ?? '',
         ...(dependencies.recapService === undefined
           ? {}
           : { service: dependencies.recapService }),

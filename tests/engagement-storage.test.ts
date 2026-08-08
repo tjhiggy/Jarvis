@@ -36,6 +36,7 @@ describe('SQLiteEngagementRepository', () => {
       'engagement_introductions',
       'engagement_opt_outs',
       'engagement_recap_preferences',
+      'engagement_recap_runs',
       'engagement_rsvps',
       'engagement_schema_migrations',
       'engagement_suggestions',
@@ -388,6 +389,32 @@ describe('SQLiteEngagementRepository', () => {
         at(10),
       ),
     ).resolves.toBe(true);
+  });
+
+  it('leases recap runs until a matching worker completes them', async () => {
+    const first = await repository.claimRecapRun(
+      'guild-1',
+      'weekly-recap:1',
+      at(1),
+    );
+    expect(first).toBeDefined();
+    await expect(
+      repository.claimRecapRun('guild-1', 'weekly-recap:1', at(2)),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.releaseRecapRun('guild-1', 'weekly-recap:1', first!, at(2)),
+    ).resolves.toBe(true);
+    const retry = await repository.claimRecapRun(
+      'guild-1',
+      'weekly-recap:1',
+      at(3),
+    );
+    await expect(
+      repository.completeRecapRun('guild-1', 'weekly-recap:1', retry!, at(3)),
+    ).resolves.toBe(true);
+    await expect(
+      repository.claimRecapRun('guild-1', 'weekly-recap:1', at(10)),
+    ).resolves.toBeUndefined();
   });
 
   it('cleans expired retained records and keys but preserves current records', async () => {

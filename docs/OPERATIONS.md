@@ -62,17 +62,21 @@ Stop native Jarvis with `Ctrl+C` in the owning console or a normal `SIGINT` or
 process to exit before copying or restoring the database. Do not run native and
 containerized Jarvis together: both can receive the same Discord events.
 
-## Logs and incident evidence
-
 ## Weekly recap operations
 
 Weekly recaps require a configured `ENGAGEMENT_RECAP_CHANNEL_ID`, valid weekly
 schedule/timezone, and an explicit administrator `/recap enable` opt-in for
 each guild. Administrators can run `/recap preview` for a private, non-posting
 check, then `/recap pause` or `/recap resume` to control scheduled delivery.
-The scheduler stores a per-guild, per-week idempotency key, so restarting or
-duplicating a tick does not post a second recap. If configured engagement
-storage is unavailable, it abstains rather than publishing a partial recap.
+With only a configured recap channel, `/recap preview` is available but no
+weekly run can be enabled. `/recap enable` and `/recap resume` require a valid
+weekly schedule and IANA timezone. The scheduler leases a per-guild, per-week
+run and marks it complete only after Discord accepts the post. Source or
+gateway failure releases the lease for a later retry; a completed run is never
+posted again. If configured engagement storage is unavailable, it abstains
+rather than publishing a partial recap.
+
+## Logs and incident evidence
 
 The application writes structured Pino logs to its host process output. The
 supported manual native path leaves that output in its owning console. If the

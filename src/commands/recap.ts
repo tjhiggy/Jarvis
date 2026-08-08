@@ -11,6 +11,7 @@ export const handleRecapCommand = async (
   dependencies: {
     enabled: boolean;
     channelId: string;
+    schedule: string;
     adminRoleIds: ReadonlySet<string>;
     service?: RecapService;
     repository?: Required<Pick<EngagementRepository, 'setRecapEnabled'>>;
@@ -49,6 +50,12 @@ export const handleRecapCommand = async (
     subcommand === 'pause' ||
     subcommand === 'resume'
   ) {
+    if (!dependencies.schedule.trim())
+      return replySafely(
+        interaction,
+        'Configure a weekly recap schedule and timezone before enabling scheduled recaps. Preview remains available.',
+        true,
+      );
     const enabled = subcommand !== 'pause';
     await dependencies.repository.setRecapEnabled(
       interaction.guildId,
