@@ -74,10 +74,15 @@ Backups remain historical copies until they expire under the backup policy.
 ## Retention, schedulers, and failure response
 
 `ENGAGEMENT_RETENTION_DAYS` governs normal cleanup of local engagement state:
-introductions, suggestions, events, RSVPs, trivia records, opt-outs, recap
-state, idempotency leases, and pause audit markers. Cleanup is bounded and does
-not export data. Introduction/suggestion cleanup deletes the bot-owned card
-first; a Discord deletion failure becomes `cleanup_pending` for retry.
+introductions, suggestions, expired trivia records and answers, opt-outs,
+idempotency keys, recap preferences and run leases, guild pause preferences,
+and pause/resume audit markers. Completed or cancelled events older than the
+cutoff are removed with their RSVP rows by SQLite cascade; old orphaned RSVP
+rows are also removed defensively. The batch limit bounds root rows selected by
+cleanup; deleting one expired event may also cascade all of that event's RSVP
+rows. Cleanup does not export data. Introduction/suggestion cleanup deletes the
+bot-owned card first; a Discord deletion failure becomes `cleanup_pending` for
+retry.
 
 | Scheduler | Cadence | Failure behavior |
 | --- | --- | --- |

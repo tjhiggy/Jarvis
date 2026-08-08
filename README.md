@@ -30,7 +30,7 @@ enhancements.
 
 | Verified capability                                                                                                                       | Current boundary                                                                                                                                                     |
 | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, `/event`, and read-only `/fantasy standings`, plus direct mentions | AI requests, reminders, and mentions enforce the configured channel allowlist; `/event create` and `/event cancel` require configured engagement administrator roles |
+| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, `/introduce`, `/suggest`, `/event`, `/recap`, `/trivia`, `/engagement`, and read-only `/fantasy standings`, plus direct mentions | Engagement V1 provides introductions, suggestions, events/RSVP, weekly recaps, and trivia only in their configured channels; administrative controls require configured engagement roles |
 | Optional `/poll` and `/poll-close` commands                                                                                               | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls                                       |
 | Short conversation context stored in SQLite                                                                                               | Isolated by guild and channel or thread; not encrypted by the application                                                                                            |
 | Local Ollama and OpenAI Responses providers                                                                                               | Exactly one provider is selected at startup                                                                                                                          |
@@ -314,7 +314,8 @@ deletion, backup, outage, and rollback behavior, use the
 
 Configured administrators can use `/engagement status` for aggregate feature, scheduler, and record health, and `/engagement pause` or `/engagement resume` to control scheduled engagement delivery for their guild. Members may use `/engagement delete` to remove their retained engagement records in that guild; configured administrators may supply a member ID for an administrative deletion. These responses and audit records never include submitted content, RSVP reasons, or credentials.
 
-The Muthaship engagement loop includes guided introductions and suggestions. When enabled,
+The shipped Muthaship engagement loop includes guided introductions, suggestions,
+events and RSVP, weekly recaps, and curated trivia. When enabled,
 `/introduce preview` accepts a bounded name, interests, and reason for coming
 aboard, returns a private preview, and persists or posts nothing until the
 member runs `/introduce confirm` with that preview ID. `/introduce cancel`
@@ -344,7 +345,8 @@ retains only the round, participant ID, and correctness for the configured
 engagement retention period; it never retains answer text. Existing opt-out
 and owner-data deletion remove trivia participation. There is no XP,
 leaderboard, streak, economy, or public profile. Events and recaps are
-configured separately. The complete contract, including opt-out, retention, and
+configured separately by their own channel settings. The complete contract,
+including opt-out, retention, and
 deletion rules, is in the
 [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md).
 

@@ -1222,10 +1222,15 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       for (const sql of [
         `DELETE FROM engagement_introductions WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_introductions WHERE status = 'deleted' AND updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
         `DELETE FROM engagement_suggestions WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_suggestions WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
+        `DELETE FROM engagement_rsvps WHERE rowid IN (SELECT r.rowid FROM engagement_rsvps r LEFT JOIN engagement_events e ON e.guild_id = r.guild_id AND e.id = r.event_id WHERE e.id IS NULL AND r.updated_at < ? ORDER BY r.updated_at ASC, r.guild_id ASC, r.event_id ASC, r.user_id ASC LIMIT ?)`,
         `DELETE FROM engagement_events WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_events WHERE status IN ('cancelled', 'completed') AND updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
         `DELETE FROM engagement_trivia_rounds WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_trivia_rounds WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
         `DELETE FROM engagement_idempotency_keys WHERE rowid IN (SELECT rowid FROM engagement_idempotency_keys WHERE created_at < ? ORDER BY created_at ASC, key ASC LIMIT ?)`,
         `DELETE FROM engagement_opt_outs WHERE rowid IN (SELECT rowid FROM engagement_opt_outs WHERE opted_out_at < ? ORDER BY opted_out_at ASC, guild_id ASC, user_id ASC LIMIT ?)`,
+        `DELETE FROM engagement_recap_preferences WHERE rowid IN (SELECT rowid FROM engagement_recap_preferences WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC LIMIT ?)`,
+        `DELETE FROM engagement_recap_runs WHERE rowid IN (SELECT rowid FROM engagement_recap_runs WHERE coalesce(completed_at, claimed_at) < ? ORDER BY coalesce(completed_at, claimed_at) ASC, guild_id ASC, run_key ASC LIMIT ?)`,
+        `DELETE FROM engagement_preferences WHERE rowid IN (SELECT rowid FROM engagement_preferences WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC LIMIT ?)`,
+        `DELETE FROM engagement_operational_audit WHERE rowid IN (SELECT rowid FROM engagement_operational_audit WHERE created_at < ? ORDER BY created_at ASC, guild_id ASC, id ASC LIMIT ?)`,
       ]) {
         if (remaining === 0) break;
         const result = this.database
@@ -1438,6 +1443,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           "CREATE TABLE IF NOT EXISTS engagement_preferences (guild_id TEXT PRIMARY KEY, paused INTEGER NOT NULL CHECK (paused IN (0, 1)), updated_at INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS engagement_operational_audit (id INTEGER PRIMARY KEY, guild_id TEXT NOT NULL, actor_user_id TEXT NOT NULL, operation TEXT NOT NULL CHECK (operation IN ('engagement_pause', 'engagement_resume')), created_at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS engagement_operational_audit_guild ON engagement_operational_audit (guild_id, created_at DESC, id DESC);",
         );
         this.recordMigration(17);
+      }
+      if (!this.hasMigration(18)) {
+        this.database.exec(
+          'CREATE INDEX IF NOT EXISTS engagement_recap_preferences_retention ON engagement_recap_preferences (updated_at, guild_id); CREATE INDEX IF NOT EXISTS engagement_recap_runs_retention ON engagement_recap_runs (completed_at, claimed_at, guild_id, run_key); CREATE INDEX IF NOT EXISTS engagement_preferences_retention ON engagement_preferences (updated_at, guild_id); CREATE INDEX IF NOT EXISTS engagement_operational_audit_retention ON engagement_operational_audit (created_at, guild_id, id);',
+        );
+        this.recordMigration(18);
       }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
