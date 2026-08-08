@@ -13,6 +13,7 @@ describe('engagement configuration', () => {
     const engagement = loadConfig({
       ...validEnv,
       ENGAGEMENT_ENABLED: '',
+      ENGAGEMENT_RECAP_SCHEDULE: '   ',
     }).engagement;
 
     expect(engagement).toEqual({

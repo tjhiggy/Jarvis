@@ -232,14 +232,17 @@ const baseEnvironmentSchema = z.object({
   ENGAGEMENT_RECAP_CHANNEL_ID: optionalDiscordSnowflake,
   ENGAGEMENT_ACTIVITY_CHANNEL_ID: optionalDiscordSnowflake,
   ENGAGEMENT_ADMIN_ROLE_IDS: engagementAdminRoleIds,
-  ENGAGEMENT_RECAP_SCHEDULE: z
-    .string()
-    .trim()
-    .regex(
-      /^(?:MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY) (?:[01]\d|2[0-3]):[0-5]\d$/,
-    )
-    .or(z.literal(''))
-    .default(''),
+  ENGAGEMENT_RECAP_SCHEDULE: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z
+      .string()
+      .trim()
+      .regex(
+        /^(?:MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY) (?:[01]\d|2[0-3]):[0-5]\d$/,
+      )
+      .default(''),
+  ),
   ENGAGEMENT_RECAP_TIMEZONE: engagementTimezone,
   ENGAGEMENT_RETENTION_DAYS: integer(30, 1, 90),
   ENGAGEMENT_MAX_RECORDS_PER_USER: integer(5, 1, 25),
