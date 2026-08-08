@@ -3,6 +3,7 @@ import {
   validateTriviaQuestion,
   TriviaService,
 } from '../src/engagement/activity.js';
+import { handleTriviaCommand } from '../src/commands/activity.js';
 
 describe('trivia safety', () => {
   it('rejects malformed or answer-leaking catalog entries', () => {
@@ -74,5 +75,61 @@ describe('trivia safety', () => {
         answerIndex: 0,
       }),
     ).rejects.toMatchObject({ code: 'not-found' });
+  });
+
+  it('lets a member opt out and later opt back in without retaining answer text', async () => {
+    const changes: string[] = [];
+    const service = new TriviaService({
+      repository: {
+        getOptOut: async () => undefined,
+        setOptOut: async (input: any) => {
+          changes.push(`out:${input.userId}`);
+          return input;
+        },
+        clearOptOut: async (guildId: string, userId: string) => {
+          changes.push(`in:${guildId}:${userId}`);
+        },
+        createTriviaRound: async (value: any) => value,
+        getTriviaRound: async () => undefined,
+        recordTriviaAnswer: async (value: any) => value,
+      },
+      now: () => new Date('2026-08-08T12:00:00.000Z'),
+      createId: () => 'round-1',
+    });
+    await service.optOut('guild-a', 'member');
+    await service.optIn('guild-a', 'member');
+    expect(changes).toEqual(['out:member', 'in:guild-a:member']);
+  });
+
+  it('exposes member opt-out and opt-in without requiring the activity channel', async () => {
+    const calls: string[] = [];
+    const interaction: any = {
+      guildId: 'guild-a',
+      channelId: 'another-channel',
+      user: { id: 'member' },
+      options: { getSubcommand: () => 'opt-out' },
+      reply: async (payload: any) => calls.push(payload.content),
+    };
+    const service = {
+      optOut: async () => calls.push('opt-out'),
+      optIn: async () => calls.push('opt-in'),
+    };
+    await handleTriviaCommand(interaction, {
+      enabled: true,
+      channelId: 'activity-channel',
+      service: service as any,
+    });
+    interaction.options.getSubcommand = () => 'opt-in';
+    await handleTriviaCommand(interaction, {
+      enabled: true,
+      channelId: 'activity-channel',
+      service: service as any,
+    });
+    expect(calls).toEqual([
+      'opt-out',
+      'Trivia participation is off. Your retained activity records were removed; you can use `/trivia opt-in` later.',
+      'opt-in',
+      'Trivia participation is on for future rounds.',
+    ]);
   });
 });

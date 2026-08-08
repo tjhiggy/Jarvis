@@ -104,6 +104,13 @@ for (const question of curatedTriviaCatalog) validateTriviaQuestion(question);
 
 type Repository = {
   getOptOut(guildId: string, userId: string): Promise<unknown>;
+  setOptOut?(input: {
+    guildId: string;
+    userId: string;
+    optedOutAt: Date;
+  }): Promise<unknown>;
+  clearOptOut?(guildId: string, userId: string): Promise<void>;
+  deleteTriviaParticipant?(guildId: string, userId: string): Promise<number>;
   createTriviaRound(round: TriviaRound): Promise<TriviaRound>;
   getTriviaRound(
     guildId: string,
@@ -153,6 +160,7 @@ export class TriviaService {
       )
     )
       throw new TriviaServiceError('opted-out');
+    await this.recover();
     if (
       await this.dependencies.repository.findOpenTriviaRound?.(
         input.guildId,
@@ -176,7 +184,11 @@ export class TriviaService {
       createdAt: now,
       updatedAt: now,
     };
-    await this.dependencies.repository.createTriviaRound(round);
+    try {
+      await this.dependencies.repository.createTriviaRound(round);
+    } catch {
+      throw new TriviaServiceError('already-open');
+    }
     return { ...round, question };
   }
 
@@ -266,6 +278,26 @@ export class TriviaService {
     };
   }
 
+  async optOut(guildId: string, userId: string): Promise<void> {
+    if (!this.dependencies.repository.setOptOut)
+      throw new Error('Trivia opt-out storage is unavailable.');
+    await this.dependencies.repository.setOptOut({
+      guildId,
+      userId,
+      optedOutAt: this.now(),
+    });
+    await this.dependencies.repository.deleteTriviaParticipant?.(
+      guildId,
+      userId,
+    );
+  }
+
+  async optIn(guildId: string, userId: string): Promise<void> {
+    if (!this.dependencies.repository.clearOptOut)
+      throw new Error('Trivia opt-in storage is unavailable.');
+    await this.dependencies.repository.clearOptOut(guildId, userId);
+  }
+
   async recover(): Promise<number> {
     return (
       (await this.dependencies.repository.expireTriviaRounds?.(this.now())) ?? 0
@@ -276,5 +308,31 @@ export class TriviaService {
   }
   private now(): Date {
     return new Date((this.dependencies.now ?? (() => new Date()))().getTime());
+  }
+}
+
+export class TriviaExpiryScheduler {
+  private timer: ReturnType<typeof setInterval> | undefined;
+  constructor(
+    private readonly dependencies: {
+      readonly service: Pick<TriviaService, 'recover'>;
+      readonly intervalMs?: number;
+    },
+  ) {}
+  start(): void {
+    if (!this.timer)
+      this.timer = setInterval(
+        () => void this.tick(),
+        this.dependencies.intervalMs ?? 15_000,
+      );
+  }
+  async stop(): Promise<void> {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+  }
+  async tick(): Promise<void> {
+    await this.dependencies.service.recover();
   }
 }

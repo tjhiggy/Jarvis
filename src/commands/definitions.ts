@@ -116,7 +116,7 @@ interface RecapSubcommandDefinition {
 }
 interface TriviaSubcommandDefinition {
   readonly type: 1;
-  readonly name: 'start';
+  readonly name: 'start' | 'opt-out' | 'opt-in';
   readonly description: string;
 }
 
@@ -654,6 +654,17 @@ export const createCommandDefinitions = (
           type: 1,
           name: 'start',
           description: 'Open a one-minute curated trivia round.',
+        },
+        {
+          type: 1,
+          name: 'opt-out',
+          description:
+            'Stop future trivia participation and remove your retained activity data.',
+        },
+        {
+          type: 1,
+          name: 'opt-in',
+          description: 'Allow future trivia participation in this guild.',
         },
       ],
     },

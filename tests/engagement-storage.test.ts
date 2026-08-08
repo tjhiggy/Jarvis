@@ -53,6 +53,19 @@ describe('SQLiteEngagementRepository', () => {
     database.close();
   });
 
+  it('atomically permits only one open trivia round per guild channel', async () => {
+    const results = await Promise.allSettled([
+      repository.createTriviaRound(triviaRound({ id: 'round-a' })),
+      repository.createTriviaRound(triviaRound({ id: 'round-b' })),
+    ]);
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === 'rejected'),
+    ).toHaveLength(1);
+  });
+
   it('upgrades legacy global IDs to guild-scoped keys without dropping rows', async () => {
     const legacyPath = join(directory, 'legacy.db');
     const legacy = new Database(legacyPath);
@@ -588,6 +601,21 @@ function rsvp(overrides: Record<string, unknown> = {}) {
     guildId: 'guild-1',
     userId: 'user-1',
     response: 'yes' as const,
+    createdAt: at(1),
+    updatedAt: at(1),
+    ...overrides,
+  };
+}
+
+function triviaRound(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'round-1',
+    guildId: 'guild-1',
+    channelId: 'channel-1',
+    ownerUserId: 'admin-1',
+    questionId: 'space-red-planet',
+    status: 'open' as const,
+    expiresAt: at(5),
     createdAt: at(1),
     updatedAt: at(1),
     ...overrides,

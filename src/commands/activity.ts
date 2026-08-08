@@ -24,17 +24,58 @@ export const handleTriviaCommand = async (
       'This command is available only in a server channel.',
       true,
     );
-  if (
-    !dependencies.enabled ||
-    !dependencies.service ||
-    interaction.channelId !== dependencies.channelId
-  )
+  if (!dependencies.enabled || !dependencies.service)
     return replySafely(
       interaction,
       'Trivia is not configured in this channel.',
       true,
     );
-  if (interaction.options.getSubcommand() !== 'start')
+  const subcommand = interaction.options.getSubcommand();
+  if (subcommand === 'opt-out') {
+    try {
+      await dependencies.service.optOut(
+        interaction.guildId,
+        interaction.user.id,
+      );
+      return replySafely(
+        interaction,
+        'Trivia participation is off. Your retained activity records were removed; you can use `/trivia opt-in` later.',
+        true,
+      );
+    } catch {
+      return replySafely(
+        interaction,
+        'Trivia preferences could not be updated. Please retry later.',
+        true,
+      );
+    }
+  }
+  if (subcommand === 'opt-in') {
+    try {
+      await dependencies.service.optIn(
+        interaction.guildId,
+        interaction.user.id,
+      );
+      return replySafely(
+        interaction,
+        'Trivia participation is on for future rounds.',
+        true,
+      );
+    } catch {
+      return replySafely(
+        interaction,
+        'Trivia preferences could not be updated. Please retry later.',
+        true,
+      );
+    }
+  }
+  if (interaction.channelId !== dependencies.channelId)
+    return replySafely(
+      interaction,
+      'Trivia is not configured in this channel.',
+      true,
+    );
+  if (subcommand !== 'start')
     return replySafely(
       interaction,
       'Use `/trivia start` to open one short round.',

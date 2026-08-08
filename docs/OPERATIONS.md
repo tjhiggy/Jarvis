@@ -133,6 +133,13 @@ The ordinary engagement cleanup removes round results and participant IDs after
 future participation. Do not use this feature for XP, leaderboards, or member
 profiling. That would turn a friendly quiz into surveillance with confetti.
 
+The process also checks round expiry every 15 seconds and expires stale rounds
+before accepting a new `/trivia start`. SQLite has a partial unique index for
+open guild/channel rounds, so two concurrent starts cannot produce overlapping
+rounds. Members may use `/trivia opt-out` from any server channel to delete
+their retained trivia participant record and block future collection, then
+`/trivia opt-in` to rejoin future rounds.
+
 ## Poll lifecycle, recovery, and rollback
 
 When polls are enabled, their tables share `DATABASE_PATH` but are separate

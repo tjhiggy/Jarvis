@@ -156,6 +156,15 @@ removal after restart. If that recovery record itself cannot be written, Jarvis
 returns a private administrator-cleanup message and emits a structured log with
 only guild and suggestion IDs.
 
+`/trivia start` is available only in `ENGAGEMENT_ACTIVITY_CHANNEL_ID`. Each
+round uses the checked-in curated catalog, expires after one minute, and is
+also checked by a bounded 15-second in-process expiry scheduler. SQLite allows
+only one open round per guild and activity channel, including concurrent starts.
+Members can use `/trivia opt-out` from any server channel to stop future
+participation and delete their retained trivia participant record; `/trivia
+opt-in` removes that opt-out marker for future rounds. Neither command exposes
+answer text, scores, XP, or a leaderboard.
+
 ## Retry, persona, and restart rules
 
 Provider retry counts are attempts after the first request and are bounded to 0 through 10. OpenAI and Ollama each use their own timeout and retry setting; web search has a timeout but no configuration field for retries. The persona path must point to a non-empty readable file with at most 8,000 Unicode characters. It is trusted operator content, not a place for credentials or Discord message text.

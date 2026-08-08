@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { TriviaService } from '../src/engagement/activity.js';
+import {
+  TriviaExpiryScheduler,
+  TriviaService,
+} from '../src/engagement/activity.js';
 
 describe('bounded trivia activity', () => {
   it('opens a deterministic curated question and records one answer per participant', async () => {
@@ -91,6 +94,40 @@ describe('bounded trivia activity', () => {
     });
     await expect(restarted.recover()).resolves.toBe(1);
     expect(stored[0]).toMatchObject({ status: 'expired' });
+  });
+
+  it('expires stale rounds before opening a replacement during normal uptime', async () => {
+    let now = new Date('2026-08-08T12:00:00.000Z');
+    const stored: any[] = [];
+    const service = new TriviaService({
+      repository: repository(stored),
+      now: () => now,
+      createId: () => `round-${stored.length + 1}`,
+      durationMs: 1_000,
+    });
+    await service.start({
+      guildId: 'guild-a',
+      channelId: 'channel-a',
+      ownerUserId: 'admin',
+    });
+    now = new Date('2026-08-08T12:00:02.000Z');
+    await expect(
+      service.start({
+        guildId: 'guild-a',
+        channelId: 'channel-a',
+        ownerUserId: 'admin',
+      }),
+    ).resolves.toMatchObject({ id: 'round-2' });
+    expect(stored[0]).toMatchObject({ status: 'expired' });
+  });
+
+  it('runs explicit scheduled expiry while the process is up', async () => {
+    let ticks = 0;
+    const scheduler = new TriviaExpiryScheduler({
+      service: { recover: async () => ++ticks } as any,
+    });
+    await scheduler.tick();
+    expect(ticks).toBe(1);
   });
 });
 

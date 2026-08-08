@@ -71,7 +71,7 @@ import type { EngagementCard } from './engagement/discord-ui.js';
 import { EventService, type EventGateway } from './engagement/events.js';
 import { EventScheduler } from './engagement/event-scheduler.js';
 import { RecapScheduler, RecapService } from './engagement/recap.js';
-import { TriviaService } from './engagement/activity.js';
+import { TriviaExpiryScheduler, TriviaService } from './engagement/activity.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -419,6 +419,7 @@ export const createApplication = async (
   let eventScheduler: EventScheduler | undefined;
   let recapScheduler: RecapScheduler | undefined;
   let triviaService: TriviaService | undefined;
+  let triviaScheduler: TriviaExpiryScheduler | undefined;
   let client: RuntimeDiscordClient | undefined;
   let cleanupTimer: unknown;
   let acceptingWork = false;
@@ -459,6 +460,16 @@ export const createApplication = async (
           logger?.warn(
             { error },
             'Recap scheduler stop failed during shutdown.',
+          );
+        }
+      }
+      if (triviaScheduler !== undefined) {
+        try {
+          await triviaScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            { error },
+            'Trivia scheduler stop failed during shutdown.',
           );
         }
       }
@@ -910,10 +921,14 @@ export const createApplication = async (
         },
       });
 
+    if (triviaService !== undefined)
+      triviaScheduler = new TriviaExpiryScheduler({ service: triviaService });
+
     pollScheduler?.start();
     reminderScheduler.start();
     eventScheduler?.start();
     recapScheduler?.start();
+    triviaScheduler?.start();
 
     cleanupTimer = timers.setInterval(() => {
       void cleanup();

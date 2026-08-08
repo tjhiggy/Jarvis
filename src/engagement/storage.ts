@@ -201,6 +201,8 @@ export interface EngagementRepository {
     userId: string,
   ): Promise<EngagementOptOut | undefined>;
   setOptOut(input: EngagementOptOut): Promise<EngagementOptOut>;
+  clearOptOut?(guildId: string, userId: string): Promise<void>;
+  deleteTriviaParticipant?(guildId: string, userId: string): Promise<number>;
   deleteOwnerData(guildId: string, userId: string): Promise<number>;
   claimIdempotencyKey(
     guildId: string,
