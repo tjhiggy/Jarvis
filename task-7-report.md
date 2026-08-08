@@ -10,3 +10,5 @@ Implemented the event slice only. Recaps and trivia were deliberately left out.
 - Event records and their RSVPs remain under the configured engagement cleanup policy.
 
 Verification: focused event tests, engagement storage tests, command-registration tests, full test suite, TypeScript build, documentation validation, and diff whitespace checks.
+
+Follow-up: `ends_at` is now persisted on create and covered by a reopen round-trip. Reminder delivery now atomically claims RSVP rows with a durable, recoverable lease before sending; a concurrent scheduler regression test proves a due RSVP is delivered once.

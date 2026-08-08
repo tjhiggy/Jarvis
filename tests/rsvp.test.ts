@@ -77,4 +77,42 @@ describe('event RSVP capacity', () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it('round-trips an optional event end timestamp through SQLite', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jarvis-event-end-'));
+    const path = join(directory, 'events.db');
+    const repository = new SQLiteEngagementRepository(path);
+    let reopened: SQLiteEngagementRepository | undefined;
+    try {
+      await repository.createEvent({
+        id: 'event-end',
+        guildId: 'guild-1',
+        channelId: 'events',
+        ownerUserId: 'owner',
+        title: 'Shift',
+        description: 'Two hour shift',
+        scheduledAt: new Date('2026-08-09T19:00:00Z'),
+        endsAt: new Date('2026-08-09T21:00:00Z'),
+        timezone: 'America/New_York',
+        capacity: 3,
+        status: 'scheduled',
+        createdAt: new Date('2026-08-08T12:00:00Z'),
+        updatedAt: new Date('2026-08-08T12:00:00Z'),
+      });
+      await repository.closeConnection();
+      reopened = new SQLiteEngagementRepository(path);
+      await expect(
+        reopened.getEvent('guild-1', 'event-end'),
+      ).resolves.toMatchObject({ endsAt: new Date('2026-08-09T21:00:00Z') });
+    } finally {
+      await reopened?.closeConnection();
+      await repository.closeConnection();
+      await rm(directory, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 50,
+      });
+    }
+  });
 });

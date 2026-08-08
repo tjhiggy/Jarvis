@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EventScheduler } from '../src/engagement/event-scheduler.js';
+import { SQLiteEngagementRepository } from '../src/storage/engagement-sqlite.js';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 describe('event scheduler', () => {
   it('recovers after restart and only delivers opted-in reminders without mentions', async () => {
@@ -30,5 +34,57 @@ describe('event scheduler', () => {
         allowedMentions: { parse: [], repliedUser: false },
       }),
     );
+  });
+
+  it('does not double-deliver when two scheduler ticks claim the same due RSVP', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jarvis-event-lease-'));
+    const repository = new SQLiteEngagementRepository(
+      join(directory, 'events.db'),
+    );
+    const now = new Date('2026-08-08T12:00:00Z');
+    let deliveries = 0;
+    try {
+      await repository.createEvent({
+        id: 'event-1',
+        guildId: 'guild-1',
+        channelId: 'events',
+        ownerUserId: 'owner',
+        title: 'Raid',
+        description: 'Boarding party',
+        scheduledAt: now,
+        timezone: 'UTC',
+        capacity: 1,
+        status: 'scheduled',
+        createdAt: now,
+        updatedAt: now,
+      });
+      await repository.respondToEvent({
+        eventId: 'event-1',
+        guildId: 'guild-1',
+        userId: 'user-1',
+        response: 'yes',
+        attendance: 'none',
+        reminderOptIn: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const dependencies = {
+        repository,
+        gateway: {
+          deliver: async () => {
+            deliveries += 1;
+          },
+        },
+        now: () => now,
+      };
+      await Promise.all([
+        new EventScheduler(dependencies).tick(),
+        new EventScheduler(dependencies).tick(),
+      ]);
+      expect(deliveries).toBe(1);
+    } finally {
+      await repository.closeConnection();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
