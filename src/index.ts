@@ -55,6 +55,7 @@ import type { ReminderStore } from './reminders/reminder-store.js';
 import { SQLiteReminderStore } from './reminders/sqlite-reminder-store.js';
 import { createLogger, projectOperationalError } from './utils/logger.js';
 import { loadRuntimeIdentity } from './config/runtime-identity.js';
+import { HttpSleeperService } from './sleeper/sleeper-service.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -556,6 +557,9 @@ export const createApplication = async (
             scheduler: initializedReminderScheduler,
           },
           faq,
+          ...(config.sleeper?.leagueId === undefined || config.sleeper.leagueId === ''
+            ? {}
+            : { sleeper: { leagueId: config.sleeper.leagueId, service: new HttpSleeperService() } }),
           ...(pollController === undefined ? {} : { pollController }),
           ...(pollStore === undefined || pollScheduler === undefined
             ? {}

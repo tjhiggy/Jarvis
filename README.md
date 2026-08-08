@@ -318,6 +318,13 @@ agreement, and submitting unsolicited code transfers no rights. Read the
 [Contributing](CONTRIBUTING.md) before assuming otherwise. Optimism is not a
 license grant.
 
+## Sleeper integration (read-only v1)
+
+Set `SLEEPER_LEAGUE_ID` to enable `/fantasy standings`. Jarvis reads public
+Sleeper league data only and never changes lineups, waivers, trades, rosters,
+or Discord settings. If the league is unavailable or the response is invalid,
+Jarvis reports that safely instead of guessing.
+
 ## Documentation map
 
 | Guide                                        | Purpose                                                                                    |

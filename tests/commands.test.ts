@@ -33,6 +33,7 @@ describe('command definitions', () => {
       'status',
       'faq',
       'reminder',
+      'fantasy',
     ]);
     expect(definitions[0]).toMatchObject({
       name: 'ask',
@@ -129,10 +130,11 @@ describe('command definitions', () => {
       'status',
       'faq',
       'reminder',
+      'fantasy',
       'poll',
       'poll-close',
     ]);
-    expect(definitions[7]).toMatchObject({
+    expect(definitions[8]).toMatchObject({
       name: 'poll',
       options: [
         { name: 'question', required: true, max_length: 200 },
@@ -155,7 +157,7 @@ describe('command definitions', () => {
         { name: 'option5', required: false, max_length: 80 },
       ],
     });
-    expect(definitions[8]).toMatchObject({
+    expect(definitions[9]).toMatchObject({
       name: 'poll-close',
       options: [{ name: 'poll_id', required: true, max_length: 12 }],
     });

@@ -51,6 +51,7 @@ export interface AppConfig {
   readonly faq: Readonly<{
     catalogPath: string;
   }>;
+  readonly sleeper?: Readonly<{ leagueId: string }>;
   readonly polls: PollConfig;
   readonly logging: Readonly<{
     level: LogLevel;
@@ -154,6 +155,7 @@ const baseEnvironmentSchema = z.object({
   HISTORY_RETENTION_DAYS: integer(30, 1),
   PERSONA_PROMPT_PATH: optionalString('./config/jarvis-persona.md'),
   FAQ_CATALOG_PATH: optionalString('./config/faq.json'),
+  SLEEPER_LEAGUE_ID: z.string().trim().regex(/^$|^\d{8,20}$/).default(''),
   ALLOWED_CHANNEL_IDS: channelIds,
   RESTRAINED_CHANNEL_IDS: channelIds,
   POLL_ADMIN_USER_IDS: pollAdminUserIds,
@@ -289,6 +291,7 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
       promptPath: parsed.PERSONA_PROMPT_PATH,
     }),
     faq: Object.freeze({ catalogPath: parsed.FAQ_CATALOG_PATH }),
+    sleeper: Object.freeze({ leagueId: parsed.SLEEPER_LEAGUE_ID }),
     polls: Object.freeze({
       enabled: parsed.POLL_ADMIN_USER_IDS.length > 0,
       adminUserIds: readonlySet(parsed.POLL_ADMIN_USER_IDS),
