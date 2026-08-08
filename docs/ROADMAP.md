@@ -25,17 +25,18 @@ dates, promises, or claims that an interface declaration is a working feature.
 - Native Windows startup support and an optional hardened Docker Compose
   deployment with a persistent named SQLite volume.
 - Deliberately inert extension contracts and documented operating boundaries.
+- Privacy-aware engagement V1: configured guided introductions and suggestions,
+  administrator-created events with opt-in RSVP, aggregate weekly recaps,
+  curated trivia, retention-limited local SQLite records, member deletion and
+  opt-out paths, and administrator scheduler pause/status controls.
 
 ## Next
 
-**Planned, not implemented.** Build the privacy-aware Muthaship engagement V1:
-guided introductions, suggestions, events with opt-in RSVP, a configured recap,
-and one bounded activity. It remains disabled by default and limited to
-bot-owned messages and local SQLite records. See the
-[Engagement product specification](ENGAGEMENT_PRODUCT_SPEC.md) before treating
-any engagement idea as a feature request. XP, public profiles, voice tracking,
-automated role assignment, moderation, Discord-setting changes, and external
-writes are not part of V1.
+**Shipped, bounded.** Engagement V1 remains disabled by default and limited to
+configured channels, bot-owned messages, and local SQLite records. See the
+[Engagement runbook](ENGAGEMENT_RUNBOOK.md) for the operational contract. XP,
+public profiles, voice tracking, automated role assignment, moderation,
+Discord-setting changes, and external writes remain out of scope.
 
 **Planned, not implemented.** Add a dedicated `SAFETY_IDENTIFIER_SECRET` so
 safety-identifier derivation no longer depends on an existing provider or bot

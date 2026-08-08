@@ -167,6 +167,10 @@ participation and delete their retained trivia participant record; `/trivia
 opt-in` removes that opt-out marker for future rounds. Neither command exposes
 answer text, scores, XP, or a leaderboard.
 
+For exact data fields, deletion semantics, scheduler behavior, and operations,
+see the [Engagement runbook](ENGAGEMENT_RUNBOOK.md). Every engagement setting
+is parsed only at startup; restart the single process after changing one.
+
 ## Retry, persona, and restart rules
 
 Provider retry counts are attempts after the first request and are bounded to 0 through 10. OpenAI and Ollama each use their own timeout and retry setting; web search has a timeout but no configuration field for retries. The persona path must point to a non-empty readable file with at most 8,000 Unicode characters. It is trusted operator content, not a place for credentials or Discord message text.

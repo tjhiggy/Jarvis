@@ -180,6 +180,23 @@ administrative changes must be deliberate, operator-authorized, scoped to the
 named system, and non-destructive by default. Do not turn a support request into
 an unreviewed change to Discord, source control, or production data.
 
+## Shipped engagement controls
+
+Engagement stores only local, guild-scoped records needed to operate its cards,
+events, recaps, and trivia. Member data collection is explicit through a
+submission, RSVP, or activity answer; it does not scan channel history, DMs,
+voice, or general member behavior. Stored fields, deletion paths, retention,
+scheduler leases, and recovery are specified in the
+[Engagement runbook](ENGAGEMENT_RUNBOOK.md). `/engagement delete` removes one
+member's retained guild records, and `/trivia opt-out` removes retained trivia
+participation and blocks future activity until opt-in.
+
+Engagement controls and scheduled work create, edit, or remove only
+Jarvis-owned messages and SQLite rows. Pause, status, recap, event, suggestion,
+and trivia controls do not grant server-setting, role, moderation, webhook,
+or external-write authority. Backup copies remain protected historical data
+until their approved retention period expires.
+
 ## External-service risks
 
 OpenAI and Tavily may be unavailable, rate limited, or incur charges. Model

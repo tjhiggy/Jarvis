@@ -261,3 +261,20 @@ For a bad rollout, stop the process, restore the prior approved revision and
 command set, re-register, then restart one process. Do not delete reminder
 tables as rollback. `/forget` only clears conversation history and cannot be
 used as account-wide reminder deletion.
+
+## Engagement operations
+
+Configured administrators use `/engagement status` for aggregate feature,
+database, record-count, pause, and scheduler health. It excludes contribution
+text, RSVP reasons, and credentials. `/engagement pause` stops scheduled recap,
+event-reminder, and trivia-result delivery for that guild; `/engagement resume`
+re-enables delivery after correction. Member deletion remains available while
+paused.
+
+Before an engagement upgrade, restore, or storage investigation, back up the
+stopped SQLite database or Docker volume. For Discord failure, restore only the
+minimum destination permission and allow scheduled recovery. For SQLite failure,
+stop duplicate processes, restore approved local storage if necessary, and
+restart exactly one process. Never edit engagement rows or manually repost
+scheduled output. See the [Engagement runbook](ENGAGEMENT_RUNBOOK.md) for
+pause, backup, restore, outage, retention, and rollback procedures.

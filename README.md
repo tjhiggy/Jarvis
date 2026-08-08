@@ -28,16 +28,16 @@ enhancements.
 
 ## What ships
 
-| Verified capability                                                                                                             | Current boundary                                                                                                                                       |
-| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, and read-only `/fantasy standings`, plus direct mentions | AI requests, reminders, and mentions enforce the configured channel allowlist; fantasy standings is read-only league data available in server channels |
-| Optional `/poll` and `/poll-close` commands                                                                                     | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls                         |
-| Short conversation context stored in SQLite                                                                                     | Isolated by guild and channel or thread; not encrypted by the application                                                                              |
-| Local Ollama and OpenAI Responses providers                                                                                     | Exactly one provider is selected at startup                                                                                                            |
-| Optional balanced Tavily grounding                                                                                              | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence                  |
-| Bounded input, output, retries, rate limits, retention, and stored rows                                                         | Single-process controls, not distributed coordination                                                                                                  |
-| Local responses for clearly unsupported action requests                                                                         | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                                      |
-| Native Node.js and hardened Docker Compose deployment paths                                                                     | One active Jarvis process and one SQLite database are the supported topology                                                                           |
+| Verified capability                                                                                                                       | Current boundary                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, `/event`, and read-only `/fantasy standings`, plus direct mentions | AI requests, reminders, and mentions enforce the configured channel allowlist; `/event create` and `/event cancel` require configured engagement administrator roles |
+| Optional `/poll` and `/poll-close` commands                                                                                               | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls                                       |
+| Short conversation context stored in SQLite                                                                                               | Isolated by guild and channel or thread; not encrypted by the application                                                                                            |
+| Local Ollama and OpenAI Responses providers                                                                                               | Exactly one provider is selected at startup                                                                                                                          |
+| Optional balanced Tavily grounding                                                                                                        | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence                                |
+| Bounded input, output, retries, rate limits, retention, and stored rows                                                                   | Single-process controls, not distributed coordination                                                                                                                |
+| Local responses for clearly unsupported action requests                                                                                   | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                                                    |
+| Native Node.js and hardened Docker Compose deployment paths                                                                               | One active Jarvis process and one SQLite database are the supported topology                                                                                         |
 
 Jarvis does not moderate Discord, change roles or channels, edit content owned
 by others, execute shell commands, access arbitrary files, write to GitHub, or
@@ -306,7 +306,13 @@ risks, the [Security policy](SECURITY.md) for private reporting, and
 [Operations](docs/OPERATIONS.md) for backup, restore, retention, and incident
 handling.
 
+For exact engagement enablement, permissions, data handling, scheduler,
+deletion, backup, outage, and rollback behavior, use the
+[Engagement runbook](docs/ENGAGEMENT_RUNBOOK.md).
+
 ## Engagement V1
+
+Configured administrators can use `/engagement status` for aggregate feature, scheduler, and record health, and `/engagement pause` or `/engagement resume` to control scheduled engagement delivery for their guild. Members may use `/engagement delete` to remove their retained engagement records in that guild; configured administrators may supply a member ID for an administrative deletion. These responses and audit records never include submitted content, RSVP reasons, or credentials.
 
 The Muthaship engagement loop includes guided introductions and suggestions. When enabled,
 `/introduce preview` accepts a bounded name, interests, and reason for coming
@@ -330,8 +336,15 @@ author may run `/suggestion delete id:<id>` to remove their untriaged SQLite
 record and bot-owned card. Administrator archive is a separate moderation
 action that deliberately preserves history for the configured retention period.
 For external tooling, export this retained data through an approved read-only
-triage process, rather than granting the bot write access to GitHub. Events,
-recaps, and activity remain unimplemented. The complete contract, including opt-out, retention, and
+triage process, rather than granting the bot write access to GitHub. `/trivia start`
+opens one optional, one-minute curated local question in
+`ENGAGEMENT_ACTIVITY_CHANNEL_ID`. Answer buttons accept one human answer each,
+never mention users or roles, and return a private acknowledgement. Jarvis
+retains only the round, participant ID, and correctness for the configured
+engagement retention period; it never retains answer text. Existing opt-out
+and owner-data deletion remove trivia participation. There is no XP,
+leaderboard, streak, economy, or public profile. Events and recaps are
+configured separately. The complete contract, including opt-out, retention, and
 deletion rules, is in the
 [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md).
 

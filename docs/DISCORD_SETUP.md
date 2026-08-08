@@ -91,3 +91,6 @@ Global registration is not implemented as a runtime toggle. It is a future, manu
 `/ask`, `/search`, `/forget`, `/faq`, `/reminder`, `/poll`, and `/poll-close` enforce the channel allowlist. Reminder commands do not need an administrator ID or extra Discord permissions; scheduled delivery may mention only its verified owner. Poll command creation and early closure additionally require an exact ID in `POLL_ADMIN_USER_IDS`; voting is open to members who can use the poll message. All commands are server-only; direct messages receive a safe unavailable response. Direct mentions require a non-empty prompt after the bot mention.
 
 Continue with [Configuration](CONFIGURATION.md) and [Development](DEVELOPMENT.md).
+
+Use the [Engagement runbook](ENGAGEMENT_RUNBOOK.md) for exact per-channel
+scopes, feature commands, scheduler behavior, deletion, and recovery.
