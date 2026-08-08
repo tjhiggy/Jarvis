@@ -4,7 +4,11 @@ import {
   type EngagementCard,
 } from './discord-ui.js';
 import type { Event, Rsvp, RsvpResponse } from './domain.js';
-import { EngagementOptOutError, type EngagementRepository } from './storage.js';
+import {
+  EngagementEventClosedError,
+  EngagementOptOutError,
+  type EngagementRepository,
+} from './storage.js';
 import { requirePlainText } from './safety.js';
 
 export type EventServiceErrorCode =
@@ -14,6 +18,7 @@ export type EventServiceErrorCode =
   | 'past-time'
   | 'not-found'
   | 'cancelled'
+  | 'closed'
   | 'opted-out'
   | 'duplicate-action';
 export class EventServiceError extends Error {
@@ -125,6 +130,8 @@ export class EventService {
     } catch (error) {
       if (error instanceof EngagementOptOutError)
         throw new EventServiceError('opted-out');
+      if (error instanceof EngagementEventClosedError)
+        throw new EventServiceError('closed');
       throw error;
     }
   }
@@ -215,6 +222,8 @@ export class EventService {
     } catch (error) {
       if (error instanceof EngagementOptOutError)
         throw new EventServiceError('opted-out');
+      if (error instanceof EngagementEventClosedError)
+        throw new EventServiceError('closed');
       throw error;
     }
   }

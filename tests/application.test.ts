@@ -719,6 +719,83 @@ describe('createApplication', () => {
     expect(replyCalls).toBe(0);
   });
 
+  it('drains active periodic engagement cleanup before closing engagement SQLite', async () => {
+    const intervalCallbacks: Array<() => void> = [];
+    const events: string[] = [];
+    let releaseCleanup!: () => void;
+    const cleanupBlocked = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    let announceCleanupStarted!: () => void;
+    const cleanupStarted = new Promise<void>((resolve) => {
+      announceCleanupStarted = resolve;
+    });
+    let cleanupCalls = 0;
+    const engagementRepository = {
+      expireTriviaRounds: async () => 0,
+      listExpiredIntroductions: async () => [],
+      listCleanupPendingSuggestions: async () => [],
+      listPendingCardDeletions: async () => [],
+      completeCardDeletion: async () => true,
+      cleanup: async () => {
+        cleanupCalls += 1;
+        if (cleanupCalls === 2) {
+          events.push('cleanup-start');
+          announceCleanupStarted();
+          await cleanupBlocked;
+          events.push('cleanup-end');
+        }
+        return 0;
+      },
+      closeConnection: async () => {
+        events.push('engagement-close');
+      },
+    } as any;
+    const application = await createTestApplication({
+      loadConfig: () => ({
+        ...config,
+        engagement: { ...config.engagement, enabled: true },
+      }),
+      loadPersona: async () => ({}) as TrustedPersona,
+      createEngagementRepository: () => engagementRepository,
+      createStore: () => ({
+        append: async () => undefined,
+        getRecent: async () => [],
+        clear: async () => 0,
+        cleanup: async () => 0,
+        healthCheck: async () => true,
+        close: async () => undefined,
+      }),
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: () => undefined,
+        login: async () => 'logged-in',
+        destroy: () => undefined,
+      }),
+      timers: {
+        setInterval: (callback) => {
+          intervalCallbacks.push(callback);
+          return callback;
+        },
+        clearInterval: () => undefined,
+      },
+    });
+
+    intervalCallbacks.at(-1)?.();
+    await cleanupStarted;
+    const shuttingDown = application.shutdown();
+    await Promise.resolve();
+    expect(events).toEqual(['cleanup-start']);
+    releaseCleanup();
+    await shuttingDown;
+    expect(events).toEqual([
+      'cleanup-start',
+      'cleanup-end',
+      'engagement-close',
+    ]);
+  });
+
   it('shuts down reminder and poll resources once in the exact dependency order', async () => {
     const events: string[] = [];
     const listeners = new Map<string, (...args: unknown[]) => unknown>();

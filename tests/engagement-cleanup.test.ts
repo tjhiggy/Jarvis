@@ -32,16 +32,32 @@ describe('engagement operational cleanup', () => {
   });
 
   it('returns only aggregate engagement counts for status diagnostics', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'jarvis-engagement-counts-'));
-    const repository = new SQLiteEngagementRepository(join(directory, 'engagement.db'));
+    const directory = await mkdtemp(
+      join(tmpdir(), 'jarvis-engagement-counts-'),
+    );
+    const repository = new SQLiteEngagementRepository(
+      join(directory, 'engagement.db'),
+    );
     try {
       await repository.createSuggestion({
-        id: 'suggestion-1', guildId: 'guild-1', channelId: 'channel-1', ownerUserId: 'user-1',
-        title: 'Secret title', description: 'Secret suggestion text', status: 'open',
-        createdAt: new Date('2026-08-08T12:00:00.000Z'), updatedAt: new Date('2026-08-08T12:00:00.000Z'),
+        id: 'suggestion-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        ownerUserId: 'user-1',
+        title: 'Secret title',
+        description: 'Secret suggestion text',
+        status: 'open',
+        createdAt: new Date('2026-08-08T12:00:00.000Z'),
+        updatedAt: new Date('2026-08-08T12:00:00.000Z'),
       });
       const counts = await repository.statusCounts('guild-1');
-      expect(counts).toEqual({ introductions: 0, suggestions: 1, events: 0, rsvps: 0, triviaRounds: 0 });
+      expect(counts).toEqual({
+        introductions: 0,
+        suggestions: 1,
+        events: 0,
+        rsvps: 0,
+        triviaRounds: 0,
+      });
       expect(JSON.stringify(counts)).not.toContain('Secret');
     } finally {
       await repository.closeConnection();
@@ -49,34 +65,70 @@ describe('engagement operational cleanup', () => {
     }
   });
 
-  it('bounds operational records and cascades RSVPs when expired events are removed', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'jarvis-engagement-retention-'));
-    const repository = new SQLiteEngagementRepository(join(directory, 'engagement.db'));
+  it('bounds disposable operational records without expiring durable preferences', async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), 'jarvis-engagement-retention-'),
+    );
+    const repository = new SQLiteEngagementRepository(
+      join(directory, 'engagement.db'),
+    );
     try {
       const old = new Date('2026-08-01T12:00:00.000Z');
       const cutoff = new Date('2026-08-02T12:00:00.000Z');
       await repository.createEvent({
-        id: 'expired-event', guildId: 'guild-1', channelId: 'channel-1',
-        ownerUserId: 'admin-1', title: 'Old event', description: 'Expired.',
-        scheduledAt: old, timezone: 'UTC', capacity: 10, status: 'completed',
-        createdAt: old, updatedAt: old,
+        id: 'expired-event',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        ownerUserId: 'admin-1',
+        title: 'Old event',
+        description: 'Expired.',
+        scheduledAt: old,
+        timezone: 'UTC',
+        capacity: 10,
+        status: 'completed',
+        createdAt: old,
+        updatedAt: old,
       });
       await repository.upsertRsvp({
-        eventId: 'expired-event', guildId: 'guild-1', userId: 'member-1',
-        response: 'yes', createdAt: old, updatedAt: old,
+        eventId: 'expired-event',
+        guildId: 'guild-1',
+        userId: 'member-1',
+        response: 'yes',
+        createdAt: old,
+        updatedAt: old,
       });
       await repository.setRecapEnabled('guild-1', true, old);
-      const lease = await repository.claimRecapRun('guild-1', 'weekly-recap:old', old);
-      await repository.completeRecapRun('guild-1', 'weekly-recap:old', lease!, old);
+      await repository.setOptOut({
+        guildId: 'guild-1',
+        userId: 'member-2',
+        optedOutAt: old,
+      });
+      const lease = await repository.claimRecapRun(
+        'guild-1',
+        'weekly-recap:old',
+        old,
+      );
+      await repository.completeRecapRun(
+        'guild-1',
+        'weekly-recap:old',
+        lease!,
+        old,
+      );
       await repository.setEngagementPaused('guild-1', true, 'admin-1', old);
 
-      await expect(repository.cleanup(cutoff, 20)).resolves.toBe(5);
+      await expect(repository.cleanup(cutoff, 20)).resolves.toBe(3);
       await expect(repository.statusCounts('guild-1')).resolves.toMatchObject({
-        events: 0, rsvps: 0,
+        events: 0,
+        rsvps: 0,
       });
-      await expect(repository.recapEnabled('guild-1')).resolves.toBe(false);
-      await expect(repository.engagementPaused('guild-1')).resolves.toBe(false);
-      await expect(repository.operationalAudit('guild-1', 10)).resolves.toEqual([]);
+      await expect(repository.recapEnabled('guild-1')).resolves.toBe(true);
+      await expect(repository.engagementPaused('guild-1')).resolves.toBe(true);
+      await expect(
+        repository.getOptOut('guild-1', 'member-2'),
+      ).resolves.toBeDefined();
+      await expect(repository.operationalAudit('guild-1', 10)).resolves.toEqual(
+        [],
+      );
       await expect(
         repository.claimRecapRun('guild-1', 'weekly-recap:old', cutoff),
       ).resolves.toBeDefined();

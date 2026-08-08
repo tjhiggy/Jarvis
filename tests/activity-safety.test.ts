@@ -132,4 +132,33 @@ describe('trivia safety', () => {
       'Trivia participation is on for future rounds.',
     ]);
   });
+
+  it('discloses the configured trivia retention instead of a hard-coded period', async () => {
+    let reply: any;
+    await handleTriviaCommand(
+      {
+        guildId: 'guild-a',
+        channelId: 'activity-channel',
+        user: { id: 'member' },
+        options: { getSubcommand: () => 'start' },
+        reply: async (payload: any) => {
+          reply = payload;
+        },
+      },
+      {
+        enabled: true,
+        channelId: 'activity-channel',
+        retentionDays: 7,
+        service: {
+          start: async () => ({
+            id: 'round-1',
+            question: { prompt: 'Question?', answers: ['A', 'B'] },
+          }),
+        } as any,
+      },
+    );
+
+    expect(JSON.stringify(reply)).toContain('retained for up to 7 days');
+    expect(JSON.stringify(reply)).not.toContain('30 days');
+  });
 });

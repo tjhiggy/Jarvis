@@ -15,6 +15,7 @@ export const handleTriviaCommand = async (
   dependencies: {
     readonly enabled: boolean;
     readonly channelId: string;
+    readonly retentionDays?: number;
     readonly service?: TriviaService;
   },
 ): Promise<void> => {
@@ -90,7 +91,7 @@ export const handleTriviaCommand = async (
     await interaction.reply(
       buildEngagementCard({
         title: 'MuthaShip trivia',
-        description: `${round.question.prompt}\n\nChoose one answer. This round closes in one minute. Participation is optional; only your ID and correctness are retained for up to 30 days.`,
+        description: `${round.question.prompt}\n\nChoose one answer. This round closes in one minute. Participation is optional; only your ID and correctness are retained for up to ${dependencies.retentionDays ?? 30} days.`,
         components: [
           {
             type: 'actionRow',

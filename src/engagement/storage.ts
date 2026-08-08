@@ -20,6 +20,19 @@ export type EngagementIdempotencyScope = 'interaction' | 'scheduled-job';
 
 export class EngagementRecordConflictError extends Error {}
 export class EngagementOptOutError extends Error {}
+export class EngagementEventClosedError extends Error {}
+
+export type EngagementCardDeletionKind =
+  'introduction' | 'suggestion' | 'event';
+export interface EngagementCardDeletion {
+  readonly kind: EngagementCardDeletionKind;
+  readonly guildId: string;
+  readonly recordId: string;
+  readonly ownerUserId: string;
+  readonly channelId: string;
+  readonly messageId: string;
+  readonly createdAt: Date;
+}
 
 export interface EngagementRepository {
   engagementPaused?(guildId: string): Promise<boolean>;
@@ -159,6 +172,11 @@ export interface EngagementRepository {
     updatedAt: Date,
   ): Promise<Suggestion | undefined>;
   listCleanupPendingSuggestions(limit: number): Promise<Suggestion[]>;
+  claimExpiredSuggestions?(
+    cutoff: Date,
+    limit: number,
+    updatedAt: Date,
+  ): Promise<Suggestion[]>;
   createEvent(input: Event): Promise<Event>;
   getEvent(guildId: string, eventId: string): Promise<Event | undefined>;
   listEvents?(guildId: string, now: Date, limit: number): Promise<Event[]>;
@@ -209,6 +227,7 @@ export interface EngagementRepository {
     eventId: string,
     updatedAt: Date,
   ): Promise<void>;
+  closeDueEvents?(now: Date, limit: number): Promise<number>;
   claimDueEventReminders?(
     now: Date,
     limit: number,
@@ -250,6 +269,10 @@ export interface EngagementRepository {
     optedOutAt: Date,
   ): Promise<void>;
   deleteOwnerData(guildId: string, userId: string): Promise<number>;
+  listPendingCardDeletions?(
+    limit: number,
+  ): Promise<readonly EngagementCardDeletion[]>;
+  completeCardDeletion?(deletion: EngagementCardDeletion): Promise<boolean>;
   claimIdempotencyKey(
     guildId: string,
     scope: EngagementIdempotencyScope,

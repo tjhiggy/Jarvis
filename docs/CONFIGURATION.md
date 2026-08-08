@@ -132,7 +132,7 @@ must be a valid IANA name. No schedule means no automatic recap: administrators
 may still use `/recap preview`, but `/recap enable` and `/recap resume` refuse
 to enable scheduled posting until the schedule is configured.
 
-Engagement records are retained for `ENGAGEMENT_RETENTION_DAYS`, from 1 through
+Disposable engagement records are retained for `ENGAGEMENT_RETENTION_DAYS`, from 1 through
 90 days. The per-user and participant caps are hard startup limits, not hints
 for a later handler to ignore. Restart after any engagement configuration
 change; re-register commands after enabling engagement or changing the
@@ -143,6 +143,9 @@ owner-only deletion path for its SQLite record and bot-owned card. Retention
 cleanup runs after Discord is ready, removes expired bot-owned cards before
 deleting their records, and marks a failed card deletion `cleanup_pending` so
 generic SQLite cleanup cannot erase the retry state.
+Active opt-outs, recap enablement, and guild pause preferences are control
+state, not expiring content. Retention cleanup never removes them; only the
+corresponding explicit opt-in, recap control, or resume command changes them.
 
 Suggestions use the same private-preview pattern: `/suggest preview` followed
 by `/suggest confirm`, posting only to `ENGAGEMENT_SUGGESTION_CHANNEL_ID`.

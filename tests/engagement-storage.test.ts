@@ -29,8 +29,15 @@ describe('SQLiteEngagementRepository', () => {
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'engagement_%' ORDER BY name",
       )
       .all() as Array<{ name: string }>;
+    const eventIndex = database
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'engagement_events_status_scheduled'",
+      )
+      .get();
+    database.close();
 
     expect(tables.map((row) => row.name)).toEqual([
+      'engagement_card_deletions',
       'engagement_events',
       'engagement_idempotency_keys',
       'engagement_introductions',
@@ -45,14 +52,7 @@ describe('SQLiteEngagementRepository', () => {
       'engagement_trivia_answers',
       'engagement_trivia_rounds',
     ]);
-    expect(
-      database
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'engagement_events_status_scheduled'",
-        )
-        .get(),
-    ).toBeDefined();
-    database.close();
+    expect(eventIndex).toBeDefined();
   });
 
   it('atomically permits only one open trivia round per guild channel', async () => {
@@ -119,6 +119,27 @@ describe('SQLiteEngagementRepository', () => {
     ).resolves.toHaveLength(1);
     await expect(
       repository.claimTriviaResultCards(at(64), 10),
+    ).resolves.toHaveLength(1);
+  });
+
+  it('backs off a failed trivia result card instead of hot-retrying it', async () => {
+    await repository.createTriviaRound(
+      triviaRound({ id: 'retry-round', expiresAt: at(0), status: 'open' }),
+    );
+    const [claim] = await repository.claimTriviaResultCards(at(1), 10);
+    await expect(
+      repository.releaseTriviaResultCard(
+        'guild-1',
+        'retry-round',
+        claim!.leaseToken,
+        at(1),
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      repository.claimTriviaResultCards(new Date(at(1).getTime() + 15_000), 10),
+    ).resolves.toEqual([]);
+    await expect(
+      repository.claimTriviaResultCards(at(2), 10),
     ).resolves.toHaveLength(1);
   });
 
@@ -299,7 +320,7 @@ describe('SQLiteEngagementRepository', () => {
           'suggestion-1',
           at(2),
         ),
-      ).resolves.toMatchObject({ status: 'deletion_pending' });
+      ).resolves.toMatchObject({ status: 'cleanup_pending' });
       await expect(
         repository.transitionSuggestionStatus(
           'guild-1',
@@ -311,7 +332,7 @@ describe('SQLiteEngagementRepository', () => {
       ).resolves.toBeUndefined();
       await expect(
         repository.getSuggestion('guild-1', 'suggestion-1'),
-      ).resolves.toMatchObject({ status: 'deletion_pending' });
+      ).resolves.toMatchObject({ status: 'cleanup_pending' });
     } finally {
       await secondConnection.closeConnection();
     }
@@ -527,14 +548,18 @@ describe('SQLiteEngagementRepository', () => {
     ).resolves.toMatchObject({ id: 'current-suggestion' });
   });
 
-  it('cleans expired opt-out markers so retention does not keep them forever', async () => {
+  it('keeps opt-out markers until an explicit opt-in clears them', async () => {
     await repository.setOptOut({
       guildId: 'guild-1',
       userId: 'former-member',
       optedOutAt: at(0),
     });
 
-    await expect(repository.cleanup(at(10), 10)).resolves.toBe(1);
+    await expect(repository.cleanup(at(10), 10)).resolves.toBe(0);
+    await expect(
+      repository.getOptOut('guild-1', 'former-member'),
+    ).resolves.toBeDefined();
+    await repository.clearOptOut('guild-1', 'former-member');
     await expect(
       repository.getOptOut('guild-1', 'former-member'),
     ).resolves.toBeUndefined();
@@ -568,7 +593,7 @@ describe('SQLiteEngagementRepository', () => {
       event({ id: 'shared-retention', guildId: 'guild-2', updatedAt: at(20) }),
     );
 
-    await expect(repository.cleanup(at(10), 10)).resolves.toBe(2);
+    await expect(repository.cleanup(at(10), 10)).resolves.toBe(1);
     await expect(
       repository.getIntroduction('guild-2', 'shared-retention'),
     ).resolves.toBeDefined();

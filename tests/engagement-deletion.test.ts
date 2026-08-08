@@ -1,0 +1,102 @@
+import { describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { EngagementDeletionService } from '../src/engagement/deletion.js';
+import { SQLiteEngagementRepository } from '../src/storage/engagement-sqlite.js';
+
+describe('engagement owner data deletion', () => {
+  it('durably queues bot cards and deletes content rows only after card deletion', async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), 'jarvis-engagement-delete-'),
+    );
+    const path = join(directory, 'engagement.db');
+    let repository = new SQLiteEngagementRepository(path);
+    const old = new Date('2026-08-01T12:00:00.000Z');
+    try {
+      await repository.createIntroduction({
+        id: 'intro-1',
+        guildId: 'guild-1',
+        channelId: 'intro-channel',
+        ownerUserId: 'member-1',
+        displayName: 'Member',
+        interests: 'Space',
+        introduction: 'Hello',
+        status: 'active',
+        createdAt: old,
+        updatedAt: old,
+      });
+      await repository.updateIntroductionMessageId(
+        'guild-1',
+        'intro-1',
+        'intro-message',
+      );
+      await repository.createSuggestion({
+        id: 'suggestion-1',
+        guildId: 'guild-1',
+        channelId: 'suggestion-channel',
+        ownerUserId: 'member-1',
+        title: 'Idea',
+        description: 'Description',
+        status: 'open',
+        createdAt: old,
+        updatedAt: old,
+      });
+      await repository.updateSuggestionMessageId(
+        'guild-1',
+        'suggestion-1',
+        'suggestion-message',
+      );
+
+      const failing = new EngagementDeletionService({
+        repository,
+        gateway: {
+          delete: async () => {
+            throw new Error('Discord unavailable');
+          },
+        },
+        now: () => new Date('2026-08-08T12:00:00.000Z'),
+      });
+      await expect(
+        failing.deleteOwnerData('guild-1', 'member-1'),
+      ).resolves.toBeGreaterThan(0);
+      await expect(
+        repository.getIntroduction('guild-1', 'intro-1'),
+      ).resolves.toBeDefined();
+      await expect(
+        repository.getSuggestion('guild-1', 'suggestion-1'),
+      ).resolves.toBeDefined();
+
+      await repository.closeConnection();
+      repository = new SQLiteEngagementRepository(path);
+      const observed: string[] = [];
+      const retry = new EngagementDeletionService({
+        repository,
+        gateway: {
+          delete: async (_channelId, messageId) => {
+            if (messageId === 'intro-message')
+              expect(
+                await repository.getIntroduction('guild-1', 'intro-1'),
+              ).toBeDefined();
+            if (messageId === 'suggestion-message')
+              expect(
+                await repository.getSuggestion('guild-1', 'suggestion-1'),
+              ).toBeDefined();
+            observed.push(messageId);
+          },
+        },
+      });
+      await expect(retry.cleanupPending(10)).resolves.toBe(2);
+      expect(observed.sort()).toEqual(['intro-message', 'suggestion-message']);
+      await expect(
+        repository.getIntroduction('guild-1', 'intro-1'),
+      ).resolves.toBeUndefined();
+      await expect(
+        repository.getSuggestion('guild-1', 'suggestion-1'),
+      ).resolves.toBeUndefined();
+    } finally {
+      await repository.closeConnection();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});

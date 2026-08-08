@@ -10,22 +10,53 @@ describe('event scheduler', () => {
     const warnings: Array<Record<string, string | number>> = [];
     await new EventScheduler({
       repository: {
-        claimDueEventReminders: async () => [{ eventId: 'event-1', guildId: 'guild-1', channelId: 'events', userId: 'user-1', title: 'Secret title', scheduledAt: new Date(), leaseToken: 'lease-1' }],
+        claimDueEventReminders: async () => [
+          {
+            eventId: 'event-1',
+            guildId: 'guild-1',
+            channelId: 'events',
+            userId: 'user-1',
+            title: 'Secret title',
+            scheduledAt: new Date(),
+            leaseToken: 'lease-1',
+          },
+        ],
         markEventReminderDelivered: async () => true,
         markEventReminderFailed: async () => true,
         cleanup: async () => 0,
       } as any,
-      gateway: { deliver: async () => { throw new Error('Secret RSVP reason'); } },
+      gateway: {
+        deliver: async () => {
+          throw new Error('Secret RSVP reason');
+        },
+      },
       logger: { warn: (fields) => warnings.push(fields) },
     }).tick();
-    expect(warnings).toEqual([expect.objectContaining({ operation: 'event_reminder_delivery', guildId: 'guild-1', eventId: 'event-1', errorClass: 'Error' })]);
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        operation: 'event_reminder_delivery',
+        guildId: 'guild-1',
+        eventId: 'event-1',
+        errorClass: 'Error',
+      }),
+    ]);
     expect(JSON.stringify(warnings)).not.toContain('Secret');
   });
   it('re-checks a persisted pause immediately before delivering a claimed reminder', async () => {
     const deliver = vi.fn();
     await new EventScheduler({
       repository: {
-        claimDueEventReminders: async () => [{ eventId: 'event-1', guildId: 'guild-1', channelId: 'events', userId: 'user-1', title: 'Raid', scheduledAt: new Date(), leaseToken: 'lease-1' }],
+        claimDueEventReminders: async () => [
+          {
+            eventId: 'event-1',
+            guildId: 'guild-1',
+            channelId: 'events',
+            userId: 'user-1',
+            title: 'Raid',
+            scheduledAt: new Date(),
+            leaseToken: 'lease-1',
+          },
+        ],
         engagementPaused: async () => true,
         markEventReminderDelivered: async () => true,
         markEventReminderFailed: async () => true,
@@ -94,8 +125,8 @@ describe('event scheduler', () => {
         response: 'yes',
         attendance: 'none',
         reminderOptIn: true,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: new Date('2026-08-08T11:59:00Z'),
+        updatedAt: new Date('2026-08-08T11:59:00Z'),
       });
       const dependencies = {
         repository,
@@ -145,8 +176,8 @@ describe('event scheduler', () => {
         response: 'yes',
         attendance: 'none',
         reminderOptIn: true,
-        createdAt: startedAt,
-        updatedAt: startedAt,
+        createdAt: new Date('2026-08-08T11:59:00Z'),
+        updatedAt: new Date('2026-08-08T11:59:00Z'),
       });
       const first = (await repository.claimDueEventReminders(startedAt, 1))[0]!;
       const reclaimed = (
@@ -178,5 +209,23 @@ describe('event scheduler', () => {
       await repository.closeConnection();
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  it('closes due events after reminder processing so they become cleanup-eligible', async () => {
+    const calls: string[] = [];
+    await new EventScheduler({
+      repository: {
+        claimDueEventReminders: async () => [],
+        closeDueEvents: async () => {
+          calls.push('close');
+          return 2;
+        },
+        markEventReminderDelivered: async () => true,
+        markEventReminderFailed: async () => true,
+      } as any,
+      gateway: { deliver: async () => undefined },
+      now: () => new Date('2026-08-08T12:00:00.000Z'),
+    }).tick();
+    expect(calls).toEqual(['close']);
   });
 });

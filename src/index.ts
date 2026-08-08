@@ -70,6 +70,10 @@ import {
 import type { EngagementCard } from './engagement/discord-ui.js';
 import { EventService, type EventGateway } from './engagement/events.js';
 import { EventScheduler } from './engagement/event-scheduler.js';
+import {
+  EngagementDeletionService,
+  isUnknownDiscordMessage,
+} from './engagement/deletion.js';
 import { RecapScheduler, RecapService } from './engagement/recap.js';
 import {
   buildTriviaResultsCard,
@@ -424,10 +428,22 @@ export const createApplication = async (
   let recapScheduler: RecapScheduler | undefined;
   let triviaService: TriviaService | undefined;
   let triviaScheduler: TriviaExpiryScheduler | undefined;
+  let engagementDeletionService: EngagementDeletionService | undefined;
   let client: RuntimeDiscordClient | undefined;
   let cleanupTimer: unknown;
   let acceptingWork = false;
   let shutdownPromise: Promise<void> | undefined;
+  const activeWork = new Set<Promise<unknown>>();
+  const trackWork = <T>(work: Promise<T>): Promise<T> => {
+    const tracked = work.finally(() => {
+      activeWork.delete(tracked);
+    });
+    activeWork.add(tracked);
+    return tracked;
+  };
+  const drainActiveWork = async (): Promise<void> => {
+    while (activeWork.size > 0) await Promise.allSettled([...activeWork]);
+  };
 
   const shutdown = (): Promise<void> => {
     acceptingWork = false;
@@ -488,6 +504,8 @@ export const createApplication = async (
           );
         }
       }
+
+      await drainActiveWork();
 
       if (reminderStore !== undefined) {
         try {
@@ -700,9 +718,10 @@ export const createApplication = async (
           Date.now() - config.engagement.retentionDays * 24 * 60 * 60 * 1_000,
         );
         try {
+          await engagementDeletionService?.cleanupPending(100);
           await introductionService?.cleanup(cutoff, 100);
           suggestionService?.cleanupDrafts();
-          await suggestionService?.cleanupPostedCards(100);
+          await suggestionService?.cleanupPostedCards(cutoff, 100);
           await engagementRepository.cleanup(cutoff, 100);
         } catch (error) {
           logger?.warn({ error }, 'Engagement retention cleanup failed.');
@@ -714,24 +733,28 @@ export const createApplication = async (
     } = { handlers: undefined };
     client.on('messageCreate', (message) => {
       if (acceptingWork && handlerState.handlers !== undefined) {
-        void handlerState.handlers
-          .onMessageCreate(message as DiscordMessage)
-          .catch((error: unknown) => {
-            logger?.warn({ error }, 'Discord message event handling failed.');
-          });
+        void trackWork(
+          handlerState.handlers
+            .onMessageCreate(message as DiscordMessage)
+            .catch((error: unknown) => {
+              logger?.warn({ error }, 'Discord message event handling failed.');
+            }),
+        );
       }
       return undefined;
     });
     client.on('interactionCreate', (interaction) => {
       if (acceptingWork && handlerState.handlers !== undefined) {
-        void handlerState.handlers
-          .onInteractionCreate(interaction as DiscordInteraction)
-          .catch((error: unknown) => {
-            logger?.warn(
-              { error },
-              'Discord interaction event handling failed.',
-            );
-          });
+        void trackWork(
+          handlerState.handlers
+            .onInteractionCreate(interaction as DiscordInteraction)
+            .catch((error: unknown) => {
+              logger?.warn(
+                { error },
+                'Discord interaction event handling failed.',
+              );
+            }),
+        );
       }
       return undefined;
     });
@@ -741,6 +764,30 @@ export const createApplication = async (
     if (botUserId === undefined || botUserId === '') {
       throw new Error('Discord client did not expose a bot user after login.');
     }
+    if (engagementRepository !== undefined)
+      engagementDeletionService = new EngagementDeletionService({
+        repository: engagementRepository as Required<
+          Pick<
+            EngagementRepository,
+            | 'deleteOwnerData'
+            | 'listPendingCardDeletions'
+            | 'completeCardDeletion'
+          >
+        > &
+          EngagementRepository,
+        gateway: {
+          delete: async (channelId, messageId) => {
+            const channel = await client?.channels?.fetch(channelId);
+            if (!isIntroductionChannel(channel))
+              throw new Error('Configured engagement channel is unavailable.');
+            try {
+              await channel.messages.delete(messageId);
+            } catch (error) {
+              if (!isUnknownDiscordMessage(error)) throw error;
+            }
+          },
+        },
+      });
     await triviaService?.recover();
     await cleanup();
     let pollController: PollController | undefined;
@@ -838,7 +885,28 @@ export const createApplication = async (
             ? {}
             : {
                 engagementHealth: {
-                  repository: engagementRepository as Required<
+                  repository: {
+                    engagementPaused:
+                      engagementRepository.engagementPaused!.bind(
+                        engagementRepository,
+                      ),
+                    setEngagementPaused:
+                      engagementRepository.setEngagementPaused!.bind(
+                        engagementRepository,
+                      ),
+                    healthCheck:
+                      engagementRepository.healthCheck.bind(
+                        engagementRepository,
+                      ),
+                    statusCounts:
+                      engagementRepository.statusCounts!.bind(
+                        engagementRepository,
+                      ),
+                    deleteOwnerData:
+                      engagementDeletionService!.deleteOwnerData.bind(
+                        engagementDeletionService,
+                      ),
+                  } as Required<
                     Pick<
                       EngagementRepository,
                       | 'engagementPaused'
@@ -962,7 +1030,8 @@ export const createApplication = async (
       triviaScheduler = new TriviaExpiryScheduler({
         service: triviaService,
         isPaused: (guildId) =>
-          engagementRepository?.engagementPaused?.(guildId) ?? Promise.resolve(true),
+          engagementRepository?.engagementPaused?.(guildId) ??
+          Promise.resolve(true),
         gateway: {
           post: async (round, results) => {
             const channel = await schedulerClient.channels?.fetch(
@@ -985,7 +1054,7 @@ export const createApplication = async (
     triviaScheduler?.start();
 
     cleanupTimer = timers.setInterval(() => {
-      void cleanup();
+      void trackWork(cleanup());
     }, cleanupIntervalMs);
     registerSignal('SIGINT', shutdown);
     registerSignal('SIGTERM', shutdown);

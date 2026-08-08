@@ -185,6 +185,42 @@ describe('bounded trivia activity', () => {
     await Promise.all([first, second]);
     expect(posts).toBe(1);
   });
+
+  it('safe-logs a failed round, reports degraded health, and avoids false success', async () => {
+    const warnings: Array<Record<string, string>> = [];
+    const scheduler = new TriviaExpiryScheduler({
+      service: {
+        claimResultCards: async () => [
+          {
+            id: 'round-1',
+            guildId: 'guild-a',
+            channelId: 'channel-a',
+            leaseToken: 'lease-1',
+          },
+        ],
+        results: async () => {
+          throw new Error('secret answer payload');
+        },
+        completeResultCard: async () => true,
+        releaseResultCard: async () => true,
+      } as any,
+      gateway: { post: async () => undefined },
+      logger: { warn: (fields) => warnings.push(fields) },
+    });
+
+    await scheduler.tick();
+
+    expect(scheduler.lastRun?.status).toBe('error');
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        operation: 'trivia_result_card',
+        guildId: 'guild-a',
+        roundId: 'round-1',
+        errorClass: 'Error',
+      }),
+    ]);
+    expect(JSON.stringify(warnings)).not.toContain('secret answer');
+  });
 });
 
 function repository(rounds: any[] = []) {

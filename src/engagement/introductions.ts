@@ -225,16 +225,19 @@ export class IntroductionService {
       value.status !== 'active'
     )
       return false;
+    const pending = await this.dependencies.repository.updateIntroductionStatus(
+      value.guildId,
+      value.ownerUserId,
+      value.id,
+      'cleanup_pending',
+      (this.dependencies.now ?? (() => new Date()))(),
+    );
+    if (pending === undefined) return false;
     if (value.messageId?.trim())
       await this.dependencies.gateway.delete(value.channelId, value.messageId);
-    return (
-      (await this.dependencies.repository.updateIntroductionStatus(
-        value.guildId,
-        value.ownerUserId,
-        value.id,
-        'deleted',
-        (this.dependencies.now ?? (() => new Date()))(),
-      )) !== undefined
+    return this.dependencies.repository.deleteIntroductionRecord(
+      value.guildId,
+      value.id,
     );
   }
 }

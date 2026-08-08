@@ -383,9 +383,7 @@ export const buildTriviaResultsCard = (
 export class TriviaExpiryScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
   private activeTick: Promise<void> | undefined;
-  private lastRunValue:
-    | { status: 'success' | 'error'; at: Date }
-    | undefined;
+  private lastRunValue: { status: 'success' | 'error'; at: Date } | undefined;
   constructor(
     private readonly dependencies: {
       readonly service: Pick<
@@ -409,8 +407,7 @@ export class TriviaExpiryScheduler {
     return this.timer !== undefined;
   }
   get lastRun():
-    | Readonly<{ status: 'success' | 'error'; at: Date }>
-    | undefined {
+    Readonly<{ status: 'success' | 'error'; at: Date }> | undefined {
     return this.lastRunValue;
   }
   start(): void {
@@ -439,8 +436,11 @@ export class TriviaExpiryScheduler {
   async tick(): Promise<void> {
     if (this.activeTick) return this.activeTick;
     this.activeTick = this.runTick()
-      .then(() => {
-        this.lastRunValue = { status: 'success', at: new Date() };
+      .then((successful) => {
+        this.lastRunValue = {
+          status: successful ? 'success' : 'error',
+          at: new Date(),
+        };
       })
       .catch((error: unknown) => {
         this.lastRunValue = { status: 'error', at: new Date() };
@@ -451,7 +451,8 @@ export class TriviaExpiryScheduler {
       });
     return this.activeTick;
   }
-  private async runTick(): Promise<void> {
+  private async runTick(): Promise<boolean> {
+    let successful = true;
     for (const round of await this.dependencies.service.claimResultCards()) {
       try {
         if (
@@ -467,10 +468,33 @@ export class TriviaExpiryScheduler {
         );
         await this.dependencies.gateway.post(round, results);
         await this.dependencies.service.completeResultCard(round);
-      } catch {
-        await this.dependencies.service.releaseResultCard(round);
+      } catch (error) {
+        successful = false;
+        this.dependencies.logger?.warn(
+          {
+            operation: 'trivia_result_card',
+            guildId: round.guildId,
+            roundId: round.id,
+            ...projectOperationalError(error, 'trivia_scheduler'),
+          },
+          'Trivia result card processing failed.',
+        );
+        try {
+          await this.dependencies.service.releaseResultCard(round);
+        } catch (releaseError) {
+          this.dependencies.logger?.warn(
+            {
+              operation: 'trivia_result_release',
+              guildId: round.guildId,
+              roundId: round.id,
+              ...projectOperationalError(releaseError, 'trivia_scheduler'),
+            },
+            'Trivia result lease release failed.',
+          );
+        }
       }
     }
+    return successful;
   }
 }
 import { buildEngagementCard, type EngagementCard } from './discord-ui.js';

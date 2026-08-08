@@ -114,7 +114,7 @@ describe('IntroductionService', () => {
     ]);
     await expect(
       repository.getIntroduction('guild-1', created.id),
-    ).resolves.toMatchObject({ status: 'deleted' });
+    ).resolves.toBeUndefined();
   });
 
   it('recovers duplicate protection after restart from persisted active records', async () => {
@@ -196,6 +196,37 @@ describe('IntroductionService', () => {
     expect(repository.introductions.get(`guild-1:${created.id}`)).toMatchObject(
       { status: 'cleanup_pending' },
     );
+  });
+
+  it('makes owner deletion durable before attempting card deletion and retries after failure', async () => {
+    const repository = new MemoryRepository();
+    const gateway = new Gateway();
+    const service = createService(repository, gateway);
+    const created = await service.submit(introductionInput());
+    gateway.delete = async () => {
+      throw new Error('Discord unavailable');
+    };
+
+    await expect(
+      service.delete({
+        guildId: 'guild-1',
+        ownerUserId: 'user-1',
+        introductionId: created.id,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      repository.getIntroduction('guild-1', created.id),
+    ).resolves.toMatchObject({ status: 'cleanup_pending' });
+
+    gateway.delete = async (channelId, messageId) => {
+      gateway.deletes.push({ channelId, messageId });
+    };
+    await expect(
+      service.cleanup(new Date('2030-01-01T00:00:00.000Z'), 10),
+    ).resolves.toBe(1);
+    await expect(
+      repository.getIntroduction('guild-1', created.id),
+    ).resolves.toBeUndefined();
   });
 });
 

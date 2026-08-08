@@ -6,10 +6,25 @@ describe('recap scheduler', () => {
     const post = vi.fn();
     const release = vi.fn().mockResolvedValue(true);
     await new RecapScheduler({
-      guildId: 'guild-a', channelId: 'recaps', schedule: 'FRIDAY 12:00', timezone: 'UTC',
-      repository: { engagementPaused: vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true), recapEnabled: async () => true, claimRecapRun: async () => 'lease-1', completeRecapRun: async () => true, releaseRecapRun: release } as any,
-      service: { preview: async () => ({ status: 'ready', content: 'safe recap' }) } as any,
-      gateway: { post }, now: () => new Date('2026-08-07T12:05:00Z'),
+      guildId: 'guild-a',
+      channelId: 'recaps',
+      schedule: 'FRIDAY 12:00',
+      timezone: 'UTC',
+      repository: {
+        engagementPaused: vi
+          .fn()
+          .mockResolvedValueOnce(false)
+          .mockResolvedValueOnce(true),
+        recapEnabled: async () => true,
+        claimRecapRun: async () => 'lease-1',
+        completeRecapRun: async () => true,
+        releaseRecapRun: release,
+      } as any,
+      service: {
+        preview: async () => ({ status: 'ready', content: 'safe recap' }),
+      } as any,
+      gateway: { post },
+      now: () => new Date('2026-08-07T12:05:00Z'),
     }).tick();
     expect(post).not.toHaveBeenCalled();
     expect(release).toHaveBeenCalled();
@@ -63,7 +78,7 @@ describe('recap scheduler', () => {
     await scheduler.tick();
     expect(release).toHaveBeenCalledWith(
       'guild-a',
-      'weekly-recap:2026-08-07',
+      'weekly-recap:UTC:2026-08-07T12:00',
       'lease-1',
       expect.any(Date),
     );
@@ -120,5 +135,32 @@ describe('recap scheduler', () => {
     }).tick();
     expect(post).toHaveBeenCalledOnce();
     expect(completed).toBe(true);
+  });
+
+  it('keys a scheduled run by its configured local slot across UTC midnight', async () => {
+    const claim = vi.fn().mockResolvedValue('lease-local');
+    await new RecapScheduler({
+      guildId: 'guild-a',
+      channelId: 'recaps',
+      schedule: 'FRIDAY 23:30',
+      timezone: 'America/Los_Angeles',
+      repository: {
+        recapEnabled: async () => true,
+        claimRecapRun: claim,
+        completeRecapRun: async () => true,
+        releaseRecapRun: async () => false,
+      } as any,
+      service: {
+        preview: async () => ({ status: 'ready', content: 'safe recap' }),
+      } as any,
+      gateway: { post: vi.fn() },
+      now: () => new Date('2026-08-08T06:35:00.000Z'),
+    }).tick();
+
+    expect(claim).toHaveBeenCalledWith(
+      'guild-a',
+      'weekly-recap:America/Los_Angeles:2026-08-07T23:30',
+      new Date('2026-08-08T06:35:00.000Z'),
+    );
   });
 });

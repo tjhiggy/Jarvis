@@ -21,7 +21,9 @@ import type {
 } from '../engagement/activity.js';
 import {
   EngagementOptOutError,
+  EngagementEventClosedError,
   EngagementRecordConflictError,
+  type EngagementCardDeletion,
   type EngagementIdempotencyScope,
   type EngagementRepository,
 } from '../engagement/storage.js';
@@ -187,9 +189,13 @@ export class SQLiteEngagementRepository implements EngagementRepository {
   async engagementPaused(guildId: string): Promise<boolean> {
     this.ensureOpen();
     return (
-      (this.database
-        .prepare('SELECT paused FROM engagement_preferences WHERE guild_id = ?')
-        .get(guildId) as { paused: number } | undefined)?.paused === 1
+      (
+        this.database
+          .prepare(
+            'SELECT paused FROM engagement_preferences WHERE guild_id = ?',
+          )
+          .get(guildId) as { paused: number } | undefined
+      )?.paused === 1
     );
   }
 
@@ -247,9 +253,13 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     this.ensureOpen();
     const count = (table: string): number =>
       Number(
-        (this.database
-          .prepare(`SELECT count(*) AS count FROM ${table} WHERE guild_id = ?`)
-          .get(guildId) as { count: number }).count,
+        (
+          this.database
+            .prepare(
+              `SELECT count(*) AS count FROM ${table} WHERE guild_id = ?`,
+            )
+            .get(guildId) as { count: number }
+        ).count,
       );
     return {
       introductions: count('engagement_introductions'),
@@ -377,9 +387,9 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         .run(timestamp, timestamp);
       const rows = this.database
         .prepare(
-          "SELECT * FROM engagement_trivia_rounds WHERE status = 'expired' AND (results_state = 'pending' OR (results_state = 'posting' AND results_claimed_at <= ?)) ORDER BY expires_at ASC, guild_id ASC, id ASC LIMIT ?",
+          "SELECT * FROM engagement_trivia_rounds WHERE status = 'expired' AND ((results_state = 'pending' AND (results_claimed_at IS NULL OR results_claimed_at <= ?)) OR (results_state = 'posting' AND results_claimed_at <= ?)) ORDER BY expires_at ASC, guild_id ASC, id ASC LIMIT ?",
         )
-        .all(timestamp - 60_000, limit) as TriviaRoundRow[];
+        .all(timestamp - 60_000, timestamp - 60_000, limit) as TriviaRoundRow[];
       return rows.flatMap((row) => {
         const leaseToken = randomUUID();
         const claimed =
@@ -419,9 +429,10 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return (
       this.database
         .prepare(
-          "UPDATE engagement_trivia_rounds SET results_state = 'pending', results_lease_token = NULL, results_claimed_at = NULL, updated_at = ? WHERE guild_id = ? AND id = ? AND results_state = 'posting' AND results_lease_token = ?",
+          "UPDATE engagement_trivia_rounds SET results_state = 'pending', results_lease_token = NULL, results_claimed_at = ?, updated_at = ? WHERE guild_id = ? AND id = ? AND results_state = 'posting' AND results_lease_token = ?",
         )
-        .run(milliseconds(now), guildId, roundId, leaseToken).changes === 1
+        .run(milliseconds(now), milliseconds(now), guildId, roundId, leaseToken)
+        .changes === 1
     );
   }
 
@@ -561,7 +572,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return (
       this.database
         .prepare(
-          "SELECT * FROM engagement_introductions WHERE status = 'cleanup_pending' OR (status = 'active' AND updated_at < ?) ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?",
+          "SELECT i.* FROM engagement_introductions i WHERE (i.status = 'cleanup_pending' OR (i.status = 'active' AND i.updated_at < ?)) AND NOT EXISTS (SELECT 1 FROM engagement_card_deletions d WHERE d.kind = 'introduction' AND d.guild_id = i.guild_id AND d.record_id = i.id) ORDER BY i.updated_at ASC, i.guild_id ASC, i.id ASC LIMIT ?",
         )
         .all(milliseconds(cutoff), limit) as IntroductionRow[]
     ).map(toIntroduction);
@@ -670,7 +681,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     this.ensureOpen();
     const result = this.database
       .prepare(
-        "UPDATE engagement_suggestions SET status = 'deletion_pending', updated_at = ? WHERE guild_id = ? AND owner_user_id = ? AND id = ? AND status = 'open'",
+        "UPDATE engagement_suggestions SET status = 'cleanup_pending', updated_at = ? WHERE guild_id = ? AND owner_user_id = ? AND id = ? AND status = 'open'",
       )
       .run(milliseconds(updatedAt), guildId, ownerUserId, id);
     return result.changes === 1 ? this.getSuggestion(guildId, id) : undefined;
@@ -755,10 +766,24 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return (
       this.database
         .prepare(
-          "SELECT * FROM engagement_suggestions WHERE status = 'cleanup_pending' ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?",
+          "SELECT s.* FROM engagement_suggestions s WHERE s.status = 'cleanup_pending' AND NOT EXISTS (SELECT 1 FROM engagement_card_deletions d WHERE d.kind = 'suggestion' AND d.guild_id = s.guild_id AND d.record_id = s.id) ORDER BY s.updated_at ASC, s.guild_id ASC, s.id ASC LIMIT ?",
         )
         .all(limit) as SuggestionRow[]
     ).map(toSuggestion);
+  }
+
+  async claimExpiredSuggestions(
+    cutoff: Date,
+    limit: number,
+    updatedAt: Date,
+  ): Promise<Suggestion[]> {
+    this.ensureOpen();
+    this.database
+      .prepare(
+        "UPDATE engagement_suggestions SET status = 'cleanup_pending', updated_at = ? WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_suggestions WHERE status NOT IN ('cleanup_pending', 'deletion_pending') AND updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)",
+      )
+      .run(milliseconds(updatedAt), milliseconds(cutoff), limit);
+    return this.listCleanupPendingSuggestions(limit);
   }
 
   async createEvent(input: Event): Promise<Event> {
@@ -902,71 +927,108 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     const value = copyRsvp(input);
     validateRsvp(value);
     this.assertNotOptedOut(value.guildId, value.userId);
-    const transaction = this.database.transaction(() => {
-      const event = this.database
-        .prepare(
-          "SELECT * FROM engagement_events WHERE guild_id = ? AND id = ? AND status = 'scheduled'",
-        )
-        .get(value.guildId, value.eventId) as EventRow | undefined;
-      if (event === undefined) throw new Error('Event not found.');
-      const existing = this.database
-        .prepare(
-          'SELECT * FROM engagement_rsvps WHERE guild_id = ? AND event_id = ? AND user_id = ?',
-        )
-        .get(value.guildId, value.eventId, value.userId) as RsvpRow | undefined;
-      const confirmed = (
+    const transaction = this.database.transaction(
+      (): RsvpRow | { closed: true } => {
         this.database
           .prepare(
-            "SELECT COUNT(*) AS count FROM engagement_rsvps WHERE guild_id = ? AND event_id = ? AND attendance = 'confirmed'",
+            "UPDATE engagement_events SET status = 'completed', updated_at = ? WHERE guild_id = ? AND id = ? AND status = 'scheduled' AND coalesce(ends_at, scheduled_at) <= ?",
           )
-          .get(value.guildId, value.eventId) as { count: number }
-      ).count;
-      const currentConfirmed = existing?.attendance === 'confirmed' ? 1 : 0;
-      const attendance =
-        value.response !== 'yes'
-          ? 'none'
-          : confirmed - currentConfirmed < event.capacity
-            ? 'confirmed'
-            : 'waitlisted';
-      this.database
-        .prepare(
-          `INSERT INTO engagement_rsvps (event_id, guild_id, user_id, response, attendance, reminder_opt_in, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(guild_id, event_id, user_id) DO UPDATE SET response = excluded.response, attendance = excluded.attendance, reminder_opt_in = excluded.reminder_opt_in, updated_at = excluded.updated_at`,
-        )
-        .run(
-          value.eventId,
-          value.guildId,
-          value.userId,
-          value.response,
-          attendance,
-          value.reminderOptIn ? 1 : 0,
-          milliseconds(value.createdAt),
-          milliseconds(value.updatedAt),
-        );
-      if (currentConfirmed === 1 && attendance !== 'confirmed') {
-        const next = this.database
+          .run(
+            milliseconds(value.updatedAt),
+            value.guildId,
+            value.eventId,
+            milliseconds(value.updatedAt),
+          );
+        const event = this.database
           .prepare(
-            "SELECT user_id FROM engagement_rsvps WHERE guild_id = ? AND event_id = ? AND attendance = 'waitlisted' AND response = 'yes' ORDER BY updated_at ASC, user_id ASC LIMIT 1",
+            "SELECT * FROM engagement_events WHERE guild_id = ? AND id = ? AND status = 'scheduled'",
           )
-          .get(value.guildId, value.eventId) as { user_id: string } | undefined;
-        if (next)
+          .get(value.guildId, value.eventId) as EventRow | undefined;
+        if (event === undefined) {
+          const closed = this.database
+            .prepare(
+              "SELECT 1 FROM engagement_events WHERE guild_id = ? AND id = ? AND status = 'completed'",
+            )
+            .get(value.guildId, value.eventId);
+          if (closed !== undefined) return { closed: true };
+          throw new Error('Event not found.');
+        }
+        const existing = this.database
+          .prepare(
+            'SELECT * FROM engagement_rsvps WHERE guild_id = ? AND event_id = ? AND user_id = ?',
+          )
+          .get(value.guildId, value.eventId, value.userId) as
+          RsvpRow | undefined;
+        const confirmed = (
           this.database
             .prepare(
-              "UPDATE engagement_rsvps SET attendance = 'confirmed', updated_at = ? WHERE guild_id = ? AND event_id = ? AND user_id = ?",
+              "SELECT COUNT(*) AS count FROM engagement_rsvps WHERE guild_id = ? AND event_id = ? AND attendance = 'confirmed'",
             )
-            .run(
-              milliseconds(value.updatedAt),
-              value.guildId,
-              value.eventId,
-              next.user_id,
-            );
-      }
-      return this.database
-        .prepare(
-          'SELECT * FROM engagement_rsvps WHERE guild_id = ? AND event_id = ? AND user_id = ?',
-        )
-        .get(value.guildId, value.eventId, value.userId) as RsvpRow;
-    });
-    return toRsvp(transaction());
+            .get(value.guildId, value.eventId) as { count: number }
+        ).count;
+        const currentConfirmed = existing?.attendance === 'confirmed' ? 1 : 0;
+        const attendance =
+          value.response !== 'yes'
+            ? 'none'
+            : confirmed - currentConfirmed < event.capacity
+              ? 'confirmed'
+              : 'waitlisted';
+        this.database
+          .prepare(
+            `INSERT INTO engagement_rsvps (event_id, guild_id, user_id, response, attendance, reminder_opt_in, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(guild_id, event_id, user_id) DO UPDATE SET response = excluded.response, attendance = excluded.attendance, reminder_opt_in = excluded.reminder_opt_in, updated_at = excluded.updated_at`,
+          )
+          .run(
+            value.eventId,
+            value.guildId,
+            value.userId,
+            value.response,
+            attendance,
+            value.reminderOptIn ? 1 : 0,
+            milliseconds(value.createdAt),
+            milliseconds(value.updatedAt),
+          );
+        if (currentConfirmed === 1 && attendance !== 'confirmed') {
+          const next = this.database
+            .prepare(
+              "SELECT user_id FROM engagement_rsvps WHERE guild_id = ? AND event_id = ? AND attendance = 'waitlisted' AND response = 'yes' ORDER BY updated_at ASC, user_id ASC LIMIT 1",
+            )
+            .get(value.guildId, value.eventId) as
+            { user_id: string } | undefined;
+          if (next)
+            this.database
+              .prepare(
+                "UPDATE engagement_rsvps SET attendance = 'confirmed', updated_at = ? WHERE guild_id = ? AND event_id = ? AND user_id = ?",
+              )
+              .run(
+                milliseconds(value.updatedAt),
+                value.guildId,
+                value.eventId,
+                next.user_id,
+              );
+        }
+        return this.database
+          .prepare(
+            'SELECT * FROM engagement_rsvps WHERE guild_id = ? AND event_id = ? AND user_id = ?',
+          )
+          .get(value.guildId, value.eventId, value.userId) as RsvpRow;
+      },
+    );
+    const result = transaction();
+    if ('closed' in result)
+      throw new EngagementEventClosedError('Event is closed.');
+    return toRsvp(result);
+  }
+
+  async closeDueEvents(now: Date, limit: number): Promise<number> {
+    this.ensureOpen();
+    if (!Number.isSafeInteger(limit) || limit < 1)
+      throw new RangeError('Event close limit must be positive.');
+    const timestamp = milliseconds(now);
+    return this.database
+      .prepare(
+        "UPDATE engagement_events SET status = 'completed', updated_at = ? WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_events WHERE status = 'scheduled' AND coalesce(ends_at, scheduled_at) <= ? ORDER BY coalesce(ends_at, scheduled_at) ASC, guild_id ASC, id ASC LIMIT ?)",
+      )
+      .run(timestamp, timestamp, limit).changes;
   }
 
   async claimDueEventReminders(now: Date, limit: number) {
@@ -1140,14 +1202,59 @@ export class SQLiteEngagementRepository implements EngagementRepository {
   async deleteOwnerData(guildId: string, userId: string): Promise<number> {
     this.ensureOpen();
     return this.database.transaction(() => {
+      const createdAt = Date.now();
+      const queue = this.database.prepare(
+        'INSERT OR IGNORE INTO engagement_card_deletions (kind, guild_id, record_id, owner_user_id, channel_id, message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      );
+      let queued = 0;
+      for (const [kind, table] of [
+        ['introduction', 'engagement_introductions'],
+        ['suggestion', 'engagement_suggestions'],
+        ['event', 'engagement_events'],
+      ] as const) {
+        const rows = this.database
+          .prepare(
+            `SELECT id, channel_id, message_id FROM ${table} WHERE guild_id = ? AND owner_user_id = ? AND message_id != ''`,
+          )
+          .all(guildId, userId) as Array<{
+          id: string;
+          channel_id: string;
+          message_id: string;
+        }>;
+        for (const row of rows)
+          queued += queue.run(
+            kind,
+            guildId,
+            row.id,
+            userId,
+            row.channel_id,
+            row.message_id,
+            createdAt,
+          ).changes;
+      }
+      this.database
+        .prepare(
+          "UPDATE engagement_introductions SET status = 'cleanup_pending', updated_at = ? WHERE guild_id = ? AND owner_user_id = ? AND message_id != ''",
+        )
+        .run(createdAt, guildId, userId);
+      this.database
+        .prepare(
+          "UPDATE engagement_suggestions SET status = 'cleanup_pending', updated_at = ? WHERE guild_id = ? AND owner_user_id = ? AND message_id != ''",
+        )
+        .run(createdAt, guildId, userId);
+      this.database
+        .prepare(
+          "UPDATE engagement_events SET status = 'cancelled', updated_at = ? WHERE guild_id = ? AND owner_user_id = ? AND message_id != ''",
+        )
+        .run(createdAt, guildId, userId);
       const introductions = this.database
         .prepare(
-          'DELETE FROM engagement_introductions WHERE guild_id = ? AND owner_user_id = ?',
+          "DELETE FROM engagement_introductions WHERE guild_id = ? AND owner_user_id = ? AND message_id = ''",
         )
         .run(guildId, userId).changes;
       const suggestions = this.database
         .prepare(
-          'DELETE FROM engagement_suggestions WHERE guild_id = ? AND owner_user_id = ?',
+          "DELETE FROM engagement_suggestions WHERE guild_id = ? AND owner_user_id = ? AND message_id = ''",
         )
         .run(guildId, userId).changes;
       const rsvps = this.database
@@ -1167,7 +1274,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         .run(guildId, userId).changes;
       const events = this.database
         .prepare(
-          'DELETE FROM engagement_events WHERE guild_id = ? AND owner_user_id = ?',
+          "DELETE FROM engagement_events WHERE guild_id = ? AND owner_user_id = ? AND message_id = ''",
         )
         .run(guildId, userId).changes;
       const optOut = this.database
@@ -1182,7 +1289,61 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         triviaAnswers +
         triviaRounds +
         events +
-        optOut
+        optOut +
+        queued
+      );
+    })();
+  }
+
+  async listPendingCardDeletions(
+    limit: number,
+  ): Promise<readonly EngagementCardDeletion[]> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          'SELECT kind, guild_id, record_id, owner_user_id, channel_id, message_id, created_at FROM engagement_card_deletions ORDER BY created_at ASC, guild_id ASC, record_id ASC LIMIT ?',
+        )
+        .all(limit) as Array<{
+        kind: EngagementCardDeletion['kind'];
+        guild_id: string;
+        record_id: string;
+        owner_user_id: string;
+        channel_id: string;
+        message_id: string;
+        created_at: number;
+      }>
+    ).map((row) => ({
+      kind: row.kind,
+      guildId: row.guild_id,
+      recordId: row.record_id,
+      ownerUserId: row.owner_user_id,
+      channelId: row.channel_id,
+      messageId: row.message_id,
+      createdAt: new Date(row.created_at),
+    }));
+  }
+
+  async completeCardDeletion(
+    deletion: EngagementCardDeletion,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    return this.database.transaction(() => {
+      const table =
+        deletion.kind === 'introduction'
+          ? 'engagement_introductions'
+          : deletion.kind === 'suggestion'
+            ? 'engagement_suggestions'
+            : 'engagement_events';
+      this.database
+        .prepare(`DELETE FROM ${table} WHERE guild_id = ? AND id = ?`)
+        .run(deletion.guildId, deletion.recordId);
+      return (
+        this.database
+          .prepare(
+            'DELETE FROM engagement_card_deletions WHERE kind = ? AND guild_id = ? AND record_id = ?',
+          )
+          .run(deletion.kind, deletion.guildId, deletion.recordId).changes === 1
       );
     })();
   }
@@ -1221,15 +1382,11 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       let changes = 0;
       for (const sql of [
         `DELETE FROM engagement_introductions WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_introductions WHERE status = 'deleted' AND updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
-        `DELETE FROM engagement_suggestions WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_suggestions WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
         `DELETE FROM engagement_rsvps WHERE rowid IN (SELECT r.rowid FROM engagement_rsvps r LEFT JOIN engagement_events e ON e.guild_id = r.guild_id AND e.id = r.event_id WHERE e.id IS NULL AND r.updated_at < ? ORDER BY r.updated_at ASC, r.guild_id ASC, r.event_id ASC, r.user_id ASC LIMIT ?)`,
         `DELETE FROM engagement_events WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_events WHERE status IN ('cancelled', 'completed') AND updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
         `DELETE FROM engagement_trivia_rounds WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_trivia_rounds WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
         `DELETE FROM engagement_idempotency_keys WHERE rowid IN (SELECT rowid FROM engagement_idempotency_keys WHERE created_at < ? ORDER BY created_at ASC, key ASC LIMIT ?)`,
-        `DELETE FROM engagement_opt_outs WHERE rowid IN (SELECT rowid FROM engagement_opt_outs WHERE opted_out_at < ? ORDER BY opted_out_at ASC, guild_id ASC, user_id ASC LIMIT ?)`,
-        `DELETE FROM engagement_recap_preferences WHERE rowid IN (SELECT rowid FROM engagement_recap_preferences WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC LIMIT ?)`,
         `DELETE FROM engagement_recap_runs WHERE rowid IN (SELECT rowid FROM engagement_recap_runs WHERE coalesce(completed_at, claimed_at) < ? ORDER BY coalesce(completed_at, claimed_at) ASC, guild_id ASC, run_key ASC LIMIT ?)`,
-        `DELETE FROM engagement_preferences WHERE rowid IN (SELECT rowid FROM engagement_preferences WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC LIMIT ?)`,
         `DELETE FROM engagement_operational_audit WHERE rowid IN (SELECT rowid FROM engagement_operational_audit WHERE created_at < ? ORDER BY created_at ASC, guild_id ASC, id ASC LIMIT ?)`,
       ]) {
         if (remaining === 0) break;
@@ -1450,6 +1607,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         );
         this.recordMigration(18);
       }
+      if (!this.hasMigration(19)) {
+        this.database.exec(
+          "CREATE TABLE IF NOT EXISTS engagement_card_deletions (kind TEXT NOT NULL CHECK (kind IN ('introduction', 'suggestion', 'event')), guild_id TEXT NOT NULL, record_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, channel_id TEXT NOT NULL, message_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (kind, guild_id, record_id)); CREATE INDEX IF NOT EXISTS engagement_card_deletions_pending ON engagement_card_deletions (created_at, guild_id, record_id);",
+        );
+        this.recordMigration(19);
+      }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
       );
@@ -1649,6 +1812,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       CREATE TABLE IF NOT EXISTS engagement_recap_runs (guild_id TEXT NOT NULL, run_key TEXT NOT NULL, state TEXT NOT NULL CHECK (state IN ('pending', 'completed')), claimed_at INTEGER NOT NULL, lease_token TEXT, completed_at INTEGER, PRIMARY KEY (guild_id, run_key));
       CREATE TABLE IF NOT EXISTS engagement_preferences (guild_id TEXT PRIMARY KEY, paused INTEGER NOT NULL CHECK (paused IN (0, 1)), updated_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS engagement_operational_audit (id INTEGER PRIMARY KEY, guild_id TEXT NOT NULL, actor_user_id TEXT NOT NULL, operation TEXT NOT NULL CHECK (operation IN ('engagement_pause', 'engagement_resume')), created_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS engagement_card_deletions (kind TEXT NOT NULL CHECK (kind IN ('introduction', 'suggestion', 'event')), guild_id TEXT NOT NULL, record_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, channel_id TEXT NOT NULL, message_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (kind, guild_id, record_id));
       CREATE INDEX IF NOT EXISTS engagement_introductions_status_retention ON engagement_introductions (status, updated_at, id);
       CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';
       CREATE INDEX IF NOT EXISTS engagement_suggestions_status_retention ON engagement_suggestions (status, updated_at, id);
@@ -1658,6 +1822,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       CREATE INDEX IF NOT EXISTS engagement_idempotency_retention ON engagement_idempotency_keys (created_at, key);
       CREATE INDEX IF NOT EXISTS engagement_opt_outs_retention ON engagement_opt_outs (opted_out_at, guild_id, user_id);
       CREATE INDEX IF NOT EXISTS engagement_operational_audit_guild ON engagement_operational_audit (guild_id, created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS engagement_card_deletions_pending ON engagement_card_deletions (created_at, guild_id, record_id);
     `);
   }
   private assertNotOptedOut(guildId: string, userId: string): void {

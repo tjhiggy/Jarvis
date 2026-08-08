@@ -115,4 +115,61 @@ describe('event RSVP capacity', () => {
       });
     }
   });
+
+  it('atomically closes a due event at its end time and rejects a racing RSVP', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jarvis-event-close-'));
+    const repository = new SQLiteEngagementRepository(
+      join(directory, 'events.db'),
+    );
+    let now = new Date('2026-08-09T20:59:59.000Z');
+    const service = new EventService({
+      repository,
+      createId: () => 'event-close',
+      adminRoleIds: new Set(['admin']),
+      now: () => now,
+    });
+    try {
+      await repository.createEvent({
+        id: 'event-close',
+        guildId: 'guild-1',
+        channelId: 'events',
+        ownerUserId: 'owner',
+        title: 'Shift',
+        description: 'Two hour shift',
+        scheduledAt: new Date('2026-08-09T19:00:00.000Z'),
+        endsAt: new Date('2026-08-09T21:00:00.000Z'),
+        timezone: 'UTC',
+        capacity: 3,
+        status: 'scheduled',
+        createdAt: new Date('2026-08-08T12:00:00.000Z'),
+        updatedAt: new Date('2026-08-08T12:00:00.000Z'),
+      });
+      now = new Date('2026-08-09T21:00:00.000Z');
+
+      await expect(
+        service.rsvp({
+          guildId: 'guild-1',
+          eventId: 'event-close',
+          userId: 'member',
+          response: 'yes',
+          interactionId: 'late-click',
+        }),
+      ).rejects.toMatchObject({ code: 'closed' });
+      await expect(
+        repository.getEvent('guild-1', 'event-close'),
+      ).resolves.toMatchObject({
+        status: 'completed',
+        updatedAt: now,
+      });
+      await expect(
+        repository.cleanup(new Date('2026-08-10T00:00:00.000Z'), 10),
+      ).resolves.toBeGreaterThan(0);
+      await expect(
+        repository.getEvent('guild-1', 'event-close'),
+      ).resolves.toBeUndefined();
+    } finally {
+      await repository.closeConnection();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });

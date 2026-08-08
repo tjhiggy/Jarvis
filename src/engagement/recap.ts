@@ -77,9 +77,7 @@ export interface RecapGateway {
 }
 export class RecapScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
-  private lastRunValue:
-    | { status: 'success' | 'error'; at: Date }
-    | undefined;
+  private lastRunValue: { status: 'success' | 'error'; at: Date } | undefined;
   private activeTick: Promise<void> | undefined;
   constructor(
     private readonly dependencies: Readonly<{
@@ -100,19 +98,33 @@ export class RecapScheduler {
       service: RecapService;
       gateway: RecapGateway;
       now?: () => Date;
-      logger?: { warn(fields: Record<string, string | number>, message: string): void };
+      logger?: {
+        warn(fields: Record<string, string | number>, message: string): void;
+      };
     }>,
   ) {}
   get healthy(): boolean {
     return this.timer !== undefined;
   }
   get lastRun():
-    | Readonly<{ status: 'success' | 'error'; at: Date }>
-    | undefined {
+    Readonly<{ status: 'success' | 'error'; at: Date }> | undefined {
     return this.lastRunValue;
   }
   start(): void {
-    if (!this.timer) this.timer = setInterval(() => void this.tick().catch((error: unknown) => this.dependencies.logger?.warn({ operation: 'recap_tick', ...projectOperationalError(error, 'recap_scheduler') }, 'Recap tick failed.')), 60_000);
+    if (!this.timer)
+      this.timer = setInterval(
+        () =>
+          void this.tick().catch((error: unknown) =>
+            this.dependencies.logger?.warn(
+              {
+                operation: 'recap_tick',
+                ...projectOperationalError(error, 'recap_scheduler'),
+              },
+              'Recap tick failed.',
+            ),
+          ),
+        60_000,
+      );
   }
   async stop(): Promise<void> {
     if (this.timer) {
@@ -133,7 +145,11 @@ export class RecapScheduler {
     try {
       if (!due(now, this.dependencies.schedule, this.dependencies.timezone))
         return;
-      if (await this.dependencies.repository.engagementPaused?.(this.dependencies.guildId))
+      if (
+        await this.dependencies.repository.engagementPaused?.(
+          this.dependencies.guildId,
+        )
+      )
         return;
       if (
         !(await this.dependencies.repository.recapEnabled(
@@ -142,7 +158,11 @@ export class RecapScheduler {
       )
         return;
       const window = { start: new Date(now.getTime() - weekMs), end: now };
-      const key = `weekly-recap:${day(window.end)}`;
+      const key = recapRunKey(
+        now,
+        this.dependencies.schedule,
+        this.dependencies.timezone,
+      );
       const leaseToken = await this.dependencies.repository.claimRecapRun(
         this.dependencies.guildId,
         key,
@@ -155,7 +175,11 @@ export class RecapScheduler {
           window,
         );
         if (recap.status === 'unavailable') return;
-        if (await this.dependencies.repository.engagementPaused?.(this.dependencies.guildId))
+        if (
+          await this.dependencies.repository.engagementPaused?.(
+            this.dependencies.guildId,
+          )
+        )
           return;
         await this.dependencies.gateway.post(
           this.dependencies.channelId,
@@ -179,7 +203,10 @@ export class RecapScheduler {
     } catch (error) {
       this.lastRunValue = { status: 'error', at: now };
       this.dependencies.logger?.warn(
-        { operation: 'recap_tick', ...projectOperationalError(error, 'recap_scheduler') },
+        {
+          operation: 'recap_tick',
+          ...projectOperationalError(error, 'recap_scheduler'),
+        },
         'Recap tick failed.',
       );
     }
@@ -187,6 +214,16 @@ export class RecapScheduler {
 }
 
 const day = (value: Date): string => value.toISOString().slice(0, 10);
+const recapRunKey = (now: Date, schedule: string, timezone: string): string => {
+  const localDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  const slot = schedule.slice(schedule.indexOf(' ') + 1);
+  return `weekly-recap:${timezone}:${localDate}T${slot}`;
+};
 const due = (now: Date, schedule: string, timezone: string): boolean => {
   const match =
     /^(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY) ([0-2]\d):([0-5]\d)$/.exec(

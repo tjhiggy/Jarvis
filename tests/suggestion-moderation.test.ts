@@ -94,6 +94,58 @@ describe('SuggestionService', () => {
     ).resolves.toMatchObject({ status: 'acknowledged' });
   });
 
+  it('keeps failed owner deletion cleanup-pending and retries the card before deleting content', async () => {
+    const repository = new SuggestionsRepository();
+    const gateway = new SuggestionGateway();
+    const service = createService(repository, gateway);
+    const created = await service.submit(input());
+    gateway.delete = async () => {
+      throw new Error('Discord unavailable');
+    };
+
+    await expect(
+      service.delete({
+        guildId: 'guild-1',
+        ownerUserId: 'user-1',
+        suggestionId: created.id,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      repository.getSuggestion('guild-1', created.id),
+    ).resolves.toMatchObject({ status: 'cleanup_pending' });
+
+    gateway.delete = async (channelId, messageId) => {
+      gateway.deletes.push({ channelId, messageId });
+    };
+    await expect(
+      service.cleanupPostedCards(new Date('2030-01-01T00:00:00.000Z'), 10),
+    ).resolves.toBe(1);
+    await expect(
+      repository.getSuggestion('guild-1', created.id),
+    ).resolves.toBeUndefined();
+  });
+
+  it('expires retained suggestions by deleting their cards before their content rows', async () => {
+    const repository = new SuggestionsRepository();
+    const gateway = new SuggestionGateway();
+    const service = createService(repository, gateway);
+    const created = await service.submit(input());
+    repository.suggestions.get(`guild-1:${created.id}`).updatedAt = new Date(
+      '2026-01-01T00:00:00.000Z',
+    );
+
+    await expect(
+      service.cleanupPostedCards(new Date('2026-02-01T00:00:00.000Z'), 10),
+    ).resolves.toBe(1);
+    expect(gateway.deletes).toContainEqual({
+      channelId: 'suggestions',
+      messageId: 'message-1',
+    });
+    await expect(
+      repository.getSuggestion('guild-1', created.id),
+    ).resolves.toBeUndefined();
+  });
+
   it('does not let moderation overwrite a deletion-pending suggestion', async () => {
     const repository = new SuggestionsRepository();
     const service = createService(repository, new SuggestionGateway());
@@ -360,6 +412,17 @@ class SuggestionsRepository implements EngagementRepository {
       (value) => value.status === 'cleanup_pending',
     );
   }
+  async claimExpiredSuggestions(cutoff: Date, limit: number, updatedAt: Date) {
+    for (const value of [...this.suggestions.values()]
+      .filter(
+        (candidate) =>
+          candidate.status !== 'cleanup_pending' &&
+          candidate.updatedAt < cutoff,
+      )
+      .slice(0, limit))
+      Object.assign(value, { status: 'cleanup_pending', updatedAt });
+    return this.listCleanupPendingSuggestions();
+  }
   async deleteSuggestionRecord(guildId: string, id: string) {
     return this.suggestions.delete(`${guildId}:${id}`);
   }
@@ -372,7 +435,7 @@ class SuggestionsRepository implements EngagementRepository {
     const value = await this.getSuggestion(guildId, id);
     if (value?.ownerUserId !== ownerUserId || value.status !== 'open')
       return undefined;
-    value.status = 'deletion_pending';
+    value.status = 'cleanup_pending';
     value.updatedAt = updatedAt;
     return value;
   }

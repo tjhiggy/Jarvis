@@ -259,16 +259,11 @@ export class SuggestionService {
           value.channelId,
           value.messageId,
         );
-      return await this.dependencies.repository.deletePendingSuggestionRecord(
+      return await this.dependencies.repository.deleteSuggestionRecord(
         value.guildId,
         value.id,
       );
     } catch (error) {
-      await this.dependencies.repository.restorePendingSuggestion(
-        value.guildId,
-        value.id,
-        this.now(),
-      );
       throw error;
     }
   }
@@ -301,7 +296,8 @@ export class SuggestionService {
       value === undefined ||
       value.channelId !== channelId ||
       value.status === 'archived' ||
-      value.status === 'deletion_pending'
+      value.status === 'deletion_pending' ||
+      value.status === 'cleanup_pending'
     )
       throw new SuggestionServiceError('not-found');
     const now = input.now ?? this.now();
@@ -351,7 +347,19 @@ export class SuggestionService {
     return removed;
   }
 
-  async cleanupPostedCards(limit = 100): Promise<number> {
+  async cleanupPostedCards(
+    cutoffOrLimit: Date | number = 100,
+    requestedLimit?: number,
+  ): Promise<number> {
+    const cutoff = cutoffOrLimit instanceof Date ? cutoffOrLimit : undefined;
+    const limit =
+      cutoffOrLimit instanceof Date ? (requestedLimit ?? 100) : cutoffOrLimit;
+    if (cutoff !== undefined)
+      await this.dependencies.repository.claimExpiredSuggestions?.(
+        cutoff,
+        limit,
+        this.now(),
+      );
     let removed = 0;
     for (const value of await this.dependencies.repository.listCleanupPendingSuggestions(
       limit,
