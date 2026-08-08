@@ -28,6 +28,15 @@ dates, promises, or claims that an interface declaration is a working feature.
 
 ## Next
 
+**Planned, not implemented.** Build the privacy-aware Muthaship engagement V1:
+guided introductions, suggestions, events with opt-in RSVP, a configured recap,
+and one bounded activity. It remains disabled by default and limited to
+bot-owned messages and local SQLite records. See the
+[Engagement product specification](ENGAGEMENT_PRODUCT_SPEC.md) before treating
+any engagement idea as a feature request. XP, public profiles, voice tracking,
+automated role assignment, moderation, Discord-setting changes, and external
+writes are not part of V1.
+
 **Planned, not implemented.** Add a dedicated `SAFETY_IDENTIFIER_SECRET` so
 safety-identifier derivation no longer depends on an existing provider or bot
 credential. It requires configuration, migration guidance, tests, and review.

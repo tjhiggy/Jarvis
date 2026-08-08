@@ -306,6 +306,16 @@ risks, the [Security policy](SECURITY.md) for private reporting, and
 [Operations](docs/OPERATIONS.md) for backup, restore, retention, and incident
 handling.
 
+## Planned engagement V1
+
+The proposed Muthaship engagement loop is deliberately small: guided
+introductions, suggestions, events with opt-in RSVP, a privacy-aware recap, and
+one bounded activity. It is not shipped, does not change current Discord
+permissions, and does not authorize passive channel collection, moderation,
+role changes, or external writes. The complete contract, including opt-out,
+retention, and deletion rules, is in the
+[Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md).
+
 ## Development and validation
 
 The standard quality gate is:
@@ -364,6 +374,7 @@ Jarvis reports that safely instead of guessing.
 | [Operations](docs/OPERATIONS.md)             | Health, logs, provider checks, retention, recovery, and outage handling                    |
 | [Troubleshooting](docs/TROUBLESHOOTING.md)   | Safe diagnosis and recovery by symptom                                                     |
 | [Security model](docs/SECURITY_MODEL.md)     | Assets, threats, controls, residual risk, and no-mutation guarantees                       |
+| [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md) | Planned V1 engagement scope, consent, retention, deletion, and non-goals        |
 | [Change management](docs/CHANGE_MANAGEMENT.md) | Standard request, validation, merge, deployment, and closeout process                  |
 | [GitHub workflow](docs/GITHUB_WORKFLOW.md)    | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
 | [Extension guide](docs/extensions/README.md) | Disabled contracts and requirements for any future integration                             |
