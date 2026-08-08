@@ -49,6 +49,36 @@ describe('SQLiteEngagementRepository', () => {
     database.close();
   });
 
+  it('upgrades legacy global IDs to guild-scoped keys without dropping rows', async () => {
+    const legacyPath = join(directory, 'legacy.db');
+    const legacy = new Database(legacyPath);
+    legacy.exec(`
+      CREATE TABLE engagement_schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);
+      INSERT INTO engagement_schema_migrations VALUES (1, 0);
+      CREATE TABLE engagement_introductions (id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, display_name TEXT NOT NULL, interests TEXT NOT NULL, introduction TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+      CREATE TABLE engagement_suggestions (id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+      CREATE TABLE engagement_events (id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, scheduled_at INTEGER NOT NULL, timezone TEXT NOT NULL, capacity INTEGER NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+      CREATE TABLE engagement_rsvps (event_id TEXT NOT NULL REFERENCES engagement_events(id) ON DELETE CASCADE, guild_id TEXT NOT NULL, user_id TEXT NOT NULL, response TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (event_id, user_id));
+      CREATE TABLE engagement_opt_outs (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, opted_out_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id));
+      CREATE TABLE engagement_idempotency_keys (guild_id TEXT NOT NULL, scope TEXT NOT NULL, key TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (guild_id, scope, key));
+      INSERT INTO engagement_events VALUES ('legacy-event', 'guild-1', 'channel-1', 'admin-1', 'Legacy', 'Preserved', 0, 'UTC', 1, 'completed', 0, 0);
+      INSERT INTO engagement_rsvps VALUES ('legacy-event', 'guild-1', 'user-1', 'yes', 0, 0);
+    `);
+    legacy.close();
+
+    const migrated = new SQLiteEngagementRepository(legacyPath);
+    try {
+      await expect(
+        migrated.getEvent('guild-1', 'legacy-event'),
+      ).resolves.toMatchObject({ title: 'Legacy' });
+      await expect(
+        migrated.createEvent(event({ id: 'legacy-event', guildId: 'guild-2' })),
+      ).resolves.toMatchObject({ guildId: 'guild-2' });
+    } finally {
+      await migrated.closeConnection();
+    }
+  });
+
   it('creates, reads, and changes engagement record statuses without using text as identity', async () => {
     await repository.createIntroduction(introduction());
     await repository.createSuggestion(suggestion());
@@ -136,6 +166,76 @@ describe('SQLiteEngagementRepository', () => {
     ).resolves.toMatchObject({ id: 'guild-two' });
   });
 
+  it('allows the same stable IDs in separate guilds and scopes RSVP uniqueness to the guild event', async () => {
+    await repository.createIntroduction(
+      introduction({ id: 'shared-intro', guildId: 'guild-1' }),
+    );
+    await repository.createIntroduction(
+      introduction({ id: 'shared-intro', guildId: 'guild-2' }),
+    );
+    await repository.createSuggestion(
+      suggestion({ id: 'shared-suggestion', guildId: 'guild-1' }),
+    );
+    await repository.createSuggestion(
+      suggestion({ id: 'shared-suggestion', guildId: 'guild-2' }),
+    );
+    await repository.createEvent(
+      event({ id: 'shared-event', guildId: 'guild-1' }),
+    );
+    await repository.createEvent(
+      event({ id: 'shared-event', guildId: 'guild-2' }),
+    );
+
+    await repository.upsertRsvp(
+      rsvp({ eventId: 'shared-event', guildId: 'guild-1', response: 'yes' }),
+    );
+    await repository.upsertRsvp(
+      rsvp({ eventId: 'shared-event', guildId: 'guild-2', response: 'no' }),
+    );
+
+    await expect(
+      repository.getIntroduction('guild-2', 'shared-intro'),
+    ).resolves.toMatchObject({ guildId: 'guild-2' });
+    await expect(
+      repository.getSuggestion('guild-2', 'shared-suggestion'),
+    ).resolves.toMatchObject({ guildId: 'guild-2' });
+  });
+
+  it('deletes owner-created events and cascades their RSVPs within the same guild', async () => {
+    await repository.createEvent(
+      event({ id: 'owned-event', ownerUserId: 'user-1' }),
+    );
+    await repository.createEvent(
+      event({
+        id: 'other-guild-event',
+        guildId: 'guild-2',
+        ownerUserId: 'user-1',
+      }),
+    );
+    await repository.upsertRsvp(
+      rsvp({ eventId: 'owned-event', userId: 'user-2' }),
+    );
+
+    await expect(repository.deleteOwnerData('guild-1', 'user-1')).resolves.toBe(
+      1,
+    );
+    await expect(
+      repository.getEvent('guild-1', 'owned-event'),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.getEvent('guild-2', 'other-guild-event'),
+    ).resolves.toMatchObject({ id: 'other-guild-event' });
+    const database = new Database(databasePath, { readonly: true });
+    expect(
+      database
+        .prepare(
+          "SELECT * FROM engagement_rsvps WHERE event_id = 'owned-event'",
+        )
+        .all(),
+    ).toEqual([]);
+    database.close();
+  });
+
   it('stores RSVP and callback or job keys idempotently', async () => {
     await repository.createEvent(event());
     await expect(repository.upsertRsvp(rsvp())).resolves.toMatchObject({
@@ -207,6 +307,36 @@ describe('SQLiteEngagementRepository', () => {
     await expect(
       repository.getSuggestion('guild-1', 'current-suggestion'),
     ).resolves.toMatchObject({ id: 'current-suggestion' });
+  });
+
+  it('cleans expired opt-out markers so retention does not keep them forever', async () => {
+    await repository.setOptOut({
+      guildId: 'guild-1',
+      userId: 'former-member',
+      optedOutAt: at(0),
+    });
+
+    await expect(repository.cleanup(at(10), 10)).resolves.toBe(1);
+    await expect(
+      repository.getOptOut('guild-1', 'former-member'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('rejects event creation for opted-out owners and unbounded storage values', async () => {
+    await repository.setOptOut({
+      guildId: 'guild-1',
+      userId: 'admin-1',
+      optedOutAt: at(1),
+    });
+    await expect(repository.createEvent(event())).rejects.toThrow(
+      'Engagement collection is disabled for this member.',
+    );
+    await expect(
+      repository.createSuggestion(suggestion({ title: 'x'.repeat(201) })),
+    ).rejects.toThrow('title must not exceed 200 characters.');
+    await expect(
+      repository.createIntroduction(introduction({ id: '' })),
+    ).rejects.toThrow('id must not be empty.');
   });
 });
 
