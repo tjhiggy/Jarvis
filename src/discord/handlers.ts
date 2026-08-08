@@ -1,6 +1,6 @@
 import { GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
 import type { PollController } from '../polls/poll-controller.js';
-import { isAllowedChannel } from './access.js';
+import { isAllowedChannel } from './permissions.js';
 import {
   replySafely,
   type ReplyPayload,
@@ -8,7 +8,7 @@ import {
 } from './delivery.js';
 import type { ConversationResult } from '../services/conversation-service.js';
 import { EventDeduplicator } from '../security/event-deduplicator.js';
-import { chunkDiscordResponse } from '../utils/chunk-response.js';
+import { chunkDiscordResponse } from './response-chunking.js';
 import {
   neutralizeDiscordMentions,
   removeBotMention,
