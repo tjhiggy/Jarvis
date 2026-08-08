@@ -399,6 +399,7 @@ export class TriviaExpiryScheduler {
         post(round: ClaimedTriviaRound, results: TriviaResults): Promise<void>;
       };
       readonly intervalMs?: number;
+      readonly isPaused?: (guildId: string) => Promise<boolean>;
       readonly logger?: {
         warn(fields: Record<string, string>, message: string): void;
       };
@@ -416,9 +417,12 @@ export class TriviaExpiryScheduler {
     if (!this.timer)
       this.timer = setInterval(
         () =>
-          void this.tick().catch(() =>
+          void this.tick().catch((error: unknown) =>
             this.dependencies.logger?.warn(
-              { operation: 'trivia_expiry_tick' },
+              {
+                operation: 'trivia_expiry_tick',
+                ...projectOperationalError(error, 'trivia_scheduler'),
+              },
               'Trivia expiry tick failed.',
             ),
           ),
@@ -430,6 +434,7 @@ export class TriviaExpiryScheduler {
       clearInterval(this.timer);
       this.timer = undefined;
     }
+    await this.activeTick;
   }
   async tick(): Promise<void> {
     if (this.activeTick) return this.activeTick;
@@ -449,6 +454,13 @@ export class TriviaExpiryScheduler {
   private async runTick(): Promise<void> {
     for (const round of await this.dependencies.service.claimResultCards()) {
       try {
+        if (
+          this.dependencies.isPaused !== undefined &&
+          (await this.dependencies.isPaused(round.guildId))
+        ) {
+          await this.dependencies.service.releaseResultCard(round);
+          continue;
+        }
         const results = await this.dependencies.service.results(
           round.guildId,
           round.id,
@@ -462,3 +474,4 @@ export class TriviaExpiryScheduler {
   }
 }
 import { buildEngagementCard, type EngagementCard } from './discord-ui.js';
+import { projectOperationalError } from '../utils/logger.js';

@@ -146,6 +146,7 @@ export interface CommandDependencies {
         | 'setEngagementPaused'
         | 'healthCheck'
         | 'statusCounts'
+        | 'deleteOwnerData'
       >
     >;
     schedulers?: Readonly<
@@ -190,6 +191,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     'Reminder limits: 1 minute to 30 days, 500 characters, and 10 active reminders per server.',
     '/help lists the available commands.',
     '/status reports safe service configuration and database health.',
+    '/engagement status, pause, resume, or delete provides scoped engagement operations.',
     ...(pollsEnabled
       ? [
           '/poll creates an anonymous 2-to-5-option poll for configured administrators.',

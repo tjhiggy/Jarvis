@@ -1,5 +1,9 @@
 # Engagement Product Specification
 
+## Operations and deletion
+
+The product exposes an authorized, private `/engagement status` view with aggregate-only diagnostics. Administrators may pause or resume scheduled delivery per guild. Members can delete their own retained engagement records; configured administrators can perform the same guild-scoped deletion for a specified member. Audit events retain only guild ID, actor ID, operation, and timestamp.
+
 ## Status and decision
 
 This document freezes the proposed engagement V1 contract. Events and RSVP are

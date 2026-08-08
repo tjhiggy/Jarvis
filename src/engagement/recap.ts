@@ -79,6 +79,7 @@ export class RecapScheduler {
   private lastRunValue:
     | { status: 'success' | 'error'; at: Date }
     | undefined;
+  private activeTick: Promise<void> | undefined;
   constructor(
     private readonly dependencies: Readonly<{
       guildId: string;
@@ -116,8 +117,16 @@ export class RecapScheduler {
       clearInterval(this.timer);
       this.timer = undefined;
     }
+    await this.activeTick;
   }
   async tick(): Promise<void> {
+    if (this.activeTick) return this.activeTick;
+    this.activeTick = this.runTick().finally(() => {
+      this.activeTick = undefined;
+    });
+    return this.activeTick;
+  }
+  private async runTick(): Promise<void> {
     const now = (this.dependencies.now ?? (() => new Date()))();
     try {
       if (!due(now, this.dependencies.schedule, this.dependencies.timezone))

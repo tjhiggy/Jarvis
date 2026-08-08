@@ -121,8 +121,15 @@ interface TriviaSubcommandDefinition {
 }
 interface EngagementSubcommandDefinition {
   readonly type: 1;
-  readonly name: 'status' | 'pause' | 'resume';
+  readonly name: 'status' | 'pause' | 'resume' | 'delete';
   readonly description: string;
+  readonly options?: readonly {
+    readonly type: 3;
+    readonly name: 'user_id';
+    readonly description: string;
+    readonly required: false;
+    readonly max_length: 20;
+  }[];
 }
 
 export type CommandOptionDefinition =
@@ -683,6 +690,14 @@ export const createCommandDefinitions = (
         { type: 1, name: 'status', description: 'Show safe engagement health.' },
         { type: 1, name: 'pause', description: 'Pause engagement scheduling.' },
         { type: 1, name: 'resume', description: 'Resume engagement scheduling.' },
+        {
+          type: 1,
+          name: 'delete',
+          description: 'Delete retained engagement records.',
+          options: [
+            { type: 3, name: 'user_id', description: 'Optional member ID for administrators.', required: false, max_length: 20 },
+          ],
+        },
       ],
     },
   );

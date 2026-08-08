@@ -13,6 +13,7 @@ describe('engagement controls', () => {
         engagementPaused: async () => false,
         healthCheck: async () => true,
         statusCounts: async () => ({ introductions: 0, suggestions: 0, events: 0, rsvps: 0, triviaRounds: 0 }),
+        deleteOwnerData: async () => 0,
       },
     });
     expect(pauses).toHaveLength(1);
@@ -31,6 +32,7 @@ describe('engagement controls', () => {
         engagementPaused: async () => false,
         healthCheck: async () => { healthChecks += 1; return true; },
         statusCounts: async () => ({ introductions: 0, suggestions: 0, events: 0, rsvps: 0, triviaRounds: 0 }),
+        deleteOwnerData: async () => 0,
       },
     });
     expect(healthChecks).toBe(0);

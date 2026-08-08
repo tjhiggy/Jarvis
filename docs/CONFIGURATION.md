@@ -1,5 +1,7 @@
 # Configuration
 
+`ENGAGEMENT_ENABLED=true` and `ENGAGEMENT_ADMIN_ROLE_IDS` are required before administrator engagement controls are available. No additional token, privileged intent, or Discord Administrator permission is used for `/engagement` operations.
+
 Jarvis loads `.env` through `dotenv` during application startup. Copy `.env.example` to `.env`; do not commit `.env`. All settings are parsed at startup, so restart the process after changing any value. `npm run register-commands` separately loads the registration subset and must be rerun after changing `MAX_INPUT_CHARS`, `FAQ_CATALOG_PATH`, FAQ catalog content, or command definitions.
 
 The table is the complete configuration contract from `.env.example` and `src/config/config.ts`. Defaults below are parser defaults. The committed example file intentionally selects Ollama, which overrides the parser's OpenAI-provider default when it is copied unchanged.

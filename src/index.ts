@@ -845,6 +845,7 @@ export const createApplication = async (
                       | 'setEngagementPaused'
                       | 'healthCheck'
                       | 'statusCounts'
+                      | 'deleteOwnerData'
                     >
                   >,
                   schedulers: {
@@ -958,6 +959,8 @@ export const createApplication = async (
     if (triviaService !== undefined)
       triviaScheduler = new TriviaExpiryScheduler({
         service: triviaService,
+        isPaused: (guildId) =>
+          engagementRepository?.engagementPaused?.(guildId) ?? Promise.resolve(true),
         gateway: {
           post: async (round, results) => {
             const channel = await schedulerClient.channels?.fetch(

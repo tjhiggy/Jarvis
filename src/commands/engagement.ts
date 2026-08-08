@@ -17,6 +17,7 @@ type OperationalRepository = Readonly<{
     rsvps: number;
     triviaRounds: number;
   }>;
+  deleteOwnerData(guildId: string, userId: string): Promise<number>;
 }>;
 
 export const handleEngagementCommand = async (
@@ -24,7 +25,7 @@ export const handleEngagementCommand = async (
     guildId: string | null;
     user: Readonly<{ id: string }>;
     member?: { roles?: { cache?: { has(id: string): boolean } } } | null;
-    options: { getSubcommand(): string };
+    options: { getSubcommand(): string; getString?(name: string): string | null };
   },
   dependencies: Readonly<{
     enabled: boolean;
@@ -49,6 +50,14 @@ export const handleEngagementCommand = async (
   const authorized = [...dependencies.adminRoleIds].some((role) =>
     interaction.member?.roles?.cache?.has(role),
   );
+  const subcommand = interaction.options.getSubcommand();
+  if (subcommand === 'delete') {
+    const target = interaction.options.getString?.('user_id')?.trim() || interaction.user.id;
+    if (target !== interaction.user.id && !authorized)
+      return replySafely(interaction, 'Deleting another member\'s engagement records is restricted to configured MuthaShip administrators.', true);
+    const deleted = await dependencies.repository.deleteOwnerData(interaction.guildId, target);
+    return replySafely(interaction, deleted === 0 ? 'No retained engagement records were found for that member in this guild.' : `Removed ${deleted} retained engagement records from this guild.`, true);
+  }
   if (!authorized)
     return replySafely(
       interaction,
@@ -56,7 +65,6 @@ export const handleEngagementCommand = async (
       true,
     );
 
-  const subcommand = interaction.options.getSubcommand();
   if (subcommand === 'pause' || subcommand === 'resume') {
     const paused = subcommand === 'pause';
     await dependencies.repository.setEngagementPaused(
@@ -92,11 +100,15 @@ export const handleEngagementCommand = async (
   const schedulers = Object.entries(health.schedulers)
     .map(([name, scheduler]) => `${name}: ${scheduler.state}, last run ${scheduler.lastRun}`)
     .join('\n');
+  const features = ['introductions', 'suggestions', 'events', 'trivia', 'recaps']
+    .filter((feature) => feature !== 'recaps' || health.schedulers.recaps !== undefined)
+    .join(', ');
   return replySafely(
     interaction,
     [
       `Engagement: ${health.enabled ? 'enabled' : 'disabled'}${health.paused ? ' (paused)' : ''}`,
       `Engagement database: ${health.database}`,
+      `Enabled features: ${features || 'none'}`,
       counts,
       schedulers === '' ? 'Schedulers: unavailable' : `Schedulers: ${schedulers}`,
     ].join('\n'),

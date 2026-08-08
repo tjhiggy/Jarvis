@@ -1,5 +1,9 @@
 # Operations
 
+## Engagement controls
+
+Configured engagement administrators may run `/engagement status`, `/engagement pause`, and `/engagement resume`. Status is private and reports only configured features, aggregate record counts, scheduler state, and last-run outcome. `/engagement delete` deletes the caller's retained records in the current guild; administrators may provide a member ID. Pause suppresses scheduled recap, event-reminder, and trivia-result delivery without deleting records.
+
 This guide covers routine operation of the deployed Jarvis process. It does
 not authorize Discord administration, repository changes, shell execution, or
 inspection of user message content.
