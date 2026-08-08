@@ -16,6 +16,9 @@ expand Discord authority, Sleeper write access, shell execution, arbitrary file
 access, or automatic GitHub writes require a separate design and security
 review.
 
+All changes follow the documented [change management process](docs/CHANGE_MANAGEMENT.md),
+including validation evidence and explicit deployment authorization.
+
 ## Prerequisites
 
 - Node.js 22 or newer

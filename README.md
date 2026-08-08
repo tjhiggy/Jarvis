@@ -364,6 +364,8 @@ Jarvis reports that safely instead of guessing.
 | [Operations](docs/OPERATIONS.md)             | Health, logs, provider checks, retention, recovery, and outage handling                    |
 | [Troubleshooting](docs/TROUBLESHOOTING.md)   | Safe diagnosis and recovery by symptom                                                     |
 | [Security model](docs/SECURITY_MODEL.md)     | Assets, threats, controls, residual risk, and no-mutation guarantees                       |
+| [Change management](docs/CHANGE_MANAGEMENT.md) | Standard request, validation, merge, deployment, and closeout process                  |
+| [GitHub workflow](docs/GITHUB_WORKFLOW.md)    | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
 | [Extension guide](docs/extensions/README.md) | Disabled contracts and requirements for any future integration                             |
 | [Roadmap](docs/ROADMAP.md)                   | Shipped, planned, later, and explicitly out-of-scope work                                  |
 | [Releases](docs/RELEASES.md)                 | Versioning, validation gates, publication authority, and rollback                          |
