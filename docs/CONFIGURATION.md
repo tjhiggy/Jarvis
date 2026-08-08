@@ -33,11 +33,20 @@ The table is the complete configuration contract from `.env.example` and `src/co
 | `RESTRAINED_CHANNEL_IDS`    | Optional comma-separated IDs                                                                | Empty set                    | Uses the restrained persona mode in named channels or their threads.                             | `your-technical-channel-id`           | Operational            |
 | `PERSONA_PROMPT_PATH`       | Optional; non-empty when supplied                                                           | `./config/jarvis-persona.md` | Operator-controlled persona file loaded at startup.                                              | `./config/jarvis-persona.md`          | Trusted local content  |
 | `FAQ_CATALOG_PATH`          | Optional; non-empty when supplied                                                           | `./config/faq.json`          | Operator-controlled approved FAQ catalog loaded before Discord login.                            | `./config/faq.json`                   | Trusted local content  |
+| `SLEEPER_LEAGUE_ID`         | Optional; blank or an 8-to-20 digit ID                                                     | Empty string                 | Enables read-only `/fantasy standings` for one Sleeper league; no API key is required.            | `1388545313588924416`                | Public identifier     |
 | `POLL_ADMIN_USER_IDS`       | Blank only when `POLL_VOTER_SECRET` is also blank; otherwise one or more 17-to-20 digit IDs | Empty set                    | Exact Discord user IDs authorized to create and close polls.                                     | `12345678901234567,98765432109876543` | Access boundary        |
 | `POLL_VOTER_SECRET`         | Blank only when `POLL_ADMIN_USER_IDS` is also blank; otherwise at least 32 characters       | Empty string                 | Private HMAC key for anonymous poll voter tokens.                                                | `stored-in-secret-manager`            | Secret                 |
 | `POLL_RETENTION_DAYS`       | Optional integer, at least 1                                                                | `30`                         | Retains terminal poll rows and final aggregates for this age before cleanup.                     | `30`                                  | Data retention         |
 | `POLL_EXPIRY_CHECK_SECONDS` | Optional integer, at least 1                                                                | `30`                         | Interval for bounded poll expiry, synchronization retry, and retention work after Discord login. | `30`                                  | Operational            |
 | `LOG_LEVEL`                 | Optional enum                                                                               | `info`                       | Pino logging level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, or `silent`.             | `info`                                | Operational            |
+
+## Sleeper behavior
+
+When `SLEEPER_LEAGUE_ID` is blank, `/fantasy standings` reports that the league
+integration is not configured. When set, Jarvis reads public Sleeper rosters
+and user display names only. Restart Jarvis after changing it. The integration
+never changes lineups, waivers, trades, rosters, league settings, or Discord
+settings.
 
 ## Provider and web-search behavior
 

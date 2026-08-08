@@ -15,6 +15,8 @@ describe implemented source behavior; proposals are labelled as planned.
 - Optional poll administrator IDs, poll questions/options, aggregate totals,
   and the secret-derived voter-token boundary.
 - Provider account availability, budget, rate limits, and model access.
+- Optional Sleeper league identifier, public roster/display-name data, and the
+  integrity of the read-only fantasy standings boundary.
 - The integrity of Jarvis's deployment, source revision, and command set.
 
 The application does not encrypt SQLite data itself. Protect the host, Docker
@@ -111,6 +113,12 @@ invalid content fails closed with a sanitized error that names
   override, webhook, or external delivery path. SQLite reminder statements are
   parameterized; lease and uncertain-delivery state prevent unsafe replay, and
   logs exclude reminder content and Discord identities.
+- **Sleeper boundary.** `SLEEPER_LEAGUE_ID` selects one public league and does
+  not act as a credential. The integration reads rosters and user display
+  names only, treats pre-draft unassigned owners as normal, and fails closed
+  on unavailable or malformed data. It has no code path for lineup changes,
+  waiver claims, trades, roster changes, commissioner actions, league settings,
+  or Discord settings.
 
 ## Safety identifier
 

@@ -10,7 +10,8 @@ no rights in Jarvis.
 
 The repository is public for transparency, not open-write. The repository
 owner controls merges and production deployments. Direct pushes to `main` are
-blocked, pull requests require passing CI and owner approval, and changes that
+blocked, pull requests require passing CI, and owner review is strongly
+recommended before merging. Changes that
 expand Discord authority, Sleeper write access, shell execution, arbitrary file
 access, or automatic GitHub writes require a separate design and security
 review.

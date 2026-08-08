@@ -25,6 +25,9 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=gemma3:4b
 ```
 
+For optional read-only fantasy standings, set `SLEEPER_LEAGUE_ID` to the
+league's 8-to-20 digit public ID. No Sleeper credential is required.
+
 Start the Ollama service using its own supported local workflow, then register the commands in the development guild and run Jarvis:
 
 ```powershell

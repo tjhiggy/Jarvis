@@ -1,5 +1,15 @@
 # Troubleshooting
 
+## Sleeper standings unavailable
+
+`/fantasy standings` requires `SLEEPER_LEAGUE_ID` and a restart after changing
+it. Use the league ID from Sleeper, not an invite or draft URL. During
+pre-draft, unassigned rosters may appear as `Roster 6` rather than a team name.
+Sleeper outages, rate limits, malformed responses, or missing data produce a
+safe unavailable response; Jarvis does not invent standings. The integration
+is read-only and never changes lineups, waivers, trades, rosters, league
+settings, or Discord settings.
+
 Use the safe diagnosis steps below. Do not paste `.env` values, Discord IDs,
 prompts, replies, or SQLite contents into tickets. If a step needs a database
 copy or configuration change, stop the bot first and follow
