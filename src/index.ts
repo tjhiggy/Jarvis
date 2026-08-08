@@ -578,6 +578,11 @@ export const createApplication = async (
                 },
                 'Suggestion moderation recorded.',
               ),
+            onPersistenceFailure: (event) =>
+              logger?.error(
+                { guildId: event.guildId, suggestionId: event.suggestionId },
+                'Suggestion persistence requires cleanup.',
+              ),
           });
     const cleanup = async (): Promise<void> => {
       try {

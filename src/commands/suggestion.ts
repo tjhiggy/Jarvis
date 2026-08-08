@@ -148,6 +148,8 @@ const suggestionErrorMessage = (
       return 'Too many suggestion attempts. Please retry shortly.';
     case 'invalid-input':
       return 'Use a title and description within the stated limits.';
+    case 'persistence-failed':
+      return 'Your suggestion needs administrator cleanup before it can be confirmed. Please do not submit it again yet.';
     default:
       return 'That suggestion control is unavailable.';
   }

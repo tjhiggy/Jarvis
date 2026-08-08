@@ -63,6 +63,9 @@ export class SuggestionService {
       adminRoleIds: ReadonlySet<string>;
       now?: () => Date;
       audit?: (event: SuggestionAuditEvent) => void;
+      onPersistenceFailure?: (
+        event: Readonly<{ guildId: string; suggestionId: string }>,
+      ) => void;
       maxDraftsPerOwner?: number;
     }>,
   ) {}
@@ -187,6 +190,10 @@ export class SuggestionService {
             this.now(),
           );
         } catch {
+          this.dependencies.onPersistenceFailure?.({
+            guildId: value.guildId,
+            suggestionId: value.id,
+          });
           throw new SuggestionServiceError('persistence-failed');
         }
       } else {

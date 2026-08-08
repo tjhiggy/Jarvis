@@ -213,6 +213,37 @@ describe('SQLiteEngagementRepository', () => {
     );
   });
 
+  it('rejects a stale moderation transition after a second SQLite connection claims deletion', async () => {
+    await repository.createSuggestion(suggestion());
+    const snapshot = await repository.getSuggestion('guild-1', 'suggestion-1');
+    expect(snapshot).toMatchObject({ status: 'open' });
+    const secondConnection = new SQLiteEngagementRepository(databasePath);
+    try {
+      await expect(
+        secondConnection.claimOpenSuggestionForDeletion(
+          'guild-1',
+          'user-1',
+          'suggestion-1',
+          at(2),
+        ),
+      ).resolves.toMatchObject({ status: 'deletion_pending' });
+      await expect(
+        repository.transitionSuggestionStatus(
+          'guild-1',
+          'suggestion-1',
+          snapshot!.status,
+          'resolved',
+          at(3),
+        ),
+      ).resolves.toBeUndefined();
+      await expect(
+        repository.getSuggestion('guild-1', 'suggestion-1'),
+      ).resolves.toMatchObject({ status: 'deletion_pending' });
+    } finally {
+      await secondConnection.closeConnection();
+    }
+  });
+
   it('persists opt-outs and rejects further collection for that guild and owner', async () => {
     await repository.setOptOut({
       guildId: 'guild-1',
