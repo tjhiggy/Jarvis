@@ -906,16 +906,7 @@ export const createApplication = async (
                       engagementDeletionService!.deleteOwnerData.bind(
                         engagementDeletionService,
                       ),
-                  } as Required<
-                    Pick<
-                      EngagementRepository,
-                      | 'engagementPaused'
-                      | 'setEngagementPaused'
-                      | 'healthCheck'
-                      | 'statusCounts'
-                      | 'deleteOwnerData'
-                    >
-                  >,
+                  },
                   schedulers: {
                     get events() {
                       return eventScheduler;

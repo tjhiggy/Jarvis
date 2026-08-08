@@ -47,6 +47,25 @@ describe('engagement owner data deletion', () => {
         'suggestion-1',
         'suggestion-message',
       );
+      await repository.createEvent({
+        id: 'event-1',
+        guildId: 'guild-1',
+        channelId: 'event-channel',
+        ownerUserId: 'member-1',
+        title: 'Event',
+        description: 'Description',
+        scheduledAt: new Date('2026-08-02T12:00:00.000Z'),
+        timezone: 'UTC',
+        capacity: 5,
+        status: 'completed',
+        createdAt: old,
+        updatedAt: old,
+      });
+      await repository.updateEventMessageId(
+        'guild-1',
+        'event-1',
+        'event-message',
+      );
 
       const failing = new EngagementDeletionService({
         repository,
@@ -55,16 +74,19 @@ describe('engagement owner data deletion', () => {
             throw new Error('Discord unavailable');
           },
         },
-        now: () => new Date('2026-08-08T12:00:00.000Z'),
       });
       await expect(
         failing.deleteOwnerData('guild-1', 'member-1'),
-      ).resolves.toBeGreaterThan(0);
+      ).resolves.toMatchObject({ completed: 0, pending: 3 });
+      await repository.cleanup(new Date('2026-08-09T12:00:00.000Z'), 100);
       await expect(
         repository.getIntroduction('guild-1', 'intro-1'),
       ).resolves.toBeDefined();
       await expect(
         repository.getSuggestion('guild-1', 'suggestion-1'),
+      ).resolves.toBeDefined();
+      await expect(
+        repository.getEvent('guild-1', 'event-1'),
       ).resolves.toBeDefined();
 
       await repository.closeConnection();
@@ -82,17 +104,28 @@ describe('engagement owner data deletion', () => {
               expect(
                 await repository.getSuggestion('guild-1', 'suggestion-1'),
               ).toBeDefined();
+            if (messageId === 'event-message')
+              expect(
+                await repository.getEvent('guild-1', 'event-1'),
+              ).toBeDefined();
             observed.push(messageId);
           },
         },
       });
-      await expect(retry.cleanupPending(10)).resolves.toBe(2);
-      expect(observed.sort()).toEqual(['intro-message', 'suggestion-message']);
+      await expect(retry.cleanupPending(10)).resolves.toBe(3);
+      expect(observed.sort()).toEqual([
+        'event-message',
+        'intro-message',
+        'suggestion-message',
+      ]);
       await expect(
         repository.getIntroduction('guild-1', 'intro-1'),
       ).resolves.toBeUndefined();
       await expect(
         repository.getSuggestion('guild-1', 'suggestion-1'),
+      ).resolves.toBeUndefined();
+      await expect(
+        repository.getEvent('guild-1', 'event-1'),
       ).resolves.toBeUndefined();
     } finally {
       await repository.closeConnection();

@@ -18,24 +18,49 @@ export class EngagementDeletionService {
       gateway: {
         delete(channelId: string, messageId: string): Promise<void>;
       };
-      now?: () => Date;
     }>,
   ) {}
 
-  async deleteOwnerData(guildId: string, userId: string): Promise<number> {
-    const affected = await this.dependencies.repository.deleteOwnerData(
-      guildId.trim(),
-      userId.trim(),
+  async deleteOwnerData(
+    guildId: string,
+    userId: string,
+  ): Promise<EngagementDeletionOutcome> {
+    const normalizedGuildId = guildId.trim();
+    const normalizedUserId = userId.trim();
+    const before = await this.pendingForOwner(
+      normalizedGuildId,
+      normalizedUserId,
+      100,
     );
-    await this.cleanupPending(100);
-    return affected;
+    const affected = await this.dependencies.repository.deleteOwnerData(
+      normalizedGuildId,
+      normalizedUserId,
+    );
+    const staged = await this.pendingForOwner(
+      normalizedGuildId,
+      normalizedUserId,
+      100,
+    );
+    const newlyQueued = Math.max(0, staged.length - before.length);
+    const completed =
+      Math.max(0, affected - newlyQueued) + (await this.cleanup(staged));
+    const pending = (
+      await this.pendingForOwner(normalizedGuildId, normalizedUserId, 100)
+    ).length;
+    return { completed, pending };
   }
 
   async cleanupPending(limit = 100): Promise<number> {
+    return this.cleanup(
+      await this.dependencies.repository.listPendingCardDeletions(limit),
+    );
+  }
+
+  private async cleanup(
+    deletions: readonly EngagementCardDeletion[],
+  ): Promise<number> {
     let completed = 0;
-    for (const deletion of await this.dependencies.repository.listPendingCardDeletions(
-      limit,
-    )) {
+    for (const deletion of deletions) {
       try {
         await this.dependencies.gateway.delete(
           deletion.channelId,
@@ -49,6 +74,24 @@ export class EngagementDeletionService {
     }
     return completed;
   }
+
+  private async pendingForOwner(
+    guildId: string,
+    userId: string,
+    limit: number,
+  ): Promise<readonly EngagementCardDeletion[]> {
+    return (
+      await this.dependencies.repository.listPendingCardDeletions(limit)
+    ).filter(
+      (deletion) =>
+        deletion.guildId === guildId && deletion.ownerUserId === userId,
+    );
+  }
+}
+
+export interface EngagementDeletionOutcome {
+  readonly completed: number;
+  readonly pending: number;
 }
 
 export const isUnknownDiscordMessage = (error: unknown): boolean =>

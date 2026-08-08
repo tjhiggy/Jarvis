@@ -221,6 +221,39 @@ describe('bounded trivia activity', () => {
     ]);
     expect(JSON.stringify(warnings)).not.toContain('secret answer');
   });
+
+  it('treats a lost completion fence as failed health and backs off the round', async () => {
+    const calls: string[] = [];
+    const scheduler = new TriviaExpiryScheduler({
+      service: {
+        claimResultCards: async () => [
+          {
+            id: 'round-fenced',
+            guildId: 'guild-a',
+            channelId: 'channel-a',
+            leaseToken: 'stale-lease',
+          },
+        ],
+        results: async () => ({ participantCount: 2, correctCount: 1 }),
+        completeResultCard: async () => false,
+        releaseResultCard: async () => {
+          calls.push('release');
+          return true;
+        },
+      } as any,
+      gateway: {
+        post: async () => {
+          calls.push('post');
+        },
+      },
+      logger: { warn: (fields) => calls.push(`warn:${fields.operation}`) },
+    });
+
+    await scheduler.tick();
+
+    expect(scheduler.lastRun?.status).toBe('error');
+    expect(calls).toEqual(['post', 'warn:trivia_result_card', 'release']);
+  });
 });
 
 function repository(rounds: any[] = []) {

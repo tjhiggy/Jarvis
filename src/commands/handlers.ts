@@ -41,6 +41,7 @@ import type { EventService } from '../engagement/events.js';
 import { handleRecapCommand } from './recap.js';
 import type { RecapService } from '../engagement/recap.js';
 import type { EngagementRepository } from '../engagement/storage.js';
+import type { EngagementDeletionOutcome } from '../engagement/deletion.js';
 import { handleTriviaCommand } from './activity.js';
 import type { TriviaService } from '../engagement/activity.js';
 import { handleEngagementCommand } from './engagement.js';
@@ -147,9 +148,13 @@ export interface CommandDependencies {
         | 'setEngagementPaused'
         | 'healthCheck'
         | 'statusCounts'
-        | 'deleteOwnerData'
       >
-    >;
+    > & {
+      deleteOwnerData(
+        guildId: string,
+        userId: string,
+      ): Promise<EngagementDeletionOutcome>;
+    };
     schedulers?: Readonly<
       Record<string, EngagementSchedulerHealth | undefined>
     >;

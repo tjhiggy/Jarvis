@@ -26,12 +26,16 @@ migration, push, pull request, tag, or release was performed.
   `ENGAGEMENT_RETENTION_DAYS` instead of a hard-coded 30 days.
 - Graceful shutdown stops new work and schedulers, drains active Discord command
   and periodic cleanup promises, then closes engagement SQLite.
+- Final review follow-up prevents generic retention from removing events with a
+  pending card deletion, reports completed versus queued `/engagement delete`
+  work truthfully, and treats a false trivia completion fence as degraded
+  health with retry backoff.
 
 ## Verification
 
-- `npm test`: passed, 53 files and 677 tests.
+- `npm test`: passed, 53 files and 679 tests.
 - `npm run build`: passed.
-- `npm run docs:check`: passed, 55 tracked files, 45 environment keys, and 10
+- `npm run docs:check`: passed, 57 tracked files, 45 environment keys, and 10
   package scripts.
 - `git diff --check`: passed.
 - Targeted Prettier check for all changed TypeScript and test files: passed.

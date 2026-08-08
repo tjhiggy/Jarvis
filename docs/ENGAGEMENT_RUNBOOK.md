@@ -101,6 +101,10 @@ commands, or block member deletion. `/recap pause` affects recaps only.
 The pause persists across retention cleanup and restarts until an explicit
 `/engagement resume`.
 
+Deletion responses distinguish records removed during the request from
+card-backed records still queued for retry. Generic retention never removes an
+event while its durable card-deletion row is pending.
+
 Scheduled events close atomically at their configured end, or at their start
 when no end is configured. The same transaction rejects racing late RSVPs and
 makes the completed event eligible for ordinary retention cleanup.

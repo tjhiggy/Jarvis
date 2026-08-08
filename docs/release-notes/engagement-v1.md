@@ -53,7 +53,7 @@ feature channels and engagement administrator roles.
 
 ## Validation snapshot
 
-On 2026-08-08, final hardening verification passed 53 test files and 677 tests; `npm run build`,
+On 2026-08-08, final hardening verification passed 53 test files and 679 tests; `npm run build`,
 `npm run docs:check`, and `git diff --check` also passed. Repository-wide lint
 was blocked before ESLint inspected project files because installed
 `typescript-eslint` does not support the locked TypeScript 7.0 version. No

@@ -467,7 +467,8 @@ export class TriviaExpiryScheduler {
           round.id,
         );
         await this.dependencies.gateway.post(round, results);
-        await this.dependencies.service.completeResultCard(round);
+        if (!(await this.dependencies.service.completeResultCard(round)))
+          throw new Error('Trivia result completion lease was not owned.');
       } catch (error) {
         successful = false;
         this.dependencies.logger?.warn(
