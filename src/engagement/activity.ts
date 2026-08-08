@@ -382,6 +382,7 @@ export const buildTriviaResultsCard = (
 
 export class TriviaExpiryScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
+  private activeTick: Promise<void> | undefined;
   constructor(
     private readonly dependencies: {
       readonly service: Pick<
@@ -420,6 +421,13 @@ export class TriviaExpiryScheduler {
     }
   }
   async tick(): Promise<void> {
+    if (this.activeTick) return this.activeTick;
+    this.activeTick = this.runTick().finally(() => {
+      this.activeTick = undefined;
+    });
+    return this.activeTick;
+  }
+  private async runTick(): Promise<void> {
     for (const round of await this.dependencies.service.claimResultCards()) {
       try {
         const results = await this.dependencies.service.results(

@@ -148,6 +148,43 @@ describe('bounded trivia activity', () => {
     await scheduler.tick();
     expect(calls).toEqual(['post:2/3', 'complete']);
   });
+
+  it('does not reclaim a slow result post when another expiry tick arrives', async () => {
+    let releasePost!: () => void;
+    let posts = 0;
+    const posted = new Promise<void>((resolve) => {
+      releasePost = resolve;
+    });
+    const scheduler = new TriviaExpiryScheduler({
+      service: {
+        claimResultCards: async () => [
+          {
+            id: 'round-1',
+            guildId: 'guild-a',
+            channelId: 'channel-a',
+            leaseToken: 'lease-1',
+          },
+        ],
+        results: async () => ({ participantCount: 1, correctCount: 1 }),
+        completeResultCard: async () => true,
+        releaseResultCard: async () => true,
+      } as any,
+      gateway: {
+        post: async () => {
+          posts++;
+          await posted;
+        },
+      },
+    });
+    const first = scheduler.tick();
+    const second = scheduler.tick();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(posts).toBe(1);
+    releasePost();
+    await Promise.all([first, second]);
+    expect(posts).toBe(1);
+  });
 });
 
 function repository(rounds: any[] = []) {

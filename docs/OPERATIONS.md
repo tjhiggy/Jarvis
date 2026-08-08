@@ -147,6 +147,9 @@ released or recovered after one minute. The scheduler logs only its operation
 name on failures and continues at the next bounded tick. Opt-out marker writes
 and participant-record deletion are one SQLite transaction, so a deletion
 failure rolls back the marker instead of leaving a half-finished preference.
+Within one running process, expiry ticks are single-flight: a slow Discord post
+cannot be reclaimed by a later interval tick. Persisted stale-lease recovery
+remains the path for a genuinely abandoned job after a restart.
 
 ## Poll lifecycle, recovery, and rollback
 
