@@ -8,6 +8,13 @@ button supplies that agreement. Submitting unsolicited code transfers no
 ownership or license rights to the repository owner, and grants the submitter
 no rights in Jarvis.
 
+The repository is public for transparency, not open-write. The repository
+owner controls merges and production deployments. Direct pushes to `main` are
+blocked, pull requests require passing CI and owner approval, and changes that
+expand Discord authority, Sleeper write access, shell execution, arbitrary file
+access, or automatic GitHub writes require a separate design and security
+review.
+
 ## Prerequisites
 
 - Node.js 22 or newer
