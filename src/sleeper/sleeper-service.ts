@@ -46,12 +46,12 @@ const parseStanding = (value: unknown): SleeperStanding => {
   const item = value as Record<string, unknown>;
   const settings = typeof item.settings === 'object' && item.settings !== null ? item.settings as Record<string, unknown> : {};
   const number = (key: string): number => typeof settings[key] === 'number' && Number.isFinite(settings[key]) ? settings[key] as number : 0;
-  if (typeof item.roster_id !== 'number' || typeof item.owner_id !== 'string') {
+  if (typeof item.roster_id !== 'number' || (item.owner_id !== null && typeof item.owner_id !== 'string')) {
     throw new SleeperServiceError('invalid-data', 'Sleeper returned invalid standings data.');
   }
   return {
     rosterId: item.roster_id,
-    ownerId: item.owner_id,
+    ownerId: item.owner_id ?? 'unassigned',
     wins: number('wins'),
     losses: number('losses'),
     ties: number('ties'),
