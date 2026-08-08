@@ -8,6 +8,7 @@ import {
 import type { RateLimiter } from '../security/rate-limiter.js';
 
 const moderationTtlMs = 14 * 24 * 60 * 60 * 1_000;
+const draftTtlMs = 15 * 60 * 1_000;
 
 export type SuggestionErrorCode =
   | 'invalid-input'
@@ -18,7 +19,8 @@ export type SuggestionErrorCode =
   | 'forbidden'
   | 'not-found'
   | 'expired'
-  | 'duplicate-action';
+  | 'duplicate-action'
+  | 'draft-limit';
 
 export class SuggestionServiceError extends Error {
   constructor(readonly code: SuggestionErrorCode) {
@@ -34,6 +36,7 @@ export interface SuggestionGateway {
     channelId: string,
     card: EngagementCard,
   ): Promise<Readonly<{ id: string }>>;
+  delete(channelId: string, messageId: string): Promise<void>;
 }
 
 export interface SuggestionAuditEvent {
@@ -45,7 +48,10 @@ export interface SuggestionAuditEvent {
 }
 
 export class SuggestionService {
-  private readonly drafts = new Map<string, Suggestion>();
+  private readonly drafts = new Map<
+    string,
+    Readonly<{ value: Suggestion; expiresAt: Date }>
+  >();
 
   constructor(
     private readonly dependencies: Readonly<{
@@ -56,6 +62,7 @@ export class SuggestionService {
       adminRoleIds: ReadonlySet<string>;
       now?: () => Date;
       audit?: (event: SuggestionAuditEvent) => void;
+      maxDraftsPerOwner?: number;
     }>,
   ) {}
 
@@ -68,6 +75,7 @@ export class SuggestionService {
       description: string;
     }>,
   ): Promise<Suggestion> {
+    this.cleanupDrafts();
     const guildId = input.guildId.trim();
     const ownerUserId = input.ownerUserId.trim();
     const channelId = input.channelId.trim();
@@ -87,6 +95,14 @@ export class SuggestionService {
     )
       throw new SuggestionServiceError('opted-out');
     const now = this.now();
+    if (
+      [...this.drafts.values()].filter(
+        (draft) =>
+          draft.value.guildId === guildId &&
+          draft.value.ownerUserId === ownerUserId,
+      ).length >= (this.dependencies.maxDraftsPerOwner ?? 3)
+    )
+      throw new SuggestionServiceError('draft-limit');
     const value: Suggestion = {
       id: this.dependencies.createId(),
       guildId,
@@ -98,14 +114,19 @@ export class SuggestionService {
       createdAt: now,
       updatedAt: now,
     };
-    this.drafts.set(value.id, value);
+    this.drafts.set(value.id, {
+      value,
+      expiresAt: new Date(now.getTime() + draftTtlMs),
+    });
     return value;
   }
 
   async confirm(
     input: Readonly<{ guildId: string; ownerUserId: string; draftId: string }>,
   ): Promise<Suggestion> {
-    const value = this.drafts.get(input.draftId.trim());
+    this.cleanupDrafts();
+    const draft = this.drafts.get(input.draftId.trim());
+    const value = draft?.value;
     if (
       value === undefined ||
       value.guildId !== input.guildId.trim() ||
@@ -142,17 +163,21 @@ export class SuggestionService {
     }
     this.drafts.delete(value.id);
     try {
-      await this.dependencies.gateway.post(
+      const message = await this.dependencies.gateway.post(
         value.channelId,
         buildSuggestionCard(value),
       );
-      return value;
+      return (
+        (await this.dependencies.repository.updateSuggestionMessageId(
+          value.guildId,
+          value.id,
+          message.id,
+        )) ?? value
+      );
     } catch (error) {
-      await this.dependencies.repository.updateSuggestionStatus(
+      await this.dependencies.repository.deleteSuggestionRecord(
         value.guildId,
         value.id,
-        'archived',
-        this.now(),
       );
       throw error;
     }
@@ -161,7 +186,8 @@ export class SuggestionService {
   cancel(
     input: Readonly<{ guildId: string; ownerUserId: string; draftId: string }>,
   ): boolean {
-    const value = this.drafts.get(input.draftId.trim());
+    this.cleanupDrafts();
+    const value = this.drafts.get(input.draftId.trim())?.value;
     if (
       value === undefined ||
       value.guildId !== input.guildId.trim() ||
@@ -206,13 +232,11 @@ export class SuggestionService {
       value.status !== 'open'
     )
       return false;
-    return (
-      (await this.dependencies.repository.updateSuggestionStatus(
-        value.guildId,
-        value.id,
-        'archived',
-        this.now(),
-      )) !== undefined
+    if (value.messageId?.trim())
+      await this.dependencies.gateway.delete(value.channelId, value.messageId);
+    return await this.dependencies.repository.deleteSuggestionRecord(
+      value.guildId,
+      value.id,
     );
   }
 
@@ -278,6 +302,17 @@ export class SuggestionService {
 
   private now(): Date {
     return (this.dependencies.now ?? (() => new Date()))();
+  }
+
+  cleanupDrafts(now = this.now()): number {
+    let removed = 0;
+    for (const [id, draft] of this.drafts) {
+      if (draft.expiresAt.getTime() <= now.getTime()) {
+        this.drafts.delete(id);
+        removed += 1;
+      }
+    }
+    return removed;
   }
 }
 

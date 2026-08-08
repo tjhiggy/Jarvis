@@ -39,6 +39,7 @@ interface SuggestionRow {
   owner_user_id: string;
   title: string;
   description: string;
+  message_id: string;
   status: SuggestionStatus;
   created_at: number;
   updated_at: number;
@@ -209,7 +210,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     try {
       this.database
         .prepare(
-          `INSERT INTO engagement_suggestions (id, guild_id, channel_id, owner_user_id, title, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO engagement_suggestions (id, guild_id, channel_id, owner_user_id, title, description, message_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           value.id,
@@ -218,6 +219,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           value.ownerUserId,
           value.title,
           value.description,
+          value.messageId,
           value.status,
           milliseconds(value.createdAt),
           milliseconds(value.updatedAt),
@@ -253,6 +255,31 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       )
       .get(guildId, title, description) as SuggestionRow | undefined;
     return row === undefined ? undefined : toSuggestion(row);
+  }
+
+  async updateSuggestionMessageId(
+    guildId: string,
+    id: string,
+    messageId: string,
+  ): Promise<Suggestion | undefined> {
+    this.ensureOpen();
+    this.database
+      .prepare(
+        'UPDATE engagement_suggestions SET message_id = ? WHERE guild_id = ? AND id = ?',
+      )
+      .run(messageId, guildId, id);
+    return this.getSuggestion(guildId, id);
+  }
+
+  async deleteSuggestionRecord(guildId: string, id: string): Promise<boolean> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          'DELETE FROM engagement_suggestions WHERE guild_id = ? AND id = ?',
+        )
+        .run(guildId, id).changes === 1
+    );
   }
 
   async updateSuggestionStatus(
@@ -518,9 +545,27 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         this.cancelDuplicateActiveIntroductions();
         this.recordMigration(4);
       }
+      if (!this.hasMigration(6)) {
+        if (
+          this.hasTable('engagement_suggestions') &&
+          !this.hasSuggestionMessageId()
+        ) {
+          this.database.exec(
+            "ALTER TABLE engagement_suggestions ADD COLUMN message_id TEXT NOT NULL DEFAULT '';",
+          );
+        }
+        if (this.hasTable('engagement_suggestions'))
+          this.archiveDuplicateActiveSuggestions();
+        this.recordMigration(6);
+      }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
       );
+      if (this.hasTable('engagement_suggestions')) {
+        this.database.exec(
+          "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_suggestion_content ON engagement_suggestions (guild_id, title, description) WHERE status != 'archived';",
+        );
+      }
     })();
   }
 
@@ -529,6 +574,16 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       this.database
         .prepare('SELECT 1 FROM engagement_schema_migrations WHERE version = ?')
         .get(version) !== undefined
+    );
+  }
+
+  private hasTable(name: string): boolean {
+    return (
+      this.database
+        .prepare(
+          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        )
+        .get(name) !== undefined
     );
   }
 
@@ -555,6 +610,14 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return (
       this.database
         .prepare('PRAGMA table_info(engagement_introductions)')
+        .all() as Array<{ name: string }>
+    ).some((column) => column.name === 'message_id');
+  }
+
+  private hasSuggestionMessageId(): boolean {
+    return (
+      this.database
+        .prepare('PRAGMA table_info(engagement_suggestions)')
         .all() as Array<{ name: string }>
     ).some((column) => column.name === 'message_id');
   }
@@ -598,6 +661,28 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     }
   }
 
+  private archiveDuplicateActiveSuggestions(): void {
+    const rows = this.database
+      .prepare(
+        "SELECT guild_id, title, description, id FROM engagement_suggestions WHERE status != 'archived' ORDER BY guild_id ASC, title ASC, description ASC, created_at DESC, id ASC",
+      )
+      .all() as Array<{
+      guild_id: string;
+      title: string;
+      description: string;
+      id: string;
+    }>;
+    const retained = new Set<string>();
+    const archive = this.database.prepare(
+      "UPDATE engagement_suggestions SET status = 'archived' WHERE guild_id = ? AND id = ?",
+    );
+    for (const row of rows) {
+      const key = `${row.guild_id}:${row.title}:${row.description}`;
+      if (retained.has(key)) archive.run(row.guild_id, row.id);
+      else retained.add(key);
+    }
+  }
+
   private upgradeLegacySchema(): void {
     this.database.exec(`
       ALTER TABLE engagement_rsvps RENAME TO engagement_rsvps_legacy;
@@ -613,7 +698,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     this.createSchema();
     this.database.exec(`
       INSERT INTO engagement_introductions (id, guild_id, channel_id, owner_user_id, display_name, interests, introduction, status, created_at, updated_at) SELECT id, guild_id, channel_id, owner_user_id, display_name, interests, introduction, status, created_at, updated_at FROM engagement_introductions_legacy;
-      INSERT INTO engagement_suggestions SELECT * FROM engagement_suggestions_legacy;
+      INSERT INTO engagement_suggestions (id, guild_id, channel_id, owner_user_id, title, description, message_id, status, created_at, updated_at) SELECT id, guild_id, channel_id, owner_user_id, title, description, '', status, created_at, updated_at FROM engagement_suggestions_legacy;
       INSERT INTO engagement_events SELECT * FROM engagement_events_legacy;
       INSERT INTO engagement_rsvps SELECT * FROM engagement_rsvps_legacy;
       DROP TABLE engagement_rsvps_legacy;
@@ -626,7 +711,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
   private createSchema(): void {
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS engagement_introductions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, display_name TEXT NOT NULL, interests TEXT NOT NULL, introduction TEXT NOT NULL, message_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('active', 'deleted', 'cleanup_pending')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
-      CREATE TABLE IF NOT EXISTS engagement_suggestions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('open', 'acknowledged', 'deferred', 'resolved', 'archived')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
+      CREATE TABLE IF NOT EXISTS engagement_suggestions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, message_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('open', 'acknowledged', 'deferred', 'resolved', 'archived')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
       CREATE TABLE IF NOT EXISTS engagement_events (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, scheduled_at INTEGER NOT NULL, timezone TEXT NOT NULL, capacity INTEGER NOT NULL CHECK (capacity > 0), status TEXT NOT NULL CHECK (status IN ('scheduled', 'cancelled', 'completed')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
       CREATE TABLE IF NOT EXISTS engagement_rsvps (event_id TEXT NOT NULL, guild_id TEXT NOT NULL, user_id TEXT NOT NULL, response TEXT NOT NULL CHECK (response IN ('yes', 'maybe', 'no')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, event_id, user_id), FOREIGN KEY (guild_id, event_id) REFERENCES engagement_events(guild_id, id) ON DELETE CASCADE);
       CREATE TABLE IF NOT EXISTS engagement_opt_outs (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, opted_out_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id));
@@ -754,6 +839,7 @@ function copyIntroduction(value: Introduction): Introduction {
 function copySuggestion(value: Suggestion): Suggestion {
   return {
     ...value,
+    messageId: value.messageId ?? '',
     createdAt: copyDate(value.createdAt),
     updatedAt: copyDate(value.updatedAt),
   };
@@ -796,6 +882,7 @@ function toSuggestion(row: SuggestionRow): Suggestion {
     ownerUserId: row.owner_user_id,
     title: row.title,
     description: row.description,
+    messageId: row.message_id,
     status: row.status,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),

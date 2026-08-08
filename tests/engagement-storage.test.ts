@@ -143,14 +143,32 @@ describe('SQLiteEngagementRepository', () => {
     ).resolves.toMatchObject({ scheduledAt: at(60), status: 'cancelled' });
   });
 
-  it('rejects duplicate stable IDs while allowing duplicate member text', async () => {
+  it('rejects duplicate stable IDs and active duplicate suggestion content', async () => {
     await repository.createSuggestion(suggestion());
     await expect(repository.createSuggestion(suggestion())).rejects.toThrow(
       'Engagement record already exists.',
     );
     await expect(
       repository.createSuggestion(suggestion({ id: 'suggestion-2' })),
+    ).rejects.toThrow('Engagement record already exists.');
+    await expect(
+      repository.createSuggestion(
+        suggestion({ id: 'suggestion-2', title: 'Different idea' }),
+      ),
     ).resolves.toMatchObject({ id: 'suggestion-2' });
+  });
+
+  it('atomically permits only one concurrent active suggestion with the same content', async () => {
+    const results = await Promise.allSettled([
+      repository.createSuggestion(suggestion({ id: 'suggestion-race-1' })),
+      repository.createSuggestion(suggestion({ id: 'suggestion-race-2' })),
+    ]);
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === 'rejected'),
+    ).toHaveLength(1);
   });
 
   it('persists opt-outs and rejects further collection for that guild and owner', async () => {

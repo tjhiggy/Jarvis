@@ -54,6 +54,15 @@ export interface EngagementRepository {
     title: string,
     description: string,
   ): Promise<Suggestion | undefined>;
+  updateSuggestionMessageId(
+    guildId: string,
+    suggestionId: string,
+    messageId: string,
+  ): Promise<Suggestion | undefined>;
+  deleteSuggestionRecord(
+    guildId: string,
+    suggestionId: string,
+  ): Promise<boolean>;
   updateSuggestionStatus(
     guildId: string,
     suggestionId: string,

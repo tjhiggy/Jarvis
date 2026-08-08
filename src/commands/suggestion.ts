@@ -112,18 +112,26 @@ export const handleSuggestionDeletionCommand = async (
     );
     return;
   }
-  const deleted = await service.delete({
-    guildId: interaction.guildId,
-    ownerUserId: interaction.user.id,
-    suggestionId: interaction.options.getString('id') ?? '',
-  });
-  await replySafely(
-    interaction,
-    deleted
-      ? 'Your untriaged suggestion was archived. Its history remains available to configured administrators.'
-      : 'That open suggestion was not found, is not yours, or has already been triaged.',
-    true,
-  );
+  try {
+    const deleted = await service.delete({
+      guildId: interaction.guildId,
+      ownerUserId: interaction.user.id,
+      suggestionId: interaction.options.getString('id') ?? '',
+    });
+    await replySafely(
+      interaction,
+      deleted
+        ? 'Your untriaged suggestion and its bot-owned card were removed.'
+        : 'That open suggestion was not found, is not yours, or has already been triaged.',
+      true,
+    );
+  } catch {
+    await replySafely(
+      interaction,
+      'The suggestion could not be removed right now. Please retry later.',
+      true,
+    );
+  }
 };
 
 const suggestionErrorMessage = (

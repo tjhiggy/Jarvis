@@ -142,8 +142,8 @@ generic SQLite cleanup cannot erase the retry state.
 
 Suggestions use the same private-preview pattern: `/suggest preview` followed
 by `/suggest confirm`, posting only to `ENGAGEMENT_SUGGESTION_CHANNEL_ID`.
-`/suggestion delete id:<id>` lets the author archive an open suggestion before
-a configured administrator triages it. The administrator role allowlist may
+`/suggestion delete id:<id>` lets the author remove an open suggestion and its
+bot-owned card before a configured administrator triages it. The administrator role allowlist may
 acknowledge, defer, resolve, or archive bot-owned suggestion cards. These
 actions change only retained Jarvis state; they do not create GitHub issues or
 perform other external writes.

@@ -25,6 +25,7 @@ export interface Suggestion {
   readonly ownerUserId: string;
   readonly title: string;
   readonly description: string;
+  readonly messageId?: string;
   readonly status: SuggestionStatus;
   readonly createdAt: Date;
   readonly updatedAt: Date;

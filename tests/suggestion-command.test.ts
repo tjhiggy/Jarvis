@@ -69,7 +69,7 @@ describe('suggestion commands', () => {
     } as any);
     expect(deletion.replies[0]).toMatchObject({
       ephemeral: true,
-      content: expect.stringMatching(/archived/i),
+      content: expect.stringMatching(/removed/i),
     });
   });
 });

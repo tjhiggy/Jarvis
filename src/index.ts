@@ -101,6 +101,7 @@ interface IntroductionChannel {
 
 interface SuggestionChannel {
   send(payload: EngagementCard): Promise<Readonly<{ id: string }>>;
+  messages: Readonly<{ delete(messageId: string): Promise<unknown> }>;
 }
 
 const createDefaultSuggestionGateway = (
@@ -112,13 +113,24 @@ const createDefaultSuggestionGateway = (
       throw new Error('Configured suggestion channel is unavailable.');
     return channel.send(card);
   },
+  async delete(channelId, messageId) {
+    const channel = await client.channels?.fetch(channelId);
+    if (!isSuggestionChannel(channel))
+      throw new Error('Configured suggestion channel is unavailable.');
+    await channel.messages.delete(messageId);
+  },
 });
 
 const isSuggestionChannel = (value: unknown): value is SuggestionChannel =>
   typeof value === 'object' &&
   value !== null &&
   'send' in value &&
-  typeof value.send === 'function';
+  typeof value.send === 'function' &&
+  'messages' in value &&
+  typeof value.messages === 'object' &&
+  value.messages !== null &&
+  'delete' in value.messages &&
+  typeof value.messages.delete === 'function';
 
 const createDefaultIntroductionGateway = (
   client: RuntimeDiscordClient,
@@ -554,6 +566,7 @@ export const createApplication = async (
             ),
             createId: () => randomUUID(),
             adminRoleIds: config.engagement.adminRoleIds,
+            maxDraftsPerOwner: config.engagement.maxRecordsPerUser,
             audit: (event) =>
               logger?.info(
                 {
@@ -583,6 +596,7 @@ export const createApplication = async (
         );
         try {
           await introductionService?.cleanup(cutoff, 100);
+          suggestionService?.cleanupDrafts();
           await engagementRepository.cleanup(cutoff, 100);
         } catch (error) {
           logger?.warn({ error }, 'Engagement retention cleanup failed.');

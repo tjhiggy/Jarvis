@@ -326,8 +326,9 @@ post only to `ENGAGEMENT_SUGGESTION_CHANNEL_ID`, with mentions disabled and no
 GitHub issue creation. Configured engagement administrators can acknowledge,
 defer, resolve, or archive a bot-owned suggestion card; these controls update
 only Jarvis SQLite state and expire after 14 days. Before any admin triage, the
-author may run `/suggestion delete id:<id>` to archive their own suggestion.
-Archiving deliberately preserves history for the configured retention period.
+author may run `/suggestion delete id:<id>` to remove their untriaged SQLite
+record and bot-owned card. Administrator archive is a separate moderation
+action that deliberately preserves history for the configured retention period.
 For external tooling, export this retained data through an approved read-only
 triage process, rather than granting the bot write access to GitHub. Events,
 recaps, and activity remain unimplemented. The complete contract, including opt-out, retention, and

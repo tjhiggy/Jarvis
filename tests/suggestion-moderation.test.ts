@@ -27,9 +27,10 @@ describe('SuggestionService', () => {
     });
   });
 
-  it('deduplicates, limits submissions, and lets the author archive only an open suggestion', async () => {
+  it('deduplicates, limits submissions, and lets the author delete an untriaged record and bot-owned card', async () => {
     const repository = new SuggestionsRepository();
-    const service = createService(repository, new SuggestionGateway(), 1);
+    const gateway = new SuggestionGateway();
+    const service = createService(repository, gateway, 1);
     const created = await service.submit(input());
 
     await expect(service.submit(input())).rejects.toMatchObject({
@@ -49,9 +50,31 @@ describe('SuggestionService', () => {
         suggestionId: created.id,
       }),
     ).resolves.toBe(true);
+    expect(gateway.deletes).toEqual([
+      { channelId: 'suggestions', messageId: 'message-1' },
+    ]);
+    await expect(
+      repository.getSuggestion('guild-1', created.id),
+    ).resolves.toBeUndefined();
     await expect(
       service.submit(input({ title: 'A fresh idea' })),
     ).rejects.toMatchObject({ code: 'rate-limit' });
+  });
+
+  it('expires and bounds private drafts per owner, with explicit cleanup', async () => {
+    const repository = new SuggestionsRepository();
+    const gateway = new SuggestionGateway();
+    let now = new Date('2026-08-08T12:00:00.000Z');
+    const service = createService(repository, gateway, 5, [], () => now, 1);
+    await service.preview(input());
+    await expect(
+      service.preview(input({ title: 'Another idea' })),
+    ).rejects.toMatchObject({ code: 'draft-limit' });
+    now = new Date('2026-08-08T12:16:00.000Z');
+    expect(service.cleanupDrafts()).toBe(1);
+    await expect(
+      service.preview(input({ title: 'Another idea' })),
+    ).resolves.toMatchObject({ title: 'Another idea' });
   });
 
   it('restricts status controls to configured roles, expires controls, and records safe audits', async () => {
@@ -137,6 +160,8 @@ function createService(
   gateway: SuggestionGateway,
   capacity = 5,
   events: unknown[] = [],
+  now: () => Date = () => new Date('2026-08-08T12:00:00.000Z'),
+  maxDraftsPerOwner = 3,
 ) {
   let id = 1;
   return new SuggestionService({
@@ -145,16 +170,21 @@ function createService(
     rateLimiter: new RateLimiter(capacity, 60_000),
     createId: () => `suggestion-${id++}`,
     adminRoleIds: new Set(['role-admin']),
-    now: () => new Date('2026-08-08T12:00:00.000Z'),
+    now,
+    maxDraftsPerOwner,
     audit: (event) => events.push(event),
   });
 }
 
 class SuggestionGateway {
   cards: Array<any> = [];
+  deletes: Array<{ channelId: string; messageId: string }> = [];
   async post(channelId: string, card: any) {
     this.cards.push({ channelId, card });
     return { id: 'message-1' };
+  }
+  async delete(channelId: string, messageId: string) {
+    this.deletes.push({ channelId, messageId });
   }
 }
 class SuggestionsRepository implements EngagementRepository {
@@ -190,6 +220,18 @@ class SuggestionsRepository implements EngagementRepository {
     const value = await this.getSuggestion(guildId, id);
     if (value !== undefined) Object.assign(value, { status, updatedAt });
     return value;
+  }
+  async updateSuggestionMessageId(
+    guildId: string,
+    id: string,
+    messageId: string,
+  ) {
+    const value = await this.getSuggestion(guildId, id);
+    if (value !== undefined) value.messageId = messageId;
+    return value;
+  }
+  async deleteSuggestionRecord(guildId: string, id: string) {
+    return this.suggestions.delete(`${guildId}:${id}`);
   }
   async getOptOut(guildId: string, userId: string) {
     return this.optedOut.get(`${guildId}:${userId}`);
