@@ -299,6 +299,13 @@ export const handleCommand = async (
       await handleEngagementCommand(interaction, {
         enabled: dependencies.config.engagement?.enabled ?? false,
         adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        features: [
+          ...(dependencies.config.engagement?.channels.introductionId ? ['introductions'] : []),
+          ...(dependencies.config.engagement?.channels.suggestionId ? ['suggestions'] : []),
+          ...(dependencies.config.engagement?.channels.eventId ? ['events'] : []),
+          ...(dependencies.config.engagement?.channels.activityId ? ['trivia'] : []),
+          ...(dependencies.config.engagement?.channels.recapId && dependencies.config.engagement.recapSchedule ? ['recaps'] : []),
+        ],
         ...(dependencies.engagementHealth === undefined
           ? {}
           : dependencies.engagementHealth),

@@ -905,6 +905,7 @@ export const createApplication = async (
     if (eventService !== undefined)
       eventScheduler = new EventScheduler({
         repository: engagementRepository as any,
+        logger: { warn: (fields, message) => logger?.warn(fields, message) },
         gateway: {
           deliver: async (reminder) => {
             const channel = await schedulerClient.channels?.fetch(
@@ -942,6 +943,7 @@ export const createApplication = async (
             | 'releaseRecapRun'
           >
         >,
+        logger: { warn: (fields, message) => logger?.warn(fields, message) },
         service: recapService,
         gateway: {
           post: async (channelId, content) => {

@@ -1,4 +1,5 @@
 import type { EngagementRepository } from './storage.js';
+import { projectOperationalError } from '../utils/logger.js';
 
 const minimumGroupSize = 3;
 const weekMs = 7 * 24 * 60 * 60 * 1_000;
@@ -99,6 +100,7 @@ export class RecapScheduler {
       service: RecapService;
       gateway: RecapGateway;
       now?: () => Date;
+      logger?: { warn(fields: Record<string, string | number>, message: string): void };
     }>,
   ) {}
   get healthy(): boolean {
@@ -110,7 +112,7 @@ export class RecapScheduler {
     return this.lastRunValue;
   }
   start(): void {
-    if (!this.timer) this.timer = setInterval(() => void this.tick(), 60_000);
+    if (!this.timer) this.timer = setInterval(() => void this.tick().catch((error: unknown) => this.dependencies.logger?.warn({ operation: 'recap_tick', ...projectOperationalError(error, 'recap_scheduler') }, 'Recap tick failed.')), 60_000);
   }
   async stop(): Promise<void> {
     if (this.timer) {
@@ -153,6 +155,8 @@ export class RecapScheduler {
           window,
         );
         if (recap.status === 'unavailable') return;
+        if (await this.dependencies.repository.engagementPaused?.(this.dependencies.guildId))
+          return;
         await this.dependencies.gateway.post(
           this.dependencies.channelId,
           recap.content!,
@@ -172,8 +176,12 @@ export class RecapScheduler {
           now,
         );
       }
-    } catch {
+    } catch (error) {
       this.lastRunValue = { status: 'error', at: now };
+      this.dependencies.logger?.warn(
+        { operation: 'recap_tick', ...projectOperationalError(error, 'recap_scheduler') },
+        'Recap tick failed.',
+      );
     }
   }
 }

@@ -2,6 +2,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { RecapScheduler } from '../src/engagement/recap.js';
 
 describe('recap scheduler', () => {
+  it('re-checks pause after generating a recap and releases its lease without posting', async () => {
+    const post = vi.fn();
+    const release = vi.fn().mockResolvedValue(true);
+    await new RecapScheduler({
+      guildId: 'guild-a', channelId: 'recaps', schedule: 'FRIDAY 12:00', timezone: 'UTC',
+      repository: { engagementPaused: vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true), recapEnabled: async () => true, claimRecapRun: async () => 'lease-1', completeRecapRun: async () => true, releaseRecapRun: release } as any,
+      service: { preview: async () => ({ status: 'ready', content: 'safe recap' }) } as any,
+      gateway: { post }, now: () => new Date('2026-08-07T12:05:00Z'),
+    }).tick();
+    expect(post).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalled();
+  });
   it('posts once for a due opt-in guild and makes duplicate runs idempotent', async () => {
     const post = vi.fn().mockResolvedValue(undefined);
     const claim = vi.fn(async () => claim.mock.calls.length === 1);

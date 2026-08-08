@@ -1,4 +1,5 @@
 import type { EngagementRepository } from './storage.js';
+import { projectOperationalError } from '../utils/logger.js';
 export interface EventReminderGateway {
   deliver(input: {
     eventId: string;
@@ -27,10 +28,11 @@ export class EventScheduler {
           | 'markEventReminderFailed'
         >
       > &
-        Pick<EngagementRepository, 'cleanup'>;
+        Pick<EngagementRepository, 'cleanup' | 'engagementPaused'>;
       gateway: EventReminderGateway;
       now?: () => Date;
       intervalMs?: number;
+      logger?: { warn(fields: Record<string, string | number>, message: string): void };
     }>,
   ) {}
   get healthy(): boolean {
@@ -44,7 +46,7 @@ export class EventScheduler {
   start(): void {
     if (!this.timer)
       this.timer = setInterval(
-        () => void this.tick(),
+        () => void this.tick().catch((error: unknown) => this.dependencies.logger?.warn({ operation: 'event_reminder_tick', ...projectOperationalError(error, 'event_scheduler') }, 'Event reminder tick failed.')),
         this.dependencies.intervalMs ?? 60_000,
       );
   }
@@ -70,6 +72,8 @@ export class EventScheduler {
         100,
       )) {
         try {
+        if (await this.dependencies.repository.engagementPaused?.(reminder.guildId))
+          continue;
         await this.dependencies.gateway.deliver({
           ...reminder,
           allowedMentions: { parse: [], repliedUser: false },

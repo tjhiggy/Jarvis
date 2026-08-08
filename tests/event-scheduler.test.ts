@@ -6,6 +6,20 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 describe('event scheduler', () => {
+  it('re-checks a persisted pause immediately before delivering a claimed reminder', async () => {
+    const deliver = vi.fn();
+    await new EventScheduler({
+      repository: {
+        claimDueEventReminders: async () => [{ eventId: 'event-1', guildId: 'guild-1', channelId: 'events', userId: 'user-1', title: 'Raid', scheduledAt: new Date(), leaseToken: 'lease-1' }],
+        engagementPaused: async () => true,
+        markEventReminderDelivered: async () => true,
+        markEventReminderFailed: async () => true,
+        cleanup: async () => 0,
+      } as any,
+      gateway: { deliver },
+    }).tick();
+    expect(deliver).not.toHaveBeenCalled();
+  });
   it('recovers after restart and only delivers opted-in reminders without mentions', async () => {
     const deliver = vi.fn().mockResolvedValue(undefined);
     const scheduler = new EventScheduler({

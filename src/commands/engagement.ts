@@ -32,6 +32,7 @@ export const handleEngagementCommand = async (
     adminRoleIds: ReadonlySet<string>;
     repository?: OperationalRepository;
     schedulers?: Readonly<Record<string, EngagementSchedulerHealth | undefined>>;
+    features?: readonly string[];
     now?: () => Date;
   }>,
 ): Promise<void> => {
@@ -100,9 +101,7 @@ export const handleEngagementCommand = async (
   const schedulers = Object.entries(health.schedulers)
     .map(([name, scheduler]) => `${name}: ${scheduler.state}, last run ${scheduler.lastRun}`)
     .join('\n');
-  const features = ['introductions', 'suggestions', 'events', 'trivia', 'recaps']
-    .filter((feature) => feature !== 'recaps' || health.schedulers.recaps !== undefined)
-    .join(', ');
+  const features = dependencies.features?.join(', ') ?? 'none';
   return replySafely(
     interaction,
     [
