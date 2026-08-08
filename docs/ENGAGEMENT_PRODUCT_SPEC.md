@@ -6,7 +6,7 @@ The product exposes an authorized, private `/engagement status` view with aggreg
 
 ## Status and decision
 
-This document is the shipped engagement V1 product contract. Guided
+This document is the implemented, unreleased engagement V1 product contract. Guided
 introductions, suggestions, events and RSVP, weekly recaps, and curated trivia
 are implemented behind explicit engagement configuration. They remain disabled
 until configured and are not permission to expand Jarvis beyond this boundary.
@@ -92,7 +92,7 @@ mass mentions are disabled by default. Missing source data, unavailable
 configured channels, expired controls, or unsafe inputs produce a concise safe
 failure rather than a guess or an action outside the contract.
 
-## Shipped command surface
+## Implemented, unreleased command surface
 
 The following commands are registered in the application command set. Their
 availability still depends on the relevant engagement configuration, channel,
@@ -107,7 +107,7 @@ and role boundary:
 - `/recap preview`
 - `/trivia start`
 
-Related shipped controls are `/introduction id`, `/suggestion delete`,
+Related implemented controls are `/introduction id`, `/suggestion delete`,
 `/recap enable`, `/recap pause`, `/recap resume`, `/trivia opt-out`,
 `/trivia opt-in`, and `/engagement status`, `pause`, `resume`, and `delete`.
 

@@ -314,8 +314,9 @@ deletion, backup, outage, and rollback behavior, use the
 
 Configured administrators can use `/engagement status` for aggregate feature, scheduler, and record health, and `/engagement pause` or `/engagement resume` to control scheduled engagement delivery for their guild. Members may use `/engagement delete` to remove their retained engagement records in that guild; configured administrators may supply a member ID for an administrative deletion. These responses and audit records never include submitted content, RSVP reasons, or credentials.
 
-The shipped Muthaship engagement loop includes guided introductions, suggestions,
-events and RSVP, weekly recaps, and curated trivia. When enabled,
+The implemented, unreleased Muthaship engagement loop includes guided
+introductions, suggestions, events and RSVP, weekly recaps, and curated trivia.
+When enabled,
 `/introduce preview` accepts a bounded name, interests, and reason for coming
 aboard, returns a private preview, and persists or posts nothing until the
 member runs `/introduce confirm` with that preview ID. `/introduce cancel`
@@ -412,7 +413,7 @@ Jarvis reports that safely instead of guessing.
 | [Change management](docs/CHANGE_MANAGEMENT.md)                      | Standard request, validation, merge, deployment, and closeout process                       |
 | [GitHub workflow](docs/GITHUB_WORKFLOW.md)                          | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
 | [Extension guide](docs/extensions/README.md)                        | Disabled contracts and requirements for any future integration                              |
-| [Roadmap](docs/ROADMAP.md)                                          | Shipped, planned, later, and explicitly out-of-scope work                                   |
+| [Roadmap](docs/ROADMAP.md)                                          | Released, implemented-unreleased, planned, later, and explicitly out-of-scope work         |
 | [Releases](docs/RELEASES.md)                                        | Versioning, validation gates, publication authority, and rollback                           |
 
 Repository policies and project records:

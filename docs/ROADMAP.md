@@ -25,18 +25,21 @@ dates, promises, or claims that an interface declaration is a working feature.
 - Native Windows startup support and an optional hardened Docker Compose
   deployment with a persistent named SQLite volume.
 - Deliberately inert extension contracts and documented operating boundaries.
+
+## Implemented, unreleased
+
 - Privacy-aware engagement V1: configured guided introductions and suggestions,
   administrator-created events with opt-in RSVP, aggregate weekly recaps,
   curated trivia, retention-limited local SQLite records, member deletion and
   opt-out paths, and administrator scheduler pause/status controls.
 
-## Next
-
-**Shipped, bounded.** Engagement V1 remains disabled by default and limited to
-configured channels, bot-owned messages, and local SQLite records. See the
+Engagement V1 remains disabled by default and limited to configured channels,
+bot-owned messages, and local SQLite records. See the
 [Engagement runbook](ENGAGEMENT_RUNBOOK.md) for the operational contract. XP,
 public profiles, voice tracking, automated role assignment, moderation,
 Discord-setting changes, and external writes remain out of scope.
+
+## Next
 
 **Planned, not implemented.** Add a dedicated `SAFETY_IDENTIFIER_SECRET` so
 safety-identifier derivation no longer depends on an existing provider or bot
@@ -89,6 +92,7 @@ design. No migration is implied by this roadmap.
 - Unrestricted external-tool access, secret disclosure, or using untrusted
   content as instructions.
 
-An item moves from planned to shipped only after reviewed implementation,
-validation, documentation, and an explicit release. Roadmaps are navigation,
-not prophecy with better typography.
+An item moves from planned to implemented after reviewed implementation,
+validation, and documentation. It moves from implemented to released only with
+an explicit release or tag. Roadmaps are navigation, not prophecy with better
+typography.
