@@ -27,6 +27,7 @@ interface IntroductionRow {
   display_name: string;
   interests: string;
   introduction: string;
+  message_id: string;
   status: IntroductionStatus;
   created_at: number;
   updated_at: number;
@@ -95,7 +96,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     try {
       this.database
         .prepare(
-          `INSERT INTO engagement_introductions (id, guild_id, channel_id, owner_user_id, display_name, interests, introduction, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO engagement_introductions (id, guild_id, channel_id, owner_user_id, display_name, interests, introduction, message_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           value.id,
@@ -105,6 +106,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           value.displayName,
           value.interests,
           value.introduction,
+          value.messageId,
           value.status,
           milliseconds(value.createdAt),
           milliseconds(value.updatedAt),
@@ -126,6 +128,33 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       )
       .get(guildId, id) as IntroductionRow | undefined;
     return row === undefined ? undefined : toIntroduction(row);
+  }
+
+  async findActiveIntroductionByOwner(
+    guildId: string,
+    ownerUserId: string,
+  ): Promise<Introduction | undefined> {
+    this.ensureOpen();
+    const row = this.database
+      .prepare(
+        'SELECT * FROM engagement_introductions WHERE guild_id = ? AND owner_user_id = ? AND status = ? ORDER BY created_at DESC LIMIT 1',
+      )
+      .get(guildId, ownerUserId, 'active') as IntroductionRow | undefined;
+    return row === undefined ? undefined : toIntroduction(row);
+  }
+
+  async updateIntroductionMessageId(
+    guildId: string,
+    id: string,
+    messageId: string,
+  ): Promise<Introduction | undefined> {
+    this.ensureOpen();
+    this.database
+      .prepare(
+        'UPDATE engagement_introductions SET message_id = ? WHERE guild_id = ? AND id = ?',
+      )
+      .run(messageId, guildId, id);
+    return this.getIntroduction(guildId, id);
   }
 
   async updateIntroductionStatus(
@@ -429,6 +458,14 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         if (!this.hasGuildScopedPrimaryKeys()) this.upgradeLegacySchema();
         this.recordMigration(2);
       }
+      if (!this.hasMigration(3)) {
+        if (!this.hasIntroductionMessageId()) {
+          this.database.exec(
+            "ALTER TABLE engagement_introductions ADD COLUMN message_id TEXT NOT NULL DEFAULT '';",
+          );
+        }
+        this.recordMigration(3);
+      }
     })();
   }
 
@@ -459,6 +496,14 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     );
   }
 
+  private hasIntroductionMessageId(): boolean {
+    return (
+      this.database
+        .prepare('PRAGMA table_info(engagement_introductions)')
+        .all() as Array<{ name: string }>
+    ).some((column) => column.name === 'message_id');
+  }
+
   private upgradeLegacySchema(): void {
     this.database.exec(`
       ALTER TABLE engagement_rsvps RENAME TO engagement_rsvps_legacy;
@@ -473,7 +518,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     `);
     this.createSchema();
     this.database.exec(`
-      INSERT INTO engagement_introductions SELECT * FROM engagement_introductions_legacy;
+      INSERT INTO engagement_introductions (id, guild_id, channel_id, owner_user_id, display_name, interests, introduction, status, created_at, updated_at) SELECT id, guild_id, channel_id, owner_user_id, display_name, interests, introduction, status, created_at, updated_at FROM engagement_introductions_legacy;
       INSERT INTO engagement_suggestions SELECT * FROM engagement_suggestions_legacy;
       INSERT INTO engagement_events SELECT * FROM engagement_events_legacy;
       INSERT INTO engagement_rsvps SELECT * FROM engagement_rsvps_legacy;
@@ -486,7 +531,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
 
   private createSchema(): void {
     this.database.exec(`
-      CREATE TABLE IF NOT EXISTS engagement_introductions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, display_name TEXT NOT NULL, interests TEXT NOT NULL, introduction TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('active', 'deleted')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
+      CREATE TABLE IF NOT EXISTS engagement_introductions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, display_name TEXT NOT NULL, interests TEXT NOT NULL, introduction TEXT NOT NULL, message_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('active', 'deleted')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
       CREATE TABLE IF NOT EXISTS engagement_suggestions (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('open', 'acknowledged', 'deferred', 'resolved', 'archived')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
       CREATE TABLE IF NOT EXISTS engagement_events (id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, scheduled_at INTEGER NOT NULL, timezone TEXT NOT NULL, capacity INTEGER NOT NULL CHECK (capacity > 0), status TEXT NOT NULL CHECK (status IN ('scheduled', 'cancelled', 'completed')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, id));
       CREATE TABLE IF NOT EXISTS engagement_rsvps (event_id TEXT NOT NULL, guild_id TEXT NOT NULL, user_id TEXT NOT NULL, response TEXT NOT NULL CHECK (response IN ('yes', 'maybe', 'no')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, event_id, user_id), FOREIGN KEY (guild_id, event_id) REFERENCES engagement_events(guild_id, id) ON DELETE CASCADE);
@@ -606,6 +651,7 @@ function copyDate(value: Date): Date {
 function copyIntroduction(value: Introduction): Introduction {
   return {
     ...value,
+    messageId: value.messageId ?? '',
     createdAt: copyDate(value.createdAt),
     updatedAt: copyDate(value.updatedAt),
   };
@@ -641,6 +687,7 @@ function toIntroduction(row: IntroductionRow): Introduction {
     displayName: row.display_name,
     interests: row.interests,
     introduction: row.introduction,
+    messageId: row.message_id,
     status: row.status,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),

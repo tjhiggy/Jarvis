@@ -131,7 +131,10 @@ must be a valid IANA name. No schedule means no automatic recap.
 Engagement records are retained for `ENGAGEMENT_RETENTION_DAYS`, from 1 through
 90 days. The per-user and participant caps are hard startup limits, not hints
 for a later handler to ignore. Restart after any engagement configuration
-change; command registration does not currently expose engagement commands.
+change; re-register commands after enabling engagement or changing the
+introduction channel. `/introduce` posts only to
+`ENGAGEMENT_INTRODUCTION_CHANNEL_ID`; `/introduction id:<id>` is the owner-only
+deletion path for its SQLite record and bot-owned card.
 
 ## Retry, persona, and restart rules
 

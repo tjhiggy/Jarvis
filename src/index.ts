@@ -56,6 +56,13 @@ import { SQLiteReminderStore } from './reminders/sqlite-reminder-store.js';
 import { createLogger, projectOperationalError } from './utils/logger.js';
 import { loadRuntimeIdentity } from './config/runtime-identity.js';
 import { HttpSleeperService } from './sleeper/sleeper-service.js';
+import { randomUUID } from 'node:crypto';
+import {
+  IntroductionService,
+  type IntroductionGateway,
+} from './engagement/introductions.js';
+import type { EngagementRepository } from './engagement/storage.js';
+import { SQLiteEngagementRepository } from './storage/engagement-sqlite.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -73,6 +80,50 @@ interface RuntimeDiscordClient {
   login(token: string): Promise<unknown>;
   destroy(): void;
 }
+
+interface IntroductionChannel {
+  send(
+    payload: Readonly<{
+      content: string;
+      allowedMentions: Readonly<{
+        parse: readonly string[];
+        repliedUser: false;
+      }>;
+    }>,
+  ): Promise<Readonly<{ id: string }>>;
+  messages: Readonly<{ delete(messageId: string): Promise<unknown> }>;
+}
+
+const createDefaultIntroductionGateway = (
+  client: RuntimeDiscordClient,
+): IntroductionGateway => ({
+  async post(channelId, content) {
+    const channel = await client.channels?.fetch(channelId);
+    if (!isIntroductionChannel(channel))
+      throw new Error('Configured introduction channel is unavailable.');
+    return channel.send({
+      content,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  },
+  async delete(channelId, messageId) {
+    const channel = await client.channels?.fetch(channelId);
+    if (!isIntroductionChannel(channel))
+      throw new Error('Configured introduction channel is unavailable.');
+    await channel.messages.delete(messageId);
+  },
+});
+
+const isIntroductionChannel = (value: unknown): value is IntroductionChannel =>
+  typeof value === 'object' &&
+  value !== null &&
+  'send' in value &&
+  typeof value.send === 'function' &&
+  'messages' in value &&
+  typeof value.messages === 'object' &&
+  value.messages !== null &&
+  'delete' in value.messages &&
+  typeof value.messages.delete === 'function';
 
 export interface ApplicationTimers {
   setInterval(callback: () => void, delayMs: number): unknown;
@@ -109,6 +160,9 @@ export interface ApplicationDependencies {
     }>,
   ) => PollScheduler;
   readonly createReminderStore?: (databasePath: string) => ReminderStore;
+  readonly createEngagementRepository?: (
+    databasePath: string,
+  ) => EngagementRepository;
   readonly createReminderGateway?: (dependencies: {
     readonly client: RuntimeDiscordClient;
     readonly allowedChannelIds: ReadonlySet<string>;
@@ -301,6 +355,7 @@ export const createApplication = async (
   let pollScheduler: PollScheduler | undefined;
   let reminderStore: ReminderStore | undefined;
   let reminderScheduler: ReminderScheduler | undefined;
+  let engagementRepository: EngagementRepository | undefined;
   let client: RuntimeDiscordClient | undefined;
   let cleanupTimer: unknown;
   let acceptingWork = false;
@@ -343,6 +398,17 @@ export const createApplication = async (
           logger?.warn(
             projectOperationalError(error, 'reminder_storage_shutdown'),
             'Reminder storage close failed during shutdown.',
+          );
+        }
+      }
+
+      if (engagementRepository !== undefined) {
+        try {
+          await engagementRepository.closeConnection();
+        } catch (error) {
+          logger?.warn(
+            { error },
+            'Engagement storage close failed during shutdown.',
           );
         }
       }
@@ -393,6 +459,12 @@ export const createApplication = async (
       dependencies.createReminderStore?.(config.storage.databasePath) ??
       new SQLiteReminderStore(config.storage.databasePath);
     const initializedReminderStore = reminderStore;
+    if (config.engagement.enabled) {
+      engagementRepository =
+        dependencies.createEngagementRepository?.(
+          config.storage.databasePath,
+        ) ?? new SQLiteEngagementRepository(config.storage.databasePath);
+    }
     const ai = aiFactory(config);
     client = discordFactory();
 
@@ -432,6 +504,18 @@ export const createApplication = async (
         config.security.rateLimitWindowMs,
       ),
     });
+    const introductionService =
+      engagementRepository === undefined
+        ? undefined
+        : new IntroductionService({
+            repository: engagementRepository,
+            gateway: createDefaultIntroductionGateway(client),
+            rateLimiter: new RateLimiter(
+              config.security.rateLimitRequests,
+              config.security.rateLimitWindowMs,
+            ),
+            createId: () => randomUUID(),
+          });
     const cleanup = async (): Promise<void> => {
       try {
         await initializedStore.cleanup(
@@ -557,9 +641,16 @@ export const createApplication = async (
             scheduler: initializedReminderScheduler,
           },
           faq,
-          ...(config.sleeper?.leagueId === undefined || config.sleeper.leagueId === ''
+          ...(introductionService === undefined ? {} : { introductionService }),
+          ...(config.sleeper?.leagueId === undefined ||
+          config.sleeper.leagueId === ''
             ? {}
-            : { sleeper: { leagueId: config.sleeper.leagueId, service: new HttpSleeperService() } }),
+            : {
+                sleeper: {
+                  leagueId: config.sleeper.leagueId,
+                  service: new HttpSleeperService(),
+                },
+              }),
           ...(pollController === undefined ? {} : { pollController }),
           ...(pollStore === undefined || pollScheduler === undefined
             ? {}

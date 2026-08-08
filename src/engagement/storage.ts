@@ -20,6 +20,15 @@ export interface EngagementRepository {
     guildId: string,
     introductionId: string,
   ): Promise<Introduction | undefined>;
+  findActiveIntroductionByOwner(
+    guildId: string,
+    ownerUserId: string,
+  ): Promise<Introduction | undefined>;
+  updateIntroductionMessageId(
+    guildId: string,
+    introductionId: string,
+    messageId: string,
+  ): Promise<Introduction | undefined>;
   updateIntroductionStatus(
     guildId: string,
     ownerUserId: string,

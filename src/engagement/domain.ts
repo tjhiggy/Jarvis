@@ -12,6 +12,7 @@ export interface Introduction {
   readonly displayName: string;
   readonly interests: string;
   readonly introduction: string;
+  readonly messageId?: string;
   readonly status: IntroductionStatus;
   readonly createdAt: Date;
   readonly updatedAt: Date;

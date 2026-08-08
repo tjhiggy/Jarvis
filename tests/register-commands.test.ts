@@ -52,7 +52,18 @@ describe('registerCommands', () => {
           ? definition.name
           : undefined,
       ),
-    ).toEqual(['ask', 'search', 'forget', 'help', 'status', 'faq', 'reminder', 'fantasy']);
+    ).toEqual([
+      'ask',
+      'search',
+      'forget',
+      'help',
+      'status',
+      'faq',
+      'reminder',
+      'fantasy',
+      'introduce',
+      'introduction',
+    ]);
     expect(JSON.stringify(calls[0]?.options.body)).not.toContain(
       'POLL_VOTER_SECRET',
     );
@@ -102,6 +113,8 @@ describe('registerCommands', () => {
       'fantasy',
       'poll',
       'poll-close',
+      'introduce',
+      'introduction',
     ]);
     const payload = JSON.stringify(calls[0]?.options.body);
     expect(payload).not.toContain(voterSecret);

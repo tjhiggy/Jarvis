@@ -66,6 +66,14 @@ interface FantasySubcommandDefinition {
   readonly description: string;
 }
 
+interface IntroductionOptionDefinition {
+  readonly type: 3;
+  readonly name: 'name' | 'interests' | 'aboard' | 'id';
+  readonly description: string;
+  readonly required: true;
+  readonly max_length: number;
+}
+
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
   | FaqTopicOptionDefinition
@@ -73,7 +81,8 @@ export type CommandOptionDefinition =
   | OptionalPollOptionDefinition
   | PollDurationOptionDefinition
   | ReminderSubcommandDefinition
-  | FantasySubcommandDefinition;
+  | FantasySubcommandDefinition
+  | IntroductionOptionDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -87,7 +96,9 @@ export interface CommandDefinition {
     | 'reminder'
     | 'poll'
     | 'poll-close'
-    | 'fantasy';
+    | 'fantasy'
+    | 'introduce'
+    | 'introduction';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -308,6 +319,51 @@ export const createCommandDefinitions = (
       },
     );
   }
+
+  definitions.push(
+    {
+      type: 1,
+      name: 'introduce',
+      description: 'Privately preview and post a guided crew introduction.',
+      options: [
+        {
+          type: 3,
+          name: 'name',
+          description: 'Name or nickname for the card.',
+          required: true,
+          max_length: 80,
+        },
+        {
+          type: 3,
+          name: 'interests',
+          description: 'A few interests to share.',
+          required: true,
+          max_length: 300,
+        },
+        {
+          type: 3,
+          name: 'aboard',
+          description: 'What brings you aboard.',
+          required: true,
+          max_length: 500,
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'introduction',
+      description: 'Manage your guided introduction.',
+      options: [
+        {
+          type: 3,
+          name: 'id',
+          description: 'Introduction ID to delete.',
+          required: true,
+          max_length: 128,
+        },
+      ],
+    },
+  );
 
   return definitions;
 };

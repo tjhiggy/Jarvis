@@ -26,6 +26,11 @@ import {
 } from '../discord/delivery.js';
 import { chunkDiscordResponse } from '../utils/chunk-response.js';
 import { neutralizeDiscordMentions } from '../utils/mentions.js';
+import {
+  handleIntroductionCommand,
+  handleIntroductionDeletionCommand,
+} from './introduction.js';
+import type { IntroductionService } from '../engagement/introductions.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -63,6 +68,10 @@ export interface CommandDependencies {
       enabled: boolean;
       adminUserIds: ReadonlySet<string>;
     }>;
+    engagement?: Readonly<{
+      enabled: boolean;
+      channels: Readonly<{ introductionId: string }>;
+    }>;
   }>;
   readonly conversationService: Readonly<{
     ask(request: {
@@ -96,6 +105,7 @@ export interface CommandDependencies {
     store: Pick<PollStore, 'healthCheck'>;
     scheduler: Pick<PollScheduler, 'healthy'>;
   }>;
+  readonly introductionService?: IntroductionService;
 }
 
 const dmMessage = 'This command is available only in a server channel.';
@@ -173,6 +183,22 @@ export const handleCommand = async (
     case 'poll-close':
       await handlePollClose(interaction, dependencies);
       return;
+    case 'introduce':
+      await handleIntroductionCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId:
+          dependencies.config.engagement?.channels.introductionId ?? '',
+        ...(dependencies.introductionService === undefined
+          ? {}
+          : { service: dependencies.introductionService }),
+      });
+      return;
+    case 'introduction':
+      await handleIntroductionDeletionCommand(
+        interaction,
+        dependencies.introductionService,
+      );
+      return;
     case 'help':
       if (await rejectDirectMessage(interaction)) {
         return;
@@ -210,21 +236,42 @@ const handleFantasy = async (
 ): Promise<void> => {
   if (await rejectDirectMessage(interaction)) return;
   if (dependencies.sleeper === undefined) {
-    await replySafely(interaction, 'Sleeper league data is not configured on the MuthaShip.', true);
+    await replySafely(
+      interaction,
+      'Sleeper league data is not configured on the MuthaShip.',
+      true,
+    );
     return;
   }
   if (interaction.options.getSubcommand() !== 'standings') {
-    await replySafely(interaction, 'Use `/fantasy standings` for the current read-only league standings.', true);
+    await replySafely(
+      interaction,
+      'Use `/fantasy standings` for the current read-only league standings.',
+      true,
+    );
     return;
   }
   try {
-    const standings = await dependencies.sleeper.service.getStandings(dependencies.sleeper.leagueId);
-    const lines = standings.map((standing, index) =>
-      `${index + 1}. ${standing.ownerName ?? `Roster ${standing.rosterId}`} • ${standing.wins}-${standing.losses}-${standing.ties} • ${standing.pointsFor.toFixed(2)} PF`,
+    const standings = await dependencies.sleeper.service.getStandings(
+      dependencies.sleeper.leagueId,
     );
-    await replySafely(interaction, lines.length === 0 ? 'Sleeper returned no standings yet.' : `MuthaShip league standings (read-only)\n${lines.join('\n')}`, true);
+    const lines = standings.map(
+      (standing, index) =>
+        `${index + 1}. ${standing.ownerName ?? `Roster ${standing.rosterId}`} • ${standing.wins}-${standing.losses}-${standing.ties} • ${standing.pointsFor.toFixed(2)} PF`,
+    );
+    await replySafely(
+      interaction,
+      lines.length === 0
+        ? 'Sleeper returned no standings yet.'
+        : `MuthaShip league standings (read-only)\n${lines.join('\n')}`,
+      true,
+    );
   } catch {
-    await replySafely(interaction, 'Sleeper league data is temporarily unavailable. Jarvis will not guess.', true);
+    await replySafely(
+      interaction,
+      'Sleeper league data is temporarily unavailable. Jarvis will not guess.',
+      true,
+    );
   }
 };
 

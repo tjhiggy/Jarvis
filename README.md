@@ -28,16 +28,16 @@ enhancements.
 
 ## What ships
 
-| Verified capability                                                                             | Current boundary                                                                                                                      |
-| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Verified capability                                                                                                             | Current boundary                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, and read-only `/fantasy standings`, plus direct mentions | AI requests, reminders, and mentions enforce the configured channel allowlist; fantasy standings is read-only league data available in server channels |
-| Optional `/poll` and `/poll-close` commands                                                     | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls        |
-| Short conversation context stored in SQLite                                                     | Isolated by guild and channel or thread; not encrypted by the application                                                             |
-| Local Ollama and OpenAI Responses providers                                                     | Exactly one provider is selected at startup                                                                                           |
-| Optional balanced Tavily grounding                                                              | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence |
-| Bounded input, output, retries, rate limits, retention, and stored rows                         | Single-process controls, not distributed coordination                                                                                 |
-| Local responses for clearly unsupported action requests                                         | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                     |
-| Native Node.js and hardened Docker Compose deployment paths                                     | One active Jarvis process and one SQLite database are the supported topology                                                          |
+| Optional `/poll` and `/poll-close` commands                                                                                     | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls                         |
+| Short conversation context stored in SQLite                                                                                     | Isolated by guild and channel or thread; not encrypted by the application                                                                              |
+| Local Ollama and OpenAI Responses providers                                                                                     | Exactly one provider is selected at startup                                                                                                            |
+| Optional balanced Tavily grounding                                                                                              | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence                  |
+| Bounded input, output, retries, rate limits, retention, and stored rows                                                         | Single-process controls, not distributed coordination                                                                                                  |
+| Local responses for clearly unsupported action requests                                                                         | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                                      |
+| Native Node.js and hardened Docker Compose deployment paths                                                                     | One active Jarvis process and one SQLite database are the supported topology                                                                           |
 
 Jarvis does not moderate Discord, change roles or channels, edit content owned
 by others, execute shell commands, access arbitrary files, write to GitHub, or
@@ -306,14 +306,16 @@ risks, the [Security policy](SECURITY.md) for private reporting, and
 [Operations](docs/OPERATIONS.md) for backup, restore, retention, and incident
 handling.
 
-## Planned engagement V1
+## Engagement V1
 
-The proposed Muthaship engagement loop is deliberately small: guided
-introductions, suggestions, events with opt-in RSVP, a privacy-aware recap, and
-one bounded activity. It is not shipped, does not change current Discord
-permissions, and does not authorize passive channel collection, moderation,
-role changes, or external writes. The complete contract, including opt-out,
-retention, and deletion rules, is in the
+The Muthaship engagement loop starts with guided introductions. When enabled,
+`/introduce` accepts a bounded name, interests, and reason for coming aboard,
+then confirms privately and posts only to `ENGAGEMENT_INTRODUCTION_CHANNEL_ID`.
+`/introduction id:<id>` removes only the caller's active introduction and its
+bot-owned card. Members who opted out cannot submit; active duplicates and
+rapid repeat attempts are rejected. Suggestions, events, recaps, and activity
+remain unimplemented. The complete contract, including opt-out, retention, and
+deletion rules, is in the
 [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md).
 
 ## Development and validation
@@ -364,22 +366,22 @@ Jarvis reports that safely instead of guessing.
 
 ## Documentation map
 
-| Guide                                        | Purpose                                                                                    |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [Architecture](docs/ARCHITECTURE.md)         | Components, request flow, storage identity, trust boundaries, and extension seams          |
-| [Configuration](docs/CONFIGURATION.md)       | Every environment key, default, validation rule, and safe operating note                   |
-| [Discord setup](docs/DISCORD_SETUP.md)       | Application creation, intents, minimum permissions, installation, and command registration |
-| [Development](docs/DEVELOPMENT.md)           | Local workflows, repository map, scripts, testing, and change boundaries                   |
-| [Deployment](docs/DEPLOYMENT.md)             | Native Windows and Docker deployment, updates, backup, restore, and rollback               |
-| [Operations](docs/OPERATIONS.md)             | Health, logs, provider checks, retention, recovery, and outage handling                    |
-| [Troubleshooting](docs/TROUBLESHOOTING.md)   | Safe diagnosis and recovery by symptom                                                     |
-| [Security model](docs/SECURITY_MODEL.md)     | Assets, threats, controls, residual risk, and no-mutation guarantees                       |
-| [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md) | Planned V1 engagement scope, consent, retention, deletion, and non-goals        |
-| [Change management](docs/CHANGE_MANAGEMENT.md) | Standard request, validation, merge, deployment, and closeout process                  |
-| [GitHub workflow](docs/GITHUB_WORKFLOW.md)    | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
-| [Extension guide](docs/extensions/README.md) | Disabled contracts and requirements for any future integration                             |
-| [Roadmap](docs/ROADMAP.md)                   | Shipped, planned, later, and explicitly out-of-scope work                                  |
-| [Releases](docs/RELEASES.md)                 | Versioning, validation gates, publication authority, and rollback                          |
+| Guide                                                               | Purpose                                                                                     |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [Architecture](docs/ARCHITECTURE.md)                                | Components, request flow, storage identity, trust boundaries, and extension seams           |
+| [Configuration](docs/CONFIGURATION.md)                              | Every environment key, default, validation rule, and safe operating note                    |
+| [Discord setup](docs/DISCORD_SETUP.md)                              | Application creation, intents, minimum permissions, installation, and command registration  |
+| [Development](docs/DEVELOPMENT.md)                                  | Local workflows, repository map, scripts, testing, and change boundaries                    |
+| [Deployment](docs/DEPLOYMENT.md)                                    | Native Windows and Docker deployment, updates, backup, restore, and rollback                |
+| [Operations](docs/OPERATIONS.md)                                    | Health, logs, provider checks, retention, recovery, and outage handling                     |
+| [Troubleshooting](docs/TROUBLESHOOTING.md)                          | Safe diagnosis and recovery by symptom                                                      |
+| [Security model](docs/SECURITY_MODEL.md)                            | Assets, threats, controls, residual risk, and no-mutation guarantees                        |
+| [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md) | Planned V1 engagement scope, consent, retention, deletion, and non-goals                    |
+| [Change management](docs/CHANGE_MANAGEMENT.md)                      | Standard request, validation, merge, deployment, and closeout process                       |
+| [GitHub workflow](docs/GITHUB_WORKFLOW.md)                          | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
+| [Extension guide](docs/extensions/README.md)                        | Disabled contracts and requirements for any future integration                              |
+| [Roadmap](docs/ROADMAP.md)                                          | Shipped, planned, later, and explicitly out-of-scope work                                   |
+| [Releases](docs/RELEASES.md)                                        | Versioning, validation gates, publication authority, and rollback                           |
 
 Repository policies and project records:
 
