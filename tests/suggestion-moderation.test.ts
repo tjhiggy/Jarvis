@@ -116,6 +116,31 @@ describe('SuggestionService', () => {
     ).resolves.toMatchObject({ status: 'deletion_pending' });
   });
 
+  it('rejects a real moderation/delete interleaving after the moderation read', async () => {
+    const repository = new SuggestionsRepository();
+    const service = createService(repository, new SuggestionGateway());
+    const created = await service.submit(input());
+    repository.cloneOnGet = true;
+    repository.afterSuggestionRead = () => {
+      repository.suggestions.get(`guild-1:${created.id}`).status =
+        'deletion_pending';
+    };
+    await expect(
+      service.moderate({
+        guildId: 'guild-1',
+        channelId: 'suggestions',
+        moderatorUserId: 'admin-1',
+        moderatorRoleIds: new Set(['role-admin']),
+        suggestionId: created.id,
+        action: 'resolve',
+        interactionId: 'interleave-click',
+      }),
+    ).rejects.toMatchObject({ code: 'not-found' });
+    expect(repository.suggestions.get(`guild-1:${created.id}`)).toMatchObject({
+      status: 'deletion_pending',
+    });
+  });
+
   it('persists a cleanup-pending record when message-id persistence fails after posting', async () => {
     const repository = new SuggestionsRepository();
     repository.failMessageUpdate = true;
@@ -130,6 +155,18 @@ describe('SuggestionService', () => {
       messageId: 'message-1',
       status: 'cleanup_pending',
     });
+  });
+
+  it('surfaces an operator-visible persistence failure when durable cleanup cannot be recorded', async () => {
+    const repository = new SuggestionsRepository();
+    repository.failMessageUpdate = true;
+    repository.failCleanupMark = true;
+    await expect(
+      createService(repository, new SuggestionGateway()).submit(input()),
+    ).rejects.toMatchObject({ code: 'persistence-failed' });
+    await expect(
+      repository.getSuggestion('guild-1', 'suggestion-1'),
+    ).resolves.toMatchObject({ id: 'suggestion-1' });
   });
 
   it('restricts status controls to configured roles, expires controls, and records safe audits', async () => {
@@ -245,6 +282,9 @@ class SuggestionGateway {
 class SuggestionsRepository implements EngagementRepository {
   suggestions = new Map<string, any>();
   failMessageUpdate = false;
+  failCleanupMark = false;
+  cloneOnGet = false;
+  afterSuggestionRead: (() => void) | undefined;
   optedOut = new Map<string, any>();
   claimed = new Set<string>();
   async createSuggestion(value: any) {
@@ -252,7 +292,11 @@ class SuggestionsRepository implements EngagementRepository {
     return value;
   }
   async getSuggestion(guildId: string, id: string) {
-    return this.suggestions.get(`${guildId}:${id}`);
+    const value = this.suggestions.get(`${guildId}:${id}`);
+    const hook = this.afterSuggestionRead;
+    this.afterSuggestionRead = undefined;
+    hook?.();
+    return this.cloneOnGet && value !== undefined ? { ...value } : value;
   }
   async findActiveSuggestionByContent(
     guildId: string,
@@ -305,6 +349,7 @@ class SuggestionsRepository implements EngagementRepository {
     messageId: string,
     updatedAt: Date,
   ) {
+    if (this.failCleanupMark) throw new Error('database unavailable');
     const value = await this.getSuggestion(guildId, id);
     if (value !== undefined)
       Object.assign(value, { messageId, status: 'cleanup_pending', updatedAt });

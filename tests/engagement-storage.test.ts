@@ -192,6 +192,27 @@ describe('SQLiteEngagementRepository', () => {
     ).resolves.toMatchObject({ status: 'acknowledged' });
   });
 
+  it('retains cleanup-pending suggestion message IDs across a SQLite reopen', async () => {
+    await repository.createSuggestion(suggestion());
+    await repository.markSuggestionCleanupPending(
+      'guild-1',
+      'suggestion-1',
+      'message-ghost',
+      at(2),
+    );
+    await repository.closeConnection();
+    repository = new SQLiteEngagementRepository(databasePath);
+    await expect(repository.listCleanupPendingSuggestions(10)).resolves.toEqual(
+      [
+        expect.objectContaining({
+          id: 'suggestion-1',
+          messageId: 'message-ghost',
+          status: 'cleanup_pending',
+        }),
+      ],
+    );
+  });
+
   it('persists opt-outs and rejects further collection for that guild and owner', async () => {
     await repository.setOptOut({
       guildId: 'guild-1',

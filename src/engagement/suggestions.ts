@@ -20,7 +20,8 @@ export type SuggestionErrorCode =
   | 'not-found'
   | 'expired'
   | 'duplicate-action'
-  | 'draft-limit';
+  | 'draft-limit'
+  | 'persistence-failed';
 
 export class SuggestionServiceError extends Error {
   constructor(readonly code: SuggestionErrorCode) {
@@ -186,7 +187,7 @@ export class SuggestionService {
             this.now(),
           );
         } catch {
-          // Keep the persisted record rather than risk orphaning a posted card.
+          throw new SuggestionServiceError('persistence-failed');
         }
       } else {
         await this.dependencies.repository.deleteSuggestionRecord(
