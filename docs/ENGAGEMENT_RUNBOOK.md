@@ -1,6 +1,7 @@
 # Engagement V1 runbook
 
-This is the operating contract for the shipped MuthaShip engagement features.
+This is the operating contract for the implemented, unreleased MuthaShip
+engagement features.
 Run exactly one Jarvis process against one SQLite database. Two workers sharing
 a database do not provide high availability. They provide duplicate delivery.
 

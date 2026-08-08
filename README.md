@@ -409,7 +409,7 @@ Jarvis reports that safely instead of guessing.
 | [Operations](docs/OPERATIONS.md)                                    | Health, logs, provider checks, retention, recovery, and outage handling                     |
 | [Troubleshooting](docs/TROUBLESHOOTING.md)                          | Safe diagnosis and recovery by symptom                                                      |
 | [Security model](docs/SECURITY_MODEL.md)                            | Assets, threats, controls, residual risk, and no-mutation guarantees                        |
-| [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md) | Planned V1 engagement scope, consent, retention, deletion, and non-goals                    |
+| [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md) | Implemented, unreleased V1 scope, consent, retention, deletion, and non-goals               |
 | [Change management](docs/CHANGE_MANAGEMENT.md)                      | Standard request, validation, merge, deployment, and closeout process                       |
 | [GitHub workflow](docs/GITHUB_WORKFLOW.md)                          | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
 | [Extension guide](docs/extensions/README.md)                        | Disabled contracts and requirements for any future integration                              |
