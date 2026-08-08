@@ -322,6 +322,46 @@ describe('SQLiteEngagementRepository', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('retains newer cross-guild records that share IDs with expired records', async () => {
+    await repository.createIntroduction(
+      introduction({ id: 'shared-retention', updatedAt: at(0) }),
+    );
+    await repository.createIntroduction(
+      introduction({
+        id: 'shared-retention',
+        guildId: 'guild-2',
+        updatedAt: at(20),
+      }),
+    );
+    await repository.createSuggestion(
+      suggestion({ id: 'shared-retention', updatedAt: at(0) }),
+    );
+    await repository.createSuggestion(
+      suggestion({
+        id: 'shared-retention',
+        guildId: 'guild-2',
+        updatedAt: at(20),
+      }),
+    );
+    await repository.createEvent(
+      event({ id: 'shared-retention', status: 'completed', updatedAt: at(0) }),
+    );
+    await repository.createEvent(
+      event({ id: 'shared-retention', guildId: 'guild-2', updatedAt: at(20) }),
+    );
+
+    await expect(repository.cleanup(at(10), 10)).resolves.toBe(3);
+    await expect(
+      repository.getIntroduction('guild-2', 'shared-retention'),
+    ).resolves.toBeDefined();
+    await expect(
+      repository.getSuggestion('guild-2', 'shared-retention'),
+    ).resolves.toBeDefined();
+    await expect(
+      repository.getEvent('guild-2', 'shared-retention'),
+    ).resolves.toBeDefined();
+  });
+
   it('rejects event creation for opted-out owners and unbounded storage values', async () => {
     await repository.setOptOut({
       guildId: 'guild-1',

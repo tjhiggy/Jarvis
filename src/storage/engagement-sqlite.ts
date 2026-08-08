@@ -375,9 +375,9 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       let remaining = limit;
       let changes = 0;
       for (const sql of [
-        `DELETE FROM engagement_introductions WHERE id IN (SELECT id FROM engagement_introductions WHERE updated_at < ? ORDER BY updated_at ASC, id ASC LIMIT ?)`,
-        `DELETE FROM engagement_suggestions WHERE id IN (SELECT id FROM engagement_suggestions WHERE updated_at < ? ORDER BY updated_at ASC, id ASC LIMIT ?)`,
-        `DELETE FROM engagement_events WHERE id IN (SELECT id FROM engagement_events WHERE status IN ('cancelled', 'completed') AND updated_at < ? ORDER BY updated_at ASC, id ASC LIMIT ?)`,
+        `DELETE FROM engagement_introductions WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_introductions WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
+        `DELETE FROM engagement_suggestions WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_suggestions WHERE updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
+        `DELETE FROM engagement_events WHERE (guild_id, id) IN (SELECT guild_id, id FROM engagement_events WHERE status IN ('cancelled', 'completed') AND updated_at < ? ORDER BY updated_at ASC, guild_id ASC, id ASC LIMIT ?)`,
         `DELETE FROM engagement_idempotency_keys WHERE rowid IN (SELECT rowid FROM engagement_idempotency_keys WHERE created_at < ? ORDER BY created_at ASC, key ASC LIMIT ?)`,
         `DELETE FROM engagement_opt_outs WHERE rowid IN (SELECT rowid FROM engagement_opt_outs WHERE opted_out_at < ? ORDER BY opted_out_at ASC, guild_id ASC, user_id ASC LIMIT ?)`,
       ]) {
