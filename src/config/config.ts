@@ -53,6 +53,7 @@ export interface AppConfig {
   }>;
   readonly sleeper?: Readonly<{ leagueId: string }>;
   readonly polls: PollConfig;
+  readonly engagement: EngagementConfig;
   readonly logging: Readonly<{
     level: LogLevel;
   }>;
@@ -64,6 +65,23 @@ export interface PollConfig {
   readonly voterSecret: string;
   readonly retentionDays: number;
   readonly expiryCheckSeconds: number;
+}
+
+export interface EngagementConfig {
+  readonly enabled: boolean;
+  readonly channels: Readonly<{
+    introductionId: string;
+    suggestionId: string;
+    eventId: string;
+    recapId: string;
+    activityId: string;
+  }>;
+  readonly adminRoleIds: ReadonlySet<string>;
+  readonly recapSchedule: string;
+  readonly recapTimezone: string;
+  readonly retentionDays: number;
+  readonly maxRecordsPerUser: number;
+  readonly maxParticipants: number;
 }
 
 export interface DiscordRegistrationConfig {
@@ -123,6 +141,43 @@ const pollAdminUserIds = z.preprocess(
   z.array(z.string().regex(/^\d{17,20}$/)).default([]),
 );
 
+const discordSnowflake = /^\d{17,20}$/;
+
+const optionalDiscordSnowflake = z
+  .string()
+  .trim()
+  .regex(/^$|^\d{17,20}$/)
+  .default('');
+
+const engagementAdminRoleIds = z.preprocess(
+  (value) => {
+    if (typeof value !== 'string' || value.trim() === '') {
+      return [];
+    }
+
+    return value
+      .split(',')
+      .map((roleId) => roleId.trim())
+      .filter(Boolean);
+  },
+  z.array(z.string().regex(discordSnowflake)).default([]),
+);
+
+const isValidTimeZone = (value: string): boolean => {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const engagementTimezone = z.preprocess(
+  (value) =>
+    typeof value === 'string' && value.trim() === '' ? undefined : value,
+  z.string().trim().refine(isValidTimeZone).default('UTC'),
+);
+
 const baseEnvironmentSchema = z.object({
   DISCORD_TOKEN: requiredString,
   DISCORD_CLIENT_ID: requiredString,
@@ -155,13 +210,40 @@ const baseEnvironmentSchema = z.object({
   HISTORY_RETENTION_DAYS: integer(30, 1),
   PERSONA_PROMPT_PATH: optionalString('./config/jarvis-persona.md'),
   FAQ_CATALOG_PATH: optionalString('./config/faq.json'),
-  SLEEPER_LEAGUE_ID: z.string().trim().regex(/^$|^\d{8,20}$/).default(''),
+  SLEEPER_LEAGUE_ID: z
+    .string()
+    .trim()
+    .regex(/^$|^\d{8,20}$/)
+    .default(''),
   ALLOWED_CHANNEL_IDS: channelIds,
   RESTRAINED_CHANNEL_IDS: channelIds,
   POLL_ADMIN_USER_IDS: pollAdminUserIds,
   POLL_VOTER_SECRET: z.string().trim().default(''),
   POLL_RETENTION_DAYS: integer(30, 1),
   POLL_EXPIRY_CHECK_SECONDS: integer(30, 1),
+  ENGAGEMENT_ENABLED: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.enum(['true', 'false']).default('false'),
+  ),
+  ENGAGEMENT_INTRODUCTION_CHANNEL_ID: optionalDiscordSnowflake,
+  ENGAGEMENT_SUGGESTION_CHANNEL_ID: optionalDiscordSnowflake,
+  ENGAGEMENT_EVENT_CHANNEL_ID: optionalDiscordSnowflake,
+  ENGAGEMENT_RECAP_CHANNEL_ID: optionalDiscordSnowflake,
+  ENGAGEMENT_ACTIVITY_CHANNEL_ID: optionalDiscordSnowflake,
+  ENGAGEMENT_ADMIN_ROLE_IDS: engagementAdminRoleIds,
+  ENGAGEMENT_RECAP_SCHEDULE: z
+    .string()
+    .trim()
+    .regex(
+      /^(?:MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY) (?:[01]\d|2[0-3]):[0-5]\d$/,
+    )
+    .or(z.literal(''))
+    .default(''),
+  ENGAGEMENT_RECAP_TIMEZONE: engagementTimezone,
+  ENGAGEMENT_RETENTION_DAYS: integer(30, 1, 90),
+  ENGAGEMENT_MAX_RECORDS_PER_USER: integer(5, 1, 25),
+  ENGAGEMENT_MAX_PARTICIPANTS: integer(100, 2, 1000),
 });
 
 type PollEnvironment = Pick<
@@ -194,6 +276,64 @@ const validatePollConfiguration = (
   }
 };
 
+type EngagementEnvironment = Pick<
+  z.infer<typeof baseEnvironmentSchema>,
+  | 'ENGAGEMENT_ENABLED'
+  | 'ENGAGEMENT_INTRODUCTION_CHANNEL_ID'
+  | 'ENGAGEMENT_SUGGESTION_CHANNEL_ID'
+  | 'ENGAGEMENT_EVENT_CHANNEL_ID'
+  | 'ENGAGEMENT_RECAP_CHANNEL_ID'
+  | 'ENGAGEMENT_ACTIVITY_CHANNEL_ID'
+  | 'ENGAGEMENT_ADMIN_ROLE_IDS'
+  | 'ENGAGEMENT_RECAP_SCHEDULE'
+>;
+
+const validateEngagementConfiguration = (
+  value: EngagementEnvironment,
+  context: z.RefinementCtx,
+): void => {
+  const channelIds = [
+    value.ENGAGEMENT_INTRODUCTION_CHANNEL_ID,
+    value.ENGAGEMENT_SUGGESTION_CHANNEL_ID,
+    value.ENGAGEMENT_EVENT_CHANNEL_ID,
+    value.ENGAGEMENT_RECAP_CHANNEL_ID,
+    value.ENGAGEMENT_ACTIVITY_CHANNEL_ID,
+  ];
+  const hasConfiguredChannel = channelIds.some((channelId) => channelId !== '');
+
+  if (value.ENGAGEMENT_ENABLED === 'true' && !hasConfiguredChannel) {
+    context.addIssue({
+      code: 'custom',
+      path: ['ENGAGEMENT_ENABLED'],
+      message: 'Enabled engagement requires at least one configured channel.',
+    });
+  }
+
+  if (
+    value.ENGAGEMENT_ENABLED === 'true' &&
+    value.ENGAGEMENT_ADMIN_ROLE_IDS.length === 0
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['ENGAGEMENT_ADMIN_ROLE_IDS'],
+      message: 'Enabled engagement requires at least one administrator role.',
+    });
+  }
+
+  if (
+    value.ENGAGEMENT_RECAP_SCHEDULE !== '' &&
+    (value.ENGAGEMENT_ENABLED !== 'true' ||
+      value.ENGAGEMENT_RECAP_CHANNEL_ID === '')
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['ENGAGEMENT_RECAP_SCHEDULE'],
+      message:
+        'A recap schedule requires enabled engagement and a recap channel.',
+    });
+  }
+};
+
 const environmentSchema = baseEnvironmentSchema.superRefine(
   (value, context) => {
     if (value.AI_PROVIDER === 'openai' && value.OPENAI_API_KEY === '') {
@@ -205,6 +345,7 @@ const environmentSchema = baseEnvironmentSchema.superRefine(
     }
 
     validatePollConfiguration(value, context);
+    validateEngagementConfiguration(value, context);
   },
 );
 
@@ -298,6 +439,22 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
       voterSecret: parsed.POLL_VOTER_SECRET,
       retentionDays: parsed.POLL_RETENTION_DAYS,
       expiryCheckSeconds: parsed.POLL_EXPIRY_CHECK_SECONDS,
+    }),
+    engagement: Object.freeze({
+      enabled: parsed.ENGAGEMENT_ENABLED === 'true',
+      channels: Object.freeze({
+        introductionId: parsed.ENGAGEMENT_INTRODUCTION_CHANNEL_ID,
+        suggestionId: parsed.ENGAGEMENT_SUGGESTION_CHANNEL_ID,
+        eventId: parsed.ENGAGEMENT_EVENT_CHANNEL_ID,
+        recapId: parsed.ENGAGEMENT_RECAP_CHANNEL_ID,
+        activityId: parsed.ENGAGEMENT_ACTIVITY_CHANNEL_ID,
+      }),
+      adminRoleIds: readonlySet(parsed.ENGAGEMENT_ADMIN_ROLE_IDS),
+      recapSchedule: parsed.ENGAGEMENT_RECAP_SCHEDULE,
+      recapTimezone: parsed.ENGAGEMENT_RECAP_TIMEZONE,
+      retentionDays: parsed.ENGAGEMENT_RETENTION_DAYS,
+      maxRecordsPerUser: parsed.ENGAGEMENT_MAX_RECORDS_PER_USER,
+      maxParticipants: parsed.ENGAGEMENT_MAX_PARTICIPANTS,
     }),
     logging: Object.freeze({ level: parsed.LOG_LEVEL }),
   });

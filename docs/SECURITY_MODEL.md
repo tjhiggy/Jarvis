@@ -14,6 +14,8 @@ describe implemented source behavior; proposals are labelled as planned.
 - Approved FAQ catalog content and topic-to-answer integrity.
 - Optional poll administrator IDs, poll questions/options, aggregate totals,
   and the secret-derived voter-token boundary.
+- Optional engagement channel IDs, administrator role IDs, retention and
+  participation limits, and the bot-owned engagement records they govern.
 - Provider account availability, budget, rate limits, and model access.
 - Optional Sleeper league identifier, public roster/display-name data, and the
   integrity of the read-only fantasy standings boundary.
@@ -105,6 +107,19 @@ invalid content fails closed with a sanitized error that names
   messages. It does not delete messages or gain authority over roles, channels,
   permissions, members, moderation, server settings, or webhooks. Poll text is
   untrusted content and does not enter poll telemetry.
+- **Engagement configuration boundary.** Engagement is off unless
+  `ENGAGEMENT_ENABLED=true`; startup rejects enablement without at least one
+  configured engagement channel and administrator role. Each configured channel
+  is a separate scope for its future feature, not permission to read guild chat
+  generally. The recap scheduler additionally requires an enabled recap channel
+  and a strict weekday/time plus valid IANA timezone. Retention, per-user, and
+  participant limits are bounded at startup so an operator cannot quietly turn
+  a social feature into an endless data hoover.
+- **Engagement message authority.** Future engagement handlers may send embeds
+  and bot-owned buttons only in explicitly configured channels after normal
+  Discord channel permission checks. Buttons confer no role, moderation, or
+  server-setting authority. The bot requests no additional privileged intent,
+  and it must not read arbitrary channel history for a recap or activity.
 - **Personal reminder boundary.** `/reminder` is owner-scoped, ephemeral at
   command time, and delivers only to the original allowed channel or thread
   after live revalidation. Its public payload permits only the verified owner

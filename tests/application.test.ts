@@ -67,6 +67,22 @@ const config: AppConfig = {
     retentionDays: 30,
     expiryCheckSeconds: 30,
   },
+  engagement: {
+    enabled: false,
+    channels: {
+      introductionId: '',
+      suggestionId: '',
+      eventId: '',
+      recapId: '',
+      activityId: '',
+    },
+    adminRoleIds: new Set(),
+    recapSchedule: '',
+    recapTimezone: 'UTC',
+    retentionDays: 30,
+    maxRecordsPerUser: 5,
+    maxParticipants: 100,
+  },
   logging: { level: 'silent' },
 };
 

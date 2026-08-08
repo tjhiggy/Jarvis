@@ -23,6 +23,14 @@ Grant only the permissions used by the Discord adapter in the channels where Jar
 - **Send Messages in Threads** when using threads
 - **Embed Links** for the optional poll interface
 
+Engagement does not require another gateway intent or a broad server
+permission. For each non-blank `ENGAGEMENT_*_CHANNEL_ID`, grant **View
+Channel**, **Read Message History**, **Send Messages**, and **Embed Links** only
+in that exact channel. Jarvis uses buttons on messages it owns; Discord has no
+separate bot permission for buttons. Do not grant access to general channels
+for recap or engagement discovery, because future engagement handlers must use
+only their explicitly configured destinations.
+
 Users invoking commands also need Discord's **Use Application Commands** access where their role and channel overrides apply. Do not grant Administrator, Manage Channels, Manage Roles, Manage Messages, moderation, webhook, or other unimplemented powers. The bot cannot use them, and granting them is security theater with teeth.
 
 ## Install URL
@@ -45,6 +53,11 @@ RESTRAINED_CHANNEL_IDS=YOUR_TECHNICAL_CHANNEL_ID
 ```
 
 An empty `ALLOWED_CHANNEL_IDS` permits all guild channels where the bot has the required permissions. A listed parent channel allows its threads. Each thread still has separate conversation history because its thread ID is its conversation identifier. `RESTRAINED_CHANNEL_IDS` changes persona tone only; it does not grant or remove access.
+
+Engagement has narrower channel settings and does not inherit this broad
+allowlist as permission to read every allowed channel. Leave
+`ENGAGEMENT_ENABLED=false` until each required engagement destination and the
+administrator role allowlist are configured.
 
 ## Register development-guild commands
 
@@ -73,7 +86,7 @@ Global registration is not implemented as a runtime toggle. It is a future, manu
 | `/reminder cancel`     | Privately cancels only the caller's active reminder by ID.                                                                              |
 | `/poll`                | Configured administrator IDs create a public anonymous two-to-five-option poll using a fixed duration preset.                           |
 | `/poll-close`          | Configured administrator IDs close an open poll early by poll ID.                                                                       |
-| `/fantasy standings`   | Reads the configured Sleeper league's standings and display names. Read-only; pre-draft unassigned rosters are shown safely.             |
+| `/fantasy standings`   | Reads the configured Sleeper league's standings and display names. Read-only; pre-draft unassigned rosters are shown safely.            |
 
 `/ask`, `/search`, `/forget`, `/faq`, `/reminder`, `/poll`, and `/poll-close` enforce the channel allowlist. Reminder commands do not need an administrator ID or extra Discord permissions; scheduled delivery may mention only its verified owner. Poll command creation and early closure additionally require an exact ID in `POLL_ADMIN_USER_IDS`; voting is open to members who can use the poll message. All commands are server-only; direct messages receive a safe unavailable response. Direct mentions require a non-empty prompt after the bot mention.
 
