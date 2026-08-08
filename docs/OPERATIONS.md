@@ -140,6 +140,14 @@ rounds. Members may use `/trivia opt-out` from any server channel to delete
 their retained trivia participant record and block future collection, then
 `/trivia opt-in` to rejoin future rounds.
 
+Each expired round is atomically claimed with a persisted delivery lease, then
+Jarvis posts one concise aggregate results card with mentions disabled. A
+successful post is persisted as complete; an interrupted or failed lease is
+released or recovered after one minute. The scheduler logs only its operation
+name on failures and continues at the next bounded tick. Opt-out marker writes
+and participant-record deletion are one SQLite transaction, so a deletion
+failure rolls back the marker instead of leaving a half-finished preference.
+
 ## Poll lifecycle, recovery, and rollback
 
 When polls are enabled, their tables share `DATABASE_PATH` but are separate

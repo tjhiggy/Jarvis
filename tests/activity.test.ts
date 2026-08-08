@@ -122,12 +122,31 @@ describe('bounded trivia activity', () => {
   });
 
   it('runs explicit scheduled expiry while the process is up', async () => {
-    let ticks = 0;
+    const calls: string[] = [];
     const scheduler = new TriviaExpiryScheduler({
-      service: { recover: async () => ++ticks } as any,
+      service: {
+        claimResultCards: async () => [
+          {
+            id: 'round-1',
+            guildId: 'guild-a',
+            channelId: 'channel-a',
+            leaseToken: 'lease-1',
+          },
+        ],
+        results: async () => ({ participantCount: 3, correctCount: 2 }),
+        completeResultCard: async () => calls.push('complete'),
+        releaseResultCard: async () => calls.push('release'),
+      } as any,
+      gateway: {
+        post: async (_round: any, results: any) => {
+          calls.push(
+            `post:${results.correctCount}/${results.participantCount}`,
+          );
+        },
+      },
     });
     await scheduler.tick();
-    expect(ticks).toBe(1);
+    expect(calls).toEqual(['post:2/3', 'complete']);
   });
 });
 

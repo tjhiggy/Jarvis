@@ -66,6 +66,60 @@ describe('SQLiteEngagementRepository', () => {
     ).toHaveLength(1);
   });
 
+  it('rolls back the trivia opt-out marker when participant deletion fails', async () => {
+    await repository.createTriviaRound(triviaRound());
+    await repository.recordTriviaAnswer({
+      guildId: 'guild-1',
+      roundId: 'round-1',
+      userId: 'member-1',
+      correct: true,
+      answeredAt: at(2),
+    });
+    const database = new Database(databasePath);
+    database.exec(
+      "CREATE TRIGGER fail_trivia_delete BEFORE DELETE ON engagement_trivia_answers BEGIN SELECT RAISE(ABORT, 'forced failure'); END;",
+    );
+    database.close();
+    await expect(
+      repository.optOutTriviaParticipant('guild-1', 'member-1', at(3)),
+    ).rejects.toThrow('forced failure');
+    await expect(
+      repository.getOptOut('guild-1', 'member-1'),
+    ).resolves.toBeUndefined();
+    await expect(
+      repository.getTriviaResults('guild-1', 'round-1'),
+    ).resolves.toMatchObject({ participantCount: 1 });
+  });
+
+  it('claims, completes, and recovers persisted trivia result delivery idempotently', async () => {
+    await repository.createTriviaRound(
+      triviaRound({ expiresAt: at(0), status: 'open' }),
+    );
+    const firstClaim = await repository.claimTriviaResultCards(at(1), 10);
+    expect(firstClaim).toHaveLength(1);
+    await expect(
+      repository.completeTriviaResultCard(
+        'guild-1',
+        'round-1',
+        firstClaim[0]!.leaseToken,
+        at(1),
+      ),
+    ).resolves.toBe(true);
+    await expect(repository.claimTriviaResultCards(at(2), 10)).resolves.toEqual(
+      [],
+    );
+
+    await repository.createTriviaRound(
+      triviaRound({ id: 'recover-round', expiresAt: at(0), status: 'open' }),
+    );
+    await expect(
+      repository.claimTriviaResultCards(at(2), 10),
+    ).resolves.toHaveLength(1);
+    await expect(
+      repository.claimTriviaResultCards(at(64), 10),
+    ).resolves.toHaveLength(1);
+  });
+
   it('upgrades legacy global IDs to guild-scoped keys without dropping rows', async () => {
     const legacyPath = join(directory, 'legacy.db');
     const legacy = new Database(legacyPath);

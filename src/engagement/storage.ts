@@ -8,7 +8,12 @@ import type {
   Suggestion,
   SuggestionStatus,
 } from './domain.js';
-import type { TriviaAnswer, TriviaResults, TriviaRound } from './activity.js';
+import type {
+  ClaimedTriviaRound,
+  TriviaAnswer,
+  TriviaResults,
+  TriviaRound,
+} from './activity.js';
 
 export type EngagementIdempotencyScope = 'interaction' | 'scheduled-job';
 
@@ -157,6 +162,22 @@ export interface EngagementRepository {
   recordTriviaAnswer?(input: TriviaAnswer): Promise<TriviaAnswer>;
   getTriviaResults?(guildId: string, roundId: string): Promise<TriviaResults>;
   expireTriviaRounds?(now: Date): Promise<number>;
+  claimTriviaResultCards?(
+    now: Date,
+    limit: number,
+  ): Promise<readonly ClaimedTriviaRound[]>;
+  completeTriviaResultCard?(
+    guildId: string,
+    roundId: string,
+    leaseToken: string,
+    completedAt: Date,
+  ): Promise<boolean>;
+  releaseTriviaResultCard?(
+    guildId: string,
+    roundId: string,
+    leaseToken: string,
+    now: Date,
+  ): Promise<boolean>;
   respondToEvent?(input: Rsvp): Promise<Rsvp>;
   updateEventMessageId?(
     guildId: string,
@@ -203,6 +224,11 @@ export interface EngagementRepository {
   setOptOut(input: EngagementOptOut): Promise<EngagementOptOut>;
   clearOptOut?(guildId: string, userId: string): Promise<void>;
   deleteTriviaParticipant?(guildId: string, userId: string): Promise<number>;
+  optOutTriviaParticipant?(
+    guildId: string,
+    userId: string,
+    optedOutAt: Date,
+  ): Promise<void>;
   deleteOwnerData(guildId: string, userId: string): Promise<number>;
   claimIdempotencyKey(
     guildId: string,

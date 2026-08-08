@@ -71,7 +71,11 @@ import type { EngagementCard } from './engagement/discord-ui.js';
 import { EventService, type EventGateway } from './engagement/events.js';
 import { EventScheduler } from './engagement/event-scheduler.js';
 import { RecapScheduler, RecapService } from './engagement/recap.js';
-import { TriviaExpiryScheduler, TriviaService } from './engagement/activity.js';
+import {
+  buildTriviaResultsCard,
+  TriviaExpiryScheduler,
+  TriviaService,
+} from './engagement/activity.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -671,6 +675,10 @@ export const createApplication = async (
                 | 'recordTriviaAnswer'
                 | 'getTriviaResults'
                 | 'expireTriviaRounds'
+                | 'claimTriviaResultCards'
+                | 'completeTriviaResultCard'
+                | 'releaseTriviaResultCard'
+                | 'optOutTriviaParticipant'
               >
             >,
             createId: () => randomUUID(),
@@ -922,7 +930,22 @@ export const createApplication = async (
       });
 
     if (triviaService !== undefined)
-      triviaScheduler = new TriviaExpiryScheduler({ service: triviaService });
+      triviaScheduler = new TriviaExpiryScheduler({
+        service: triviaService,
+        gateway: {
+          post: async (round, results) => {
+            const channel = await schedulerClient.channels?.fetch(
+              round.channelId,
+            );
+            if (!isEventChannel(channel))
+              throw new Error('Configured activity channel is unavailable.');
+            await channel.send(buildTriviaResultsCard(results));
+          },
+        },
+        logger: {
+          warn: (fields, message) => logger?.warn(fields, message),
+        },
+      });
 
     pollScheduler?.start();
     reminderScheduler.start();

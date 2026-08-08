@@ -31,6 +31,9 @@ export interface TriviaResults {
   readonly participantCount: number;
   readonly correctCount: number;
 }
+export interface ClaimedTriviaRound extends TriviaRound {
+  readonly leaseToken: string;
+}
 
 export class TriviaServiceError extends Error {
   constructor(
@@ -111,6 +114,11 @@ type Repository = {
   }): Promise<unknown>;
   clearOptOut?(guildId: string, userId: string): Promise<void>;
   deleteTriviaParticipant?(guildId: string, userId: string): Promise<number>;
+  optOutTriviaParticipant?(
+    guildId: string,
+    userId: string,
+    optedOutAt: Date,
+  ): Promise<void>;
   createTriviaRound(round: TriviaRound): Promise<TriviaRound>;
   getTriviaRound(
     guildId: string,
@@ -122,6 +130,22 @@ type Repository = {
   ): Promise<TriviaRound | undefined>;
   recordTriviaAnswer(answer: TriviaAnswer): Promise<TriviaAnswer>;
   expireTriviaRounds?(now: Date): Promise<number>;
+  claimTriviaResultCards?(
+    now: Date,
+    limit: number,
+  ): Promise<readonly ClaimedTriviaRound[]>;
+  completeTriviaResultCard?(
+    guildId: string,
+    roundId: string,
+    leaseToken: string,
+    completedAt: Date,
+  ): Promise<boolean>;
+  releaseTriviaResultCard?(
+    guildId: string,
+    roundId: string,
+    leaseToken: string,
+    now: Date,
+  ): Promise<boolean>;
   getTriviaResults?(guildId: string, roundId: string): Promise<TriviaResults>;
 };
 
@@ -279,12 +303,21 @@ export class TriviaService {
   }
 
   async optOut(guildId: string, userId: string): Promise<void> {
+    const optedOutAt = this.now();
+    if (this.dependencies.repository.optOutTriviaParticipant) {
+      await this.dependencies.repository.optOutTriviaParticipant(
+        guildId,
+        userId,
+        optedOutAt,
+      );
+      return;
+    }
     if (!this.dependencies.repository.setOptOut)
       throw new Error('Trivia opt-out storage is unavailable.');
     await this.dependencies.repository.setOptOut({
       guildId,
       userId,
-      optedOutAt: this.now(),
+      optedOutAt,
     });
     await this.dependencies.repository.deleteTriviaParticipant?.(
       guildId,
@@ -303,6 +336,34 @@ export class TriviaService {
       (await this.dependencies.repository.expireTriviaRounds?.(this.now())) ?? 0
     );
   }
+  async claimResultCards(limit = 100): Promise<readonly ClaimedTriviaRound[]> {
+    return (
+      (await this.dependencies.repository.claimTriviaResultCards?.(
+        this.now(),
+        limit,
+      )) ?? []
+    );
+  }
+  async completeResultCard(round: ClaimedTriviaRound): Promise<boolean> {
+    return (
+      (await this.dependencies.repository.completeTriviaResultCard?.(
+        round.guildId,
+        round.id,
+        round.leaseToken,
+        this.now(),
+      )) ?? false
+    );
+  }
+  async releaseResultCard(round: ClaimedTriviaRound): Promise<boolean> {
+    return (
+      (await this.dependencies.repository.releaseTriviaResultCard?.(
+        round.guildId,
+        round.id,
+        round.leaseToken,
+        this.now(),
+      )) ?? false
+    );
+  }
   question(round: TriviaRound): TriviaQuestion | undefined {
     return this.catalog.get(round.questionId);
   }
@@ -311,18 +372,44 @@ export class TriviaService {
   }
 }
 
+export const buildTriviaResultsCard = (
+  results: Pick<TriviaResults, 'participantCount' | 'correctCount'>,
+): EngagementCard =>
+  buildEngagementCard({
+    title: 'MuthaShip trivia results',
+    description: `Round closed. ${results.correctCount} of ${results.participantCount} participants answered correctly.`,
+  });
+
 export class TriviaExpiryScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
   constructor(
     private readonly dependencies: {
-      readonly service: Pick<TriviaService, 'recover'>;
+      readonly service: Pick<
+        TriviaService,
+        | 'claimResultCards'
+        | 'results'
+        | 'completeResultCard'
+        | 'releaseResultCard'
+      >;
+      readonly gateway: {
+        post(round: ClaimedTriviaRound, results: TriviaResults): Promise<void>;
+      };
       readonly intervalMs?: number;
+      readonly logger?: {
+        warn(fields: Record<string, string>, message: string): void;
+      };
     },
   ) {}
   start(): void {
     if (!this.timer)
       this.timer = setInterval(
-        () => void this.tick(),
+        () =>
+          void this.tick().catch(() =>
+            this.dependencies.logger?.warn(
+              { operation: 'trivia_expiry_tick' },
+              'Trivia expiry tick failed.',
+            ),
+          ),
         this.dependencies.intervalMs ?? 15_000,
       );
   }
@@ -333,6 +420,18 @@ export class TriviaExpiryScheduler {
     }
   }
   async tick(): Promise<void> {
-    await this.dependencies.service.recover();
+    for (const round of await this.dependencies.service.claimResultCards()) {
+      try {
+        const results = await this.dependencies.service.results(
+          round.guildId,
+          round.id,
+        );
+        await this.dependencies.gateway.post(round, results);
+        await this.dependencies.service.completeResultCard(round);
+      } catch {
+        await this.dependencies.service.releaseResultCard(round);
+      }
+    }
   }
 }
+import { buildEngagementCard, type EngagementCard } from './discord-ui.js';
