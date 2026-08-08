@@ -9,6 +9,12 @@ describe('HttpSleeperService', () => {
     expect(result[0]).toMatchObject({ rosterId: 1, ownerId: 'u1' });
   });
 
+  it('accepts unassigned pre-draft rosters', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify([{ roster_id: 1, owner_id: null }]), { status: 200 }));
+    const result = await new HttpSleeperService({ fetch }).getStandings('123456789');
+    expect(result[0]).toMatchObject({ rosterId: 1, ownerId: 'unassigned' });
+  });
+
   it('maps rate limits', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('', { status: 429 }));
     await expect(new HttpSleeperService({ fetch }).getStandings('123456789')).rejects.toMatchObject({ kind: 'rate-limited' });
