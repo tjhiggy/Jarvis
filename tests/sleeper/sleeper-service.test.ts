@@ -4,9 +4,11 @@ import { SleeperServiceError } from '../../src/sleeper/sleeper-types.js';
 
 describe('HttpSleeperService', () => {
   it('retrieves validated roster standings', async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify([{ roster_id: 1, owner_id: 'u1' }]), { status: 200 }));
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ roster_id: 1, owner_id: 'u1' }]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ user_id: 'u1', display_name: 'Captain Jim' }]), { status: 200 }));
     const result = await new HttpSleeperService({ fetch }).getStandings('123456789');
-    expect(result[0]).toMatchObject({ rosterId: 1, ownerId: 'u1' });
+    expect(result[0]).toMatchObject({ rosterId: 1, ownerId: 'u1', ownerName: 'Captain Jim' });
   });
 
   it('accepts unassigned pre-draft rosters', async () => {

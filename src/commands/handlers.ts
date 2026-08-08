@@ -220,7 +220,7 @@ const handleFantasy = async (
   try {
     const standings = await dependencies.sleeper.service.getStandings(dependencies.sleeper.leagueId);
     const lines = standings.map((standing, index) =>
-      `${index + 1}. Roster ${standing.rosterId} • ${standing.wins}-${standing.losses}-${standing.ties} • ${standing.pointsFor.toFixed(2)} PF`,
+      `${index + 1}. ${standing.ownerName ?? `Roster ${standing.rosterId}`} • ${standing.wins}-${standing.losses}-${standing.ties} • ${standing.pointsFor.toFixed(2)} PF`,
     );
     await replySafely(interaction, lines.length === 0 ? 'Sleeper returned no standings yet.' : `MuthaShip league standings (read-only)\n${lines.join('\n')}`, true);
   } catch {

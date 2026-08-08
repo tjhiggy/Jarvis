@@ -6,6 +6,7 @@ export interface SleeperStanding {
   readonly ties: number;
   readonly pointsFor: number;
   readonly pointsAgainst: number;
+  readonly ownerName?: string;
 }
 
 export interface SleeperService {
