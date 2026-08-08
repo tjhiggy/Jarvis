@@ -76,6 +76,9 @@ export interface RecapGateway {
 }
 export class RecapScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
+  private lastRunValue:
+    | { status: 'success' | 'error'; at: Date }
+    | undefined;
   constructor(
     private readonly dependencies: Readonly<{
       guildId: string;
@@ -90,12 +93,21 @@ export class RecapScheduler {
           | 'completeRecapRun'
           | 'releaseRecapRun'
         >
-      >;
+      > &
+        Pick<EngagementRepository, 'engagementPaused'>;
       service: RecapService;
       gateway: RecapGateway;
       now?: () => Date;
     }>,
   ) {}
+  get healthy(): boolean {
+    return this.timer !== undefined;
+  }
+  get lastRun():
+    | Readonly<{ status: 'success' | 'error'; at: Date }>
+    | undefined {
+    return this.lastRunValue;
+  }
   start(): void {
     if (!this.timer) this.timer = setInterval(() => void this.tick(), 60_000);
   }
@@ -107,47 +119,52 @@ export class RecapScheduler {
   }
   async tick(): Promise<void> {
     const now = (this.dependencies.now ?? (() => new Date()))();
-    if (!due(now, this.dependencies.schedule, this.dependencies.timezone))
-      return;
-    if (
-      !(await this.dependencies.repository.recapEnabled(
-        this.dependencies.guildId,
-      ))
-    )
-      return;
-    const window = { start: new Date(now.getTime() - weekMs), end: now };
-    const key = `weekly-recap:${day(window.end)}`;
-    const leaseToken = await this.dependencies.repository.claimRecapRun(
-      this.dependencies.guildId,
-      key,
-      now,
-    );
-    if (leaseToken === undefined) return;
     try {
-      const recap = await this.dependencies.service.preview(
-        this.dependencies.guildId,
-        window,
-      );
-      if (recap.status === 'unavailable') return;
-      await this.dependencies.gateway.post(
-        this.dependencies.channelId,
-        recap.content!,
-      );
-      await this.dependencies.repository.completeRecapRun(
+      if (!due(now, this.dependencies.schedule, this.dependencies.timezone))
+        return;
+      if (await this.dependencies.repository.engagementPaused?.(this.dependencies.guildId))
+        return;
+      if (
+        !(await this.dependencies.repository.recapEnabled(
+          this.dependencies.guildId,
+        ))
+      )
+        return;
+      const window = { start: new Date(now.getTime() - weekMs), end: now };
+      const key = `weekly-recap:${day(window.end)}`;
+      const leaseToken = await this.dependencies.repository.claimRecapRun(
         this.dependencies.guildId,
         key,
-        leaseToken,
         now,
       );
+      if (leaseToken === undefined) return;
+      try {
+        const recap = await this.dependencies.service.preview(
+          this.dependencies.guildId,
+          window,
+        );
+        if (recap.status === 'unavailable') return;
+        await this.dependencies.gateway.post(
+          this.dependencies.channelId,
+          recap.content!,
+        );
+        await this.dependencies.repository.completeRecapRun(
+          this.dependencies.guildId,
+          key,
+          leaseToken,
+          now,
+        );
+        this.lastRunValue = { status: 'success', at: now };
+      } finally {
+        await this.dependencies.repository.releaseRecapRun(
+          this.dependencies.guildId,
+          key,
+          leaseToken,
+          now,
+        );
+      }
     } catch {
-      // Release below makes delivery failures retryable on a later tick.
-    } finally {
-      await this.dependencies.repository.releaseRecapRun(
-        this.dependencies.guildId,
-        key,
-        leaseToken,
-        now,
-      );
+      this.lastRunValue = { status: 'error', at: now };
     }
   }
 }

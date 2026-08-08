@@ -13,6 +13,9 @@ export interface EventReminderGateway {
 }
 export class EventScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
+  private lastRunValue:
+    | { status: 'success' | 'error'; at: Date }
+    | undefined;
   constructor(
     private readonly dependencies: Readonly<{
       repository: Required<
@@ -29,6 +32,14 @@ export class EventScheduler {
       intervalMs?: number;
     }>,
   ) {}
+  get healthy(): boolean {
+    return this.timer !== undefined;
+  }
+  get lastRun():
+    | Readonly<{ status: 'success' | 'error'; at: Date }>
+    | undefined {
+    return this.lastRunValue;
+  }
   start(): void {
     if (!this.timer)
       this.timer = setInterval(
@@ -44,11 +55,12 @@ export class EventScheduler {
   }
   async tick(): Promise<void> {
     const now = (this.dependencies.now ?? (() => new Date()))();
-    for (const reminder of await this.dependencies.repository.claimDueEventReminders(
-      now,
-      100,
-    )) {
-      try {
+    try {
+      for (const reminder of await this.dependencies.repository.claimDueEventReminders(
+        now,
+        100,
+      )) {
+        try {
         await this.dependencies.gateway.deliver({
           ...reminder,
           allowedMentions: { parse: [], repliedUser: false },
@@ -60,7 +72,7 @@ export class EventScheduler {
           reminder.leaseToken,
           now,
         );
-      } catch {
+        } catch {
         await this.dependencies.repository.markEventReminderFailed(
           reminder.eventId,
           reminder.guildId,
@@ -68,7 +80,12 @@ export class EventScheduler {
           reminder.leaseToken,
           now,
         );
+        }
       }
+      this.lastRunValue = { status: 'success', at: now };
+    } catch (error) {
+      this.lastRunValue = { status: 'error', at: now };
+      throw error;
     }
   }
 }

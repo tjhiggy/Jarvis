@@ -43,6 +43,8 @@ import type { RecapService } from '../engagement/recap.js';
 import type { EngagementRepository } from '../engagement/storage.js';
 import { handleTriviaCommand } from './activity.js';
 import type { TriviaService } from '../engagement/activity.js';
+import { handleEngagementCommand } from './engagement.js';
+import type { EngagementSchedulerHealth } from '../engagement/health.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -136,6 +138,20 @@ export interface CommandDependencies {
     Pick<EngagementRepository, 'setRecapEnabled'>
   >;
   readonly triviaService?: TriviaService;
+  readonly engagementHealth?: Readonly<{
+    repository: Required<
+      Pick<
+        EngagementRepository,
+        | 'engagementPaused'
+        | 'setEngagementPaused'
+        | 'healthCheck'
+        | 'statusCounts'
+      >
+    >;
+    schedulers?: Readonly<
+      Record<string, EngagementSchedulerHealth | undefined>
+    >;
+  }>;
 }
 
 const dmMessage = 'This command is available only in a server channel.';
@@ -275,6 +291,15 @@ export const handleCommand = async (
         ...(dependencies.triviaService === undefined
           ? {}
           : { service: dependencies.triviaService }),
+      });
+      return;
+    case 'engagement':
+      await handleEngagementCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        ...(dependencies.engagementHealth === undefined
+          ? {}
+          : dependencies.engagementHealth),
       });
       return;
     case 'help':

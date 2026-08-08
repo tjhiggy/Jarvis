@@ -119,6 +119,11 @@ interface TriviaSubcommandDefinition {
   readonly name: 'start' | 'opt-out' | 'opt-in';
   readonly description: string;
 }
+interface EngagementSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'status' | 'pause' | 'resume';
+  readonly description: string;
+}
 
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
@@ -135,7 +140,8 @@ export type CommandOptionDefinition =
   | EventOptionDefinition
   | EventSubcommandDefinition
   | RecapSubcommandDefinition
-  | TriviaSubcommandDefinition;
+  | TriviaSubcommandDefinition
+  | EngagementSubcommandDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -156,7 +162,8 @@ export interface CommandDefinition {
     | 'suggestion'
     | 'event'
     | 'recap'
-    | 'trivia';
+    | 'trivia'
+    | 'engagement';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -666,6 +673,16 @@ export const createCommandDefinitions = (
           name: 'opt-in',
           description: 'Allow future trivia participation in this guild.',
         },
+      ],
+    },
+    {
+      type: 1,
+      name: 'engagement',
+      description: 'View or control engagement scheduling as an administrator.',
+      options: [
+        { type: 1, name: 'status', description: 'Show safe engagement health.' },
+        { type: 1, name: 'pause', description: 'Pause engagement scheduling.' },
+        { type: 1, name: 'resume', description: 'Resume engagement scheduling.' },
       ],
     },
   );

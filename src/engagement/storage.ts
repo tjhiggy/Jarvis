@@ -14,6 +14,7 @@ import type {
   TriviaResults,
   TriviaRound,
 } from './activity.js';
+import type { EngagementRecordCounts } from './health.js';
 
 export type EngagementIdempotencyScope = 'interaction' | 'scheduled-job';
 
@@ -21,6 +22,25 @@ export class EngagementRecordConflictError extends Error {}
 export class EngagementOptOutError extends Error {}
 
 export interface EngagementRepository {
+  engagementPaused?(guildId: string): Promise<boolean>;
+  setEngagementPaused?(
+    guildId: string,
+    paused: boolean,
+    actorUserId: string,
+    updatedAt: Date,
+  ): Promise<void>;
+  operationalAudit?(
+    guildId: string,
+    limit: number,
+  ): Promise<
+    readonly {
+      guildId: string;
+      actorUserId: string;
+      operation: 'engagement_pause' | 'engagement_resume';
+      createdAt: Date;
+    }[]
+  >;
+  statusCounts?(guildId: string): Promise<EngagementRecordCounts>;
   recapSource?(
     guildId: string,
     start: Date,

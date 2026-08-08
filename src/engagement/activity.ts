@@ -383,6 +383,9 @@ export const buildTriviaResultsCard = (
 export class TriviaExpiryScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
   private activeTick: Promise<void> | undefined;
+  private lastRunValue:
+    | { status: 'success' | 'error'; at: Date }
+    | undefined;
   constructor(
     private readonly dependencies: {
       readonly service: Pick<
@@ -401,6 +404,14 @@ export class TriviaExpiryScheduler {
       };
     },
   ) {}
+  get healthy(): boolean {
+    return this.timer !== undefined;
+  }
+  get lastRun():
+    | Readonly<{ status: 'success' | 'error'; at: Date }>
+    | undefined {
+    return this.lastRunValue;
+  }
   start(): void {
     if (!this.timer)
       this.timer = setInterval(
@@ -422,9 +433,17 @@ export class TriviaExpiryScheduler {
   }
   async tick(): Promise<void> {
     if (this.activeTick) return this.activeTick;
-    this.activeTick = this.runTick().finally(() => {
-      this.activeTick = undefined;
-    });
+    this.activeTick = this.runTick()
+      .then(() => {
+        this.lastRunValue = { status: 'success', at: new Date() };
+      })
+      .catch((error: unknown) => {
+        this.lastRunValue = { status: 'error', at: new Date() };
+        throw error;
+      })
+      .finally(() => {
+        this.activeTick = undefined;
+      });
     return this.activeTick;
   }
   private async runTick(): Promise<void> {

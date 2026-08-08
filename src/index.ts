@@ -452,7 +452,7 @@ export const createApplication = async (
           await eventScheduler.stop();
         } catch (error) {
           logger?.warn(
-            { error },
+            projectOperationalError(error, 'event_scheduler_shutdown'),
             'Event scheduler stop failed during shutdown.',
           );
         }
@@ -462,7 +462,7 @@ export const createApplication = async (
           await recapScheduler.stop();
         } catch (error) {
           logger?.warn(
-            { error },
+            projectOperationalError(error, 'recap_scheduler_shutdown'),
             'Recap scheduler stop failed during shutdown.',
           );
         }
@@ -472,7 +472,7 @@ export const createApplication = async (
           await triviaScheduler.stop();
         } catch (error) {
           logger?.warn(
-            { error },
+            projectOperationalError(error, 'trivia_scheduler_shutdown'),
             'Trivia scheduler stop failed during shutdown.',
           );
         }
@@ -483,7 +483,7 @@ export const createApplication = async (
           await pollScheduler.stop();
         } catch (error) {
           logger?.warn(
-            { error },
+            projectOperationalError(error, 'poll_scheduler_shutdown'),
             'Poll scheduler stop failed during shutdown.',
           );
         }
@@ -505,7 +505,7 @@ export const createApplication = async (
           await engagementRepository.closeConnection();
         } catch (error) {
           logger?.warn(
-            { error },
+            projectOperationalError(error, 'engagement_storage_shutdown'),
             'Engagement storage close failed during shutdown.',
           );
         }
@@ -834,6 +834,32 @@ export const createApplication = async (
                 >,
               }),
           ...(triviaService === undefined ? {} : { triviaService }),
+          ...(engagementRepository === undefined
+            ? {}
+            : {
+                engagementHealth: {
+                  repository: engagementRepository as Required<
+                    Pick<
+                      EngagementRepository,
+                      | 'engagementPaused'
+                      | 'setEngagementPaused'
+                      | 'healthCheck'
+                      | 'statusCounts'
+                    >
+                  >,
+                  schedulers: {
+                    get events() {
+                      return eventScheduler;
+                    },
+                    get recaps() {
+                      return recapScheduler;
+                    },
+                    get trivia() {
+                      return triviaScheduler;
+                    },
+                  },
+                },
+              }),
           ...(config.sleeper?.leagueId === undefined ||
           config.sleeper.leagueId === ''
             ? {}

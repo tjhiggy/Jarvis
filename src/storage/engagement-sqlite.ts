@@ -25,6 +25,7 @@ import {
   type EngagementIdempotencyScope,
   type EngagementRepository,
 } from '../engagement/storage.js';
+import type { EngagementRecordCounts } from '../engagement/health.js';
 
 interface IntroductionRow {
   id: string;
@@ -180,6 +181,82 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       events: count('engagement_events'),
       participantUserIds,
       botActivity,
+    };
+  }
+
+  async engagementPaused(guildId: string): Promise<boolean> {
+    this.ensureOpen();
+    return (
+      (this.database
+        .prepare('SELECT paused FROM engagement_preferences WHERE guild_id = ?')
+        .get(guildId) as { paused: number } | undefined)?.paused === 1
+    );
+  }
+
+  async setEngagementPaused(
+    guildId: string,
+    paused: boolean,
+    actorUserId: string,
+    updatedAt: Date,
+  ): Promise<void> {
+    this.ensureOpen();
+    const timestamp = milliseconds(updatedAt);
+    this.database.transaction(() => {
+      this.database
+        .prepare(
+          'INSERT INTO engagement_preferences (guild_id, paused, updated_at) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET paused = excluded.paused, updated_at = excluded.updated_at',
+        )
+        .run(guildId, paused ? 1 : 0, timestamp);
+      this.database
+        .prepare(
+          'INSERT INTO engagement_operational_audit (guild_id, actor_user_id, operation, created_at) VALUES (?, ?, ?, ?)',
+        )
+        .run(
+          guildId,
+          actorUserId,
+          paused ? 'engagement_pause' : 'engagement_resume',
+          timestamp,
+        );
+    })();
+  }
+
+  async operationalAudit(guildId: string, limit: number) {
+    this.ensureOpen();
+    if (!Number.isSafeInteger(limit) || limit < 1)
+      throw new RangeError('Operational audit limit must be positive.');
+    return (
+      this.database
+        .prepare(
+          'SELECT guild_id, actor_user_id, operation, created_at FROM engagement_operational_audit WHERE guild_id = ? ORDER BY created_at DESC, id DESC LIMIT ?',
+        )
+        .all(guildId, limit) as Array<{
+        guild_id: string;
+        actor_user_id: string;
+        operation: 'engagement_pause' | 'engagement_resume';
+        created_at: number;
+      }>
+    ).map((row) => ({
+      guildId: row.guild_id,
+      actorUserId: row.actor_user_id,
+      operation: row.operation,
+      createdAt: new Date(row.created_at),
+    }));
+  }
+
+  async statusCounts(guildId: string): Promise<EngagementRecordCounts> {
+    this.ensureOpen();
+    const count = (table: string): number =>
+      Number(
+        (this.database
+          .prepare(`SELECT count(*) AS count FROM ${table} WHERE guild_id = ?`)
+          .get(guildId) as { count: number }).count,
+      );
+    return {
+      introductions: count('engagement_introductions'),
+      suggestions: count('engagement_suggestions'),
+      events: count('engagement_events'),
+      rsvps: count('engagement_rsvps'),
+      triviaRounds: count('engagement_trivia_rounds'),
     };
   }
 
@@ -899,7 +976,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return this.database.transaction(() => {
       const candidates = this.database
         .prepare(
-          "SELECT r.event_id, r.guild_id, r.user_id, e.channel_id, e.title, e.scheduled_at FROM engagement_rsvps r JOIN engagement_events e ON e.guild_id = r.guild_id AND e.id = r.event_id WHERE e.status = 'scheduled' AND r.response = 'yes' AND r.reminder_opt_in = 1 AND r.reminder_state = 'pending' AND e.scheduled_at <= ? AND (r.reminder_claimed_at IS NULL OR r.reminder_claimed_at < ?) ORDER BY e.scheduled_at ASC, r.updated_at ASC, r.user_id ASC LIMIT ?",
+          "SELECT r.event_id, r.guild_id, r.user_id, e.channel_id, e.title, e.scheduled_at FROM engagement_rsvps r JOIN engagement_events e ON e.guild_id = r.guild_id AND e.id = r.event_id LEFT JOIN engagement_preferences p ON p.guild_id = r.guild_id WHERE e.status = 'scheduled' AND r.response = 'yes' AND r.reminder_opt_in = 1 AND r.reminder_state = 'pending' AND coalesce(p.paused, 0) = 0 AND e.scheduled_at <= ? AND (r.reminder_claimed_at IS NULL OR r.reminder_claimed_at < ?) ORDER BY e.scheduled_at ASC, r.updated_at ASC, r.user_id ASC LIMIT ?",
         )
         .all(claimedAt, staleBefore, limit) as Array<{
         event_id: string;
@@ -1356,6 +1433,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         );
         this.recordMigration(16);
       }
+      if (!this.hasMigration(17)) {
+        this.database.exec(
+          "CREATE TABLE IF NOT EXISTS engagement_preferences (guild_id TEXT PRIMARY KEY, paused INTEGER NOT NULL CHECK (paused IN (0, 1)), updated_at INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS engagement_operational_audit (id INTEGER PRIMARY KEY, guild_id TEXT NOT NULL, actor_user_id TEXT NOT NULL, operation TEXT NOT NULL CHECK (operation IN ('engagement_pause', 'engagement_resume')), created_at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS engagement_operational_audit_guild ON engagement_operational_audit (guild_id, created_at DESC, id DESC);",
+        );
+        this.recordMigration(17);
+      }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
       );
@@ -1553,6 +1636,8 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       CREATE TABLE IF NOT EXISTS engagement_idempotency_keys (guild_id TEXT NOT NULL, scope TEXT NOT NULL CHECK (scope IN ('interaction', 'scheduled-job')), key TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (guild_id, scope, key));
       CREATE TABLE IF NOT EXISTS engagement_recap_preferences (guild_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)), updated_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS engagement_recap_runs (guild_id TEXT NOT NULL, run_key TEXT NOT NULL, state TEXT NOT NULL CHECK (state IN ('pending', 'completed')), claimed_at INTEGER NOT NULL, lease_token TEXT, completed_at INTEGER, PRIMARY KEY (guild_id, run_key));
+      CREATE TABLE IF NOT EXISTS engagement_preferences (guild_id TEXT PRIMARY KEY, paused INTEGER NOT NULL CHECK (paused IN (0, 1)), updated_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS engagement_operational_audit (id INTEGER PRIMARY KEY, guild_id TEXT NOT NULL, actor_user_id TEXT NOT NULL, operation TEXT NOT NULL CHECK (operation IN ('engagement_pause', 'engagement_resume')), created_at INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS engagement_introductions_status_retention ON engagement_introductions (status, updated_at, id);
       CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';
       CREATE INDEX IF NOT EXISTS engagement_suggestions_status_retention ON engagement_suggestions (status, updated_at, id);
@@ -1561,6 +1646,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       CREATE INDEX IF NOT EXISTS engagement_rsvps_guild_user ON engagement_rsvps (guild_id, user_id, event_id);
       CREATE INDEX IF NOT EXISTS engagement_idempotency_retention ON engagement_idempotency_keys (created_at, key);
       CREATE INDEX IF NOT EXISTS engagement_opt_outs_retention ON engagement_opt_outs (opted_out_at, guild_id, user_id);
+      CREATE INDEX IF NOT EXISTS engagement_operational_audit_guild ON engagement_operational_audit (guild_id, created_at DESC, id DESC);
     `);
   }
   private assertNotOptedOut(guildId: string, userId: string): void {
