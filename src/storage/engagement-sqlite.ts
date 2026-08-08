@@ -241,6 +241,20 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return row === undefined ? undefined : toSuggestion(row);
   }
 
+  async findActiveSuggestionByContent(
+    guildId: string,
+    title: string,
+    description: string,
+  ): Promise<Suggestion | undefined> {
+    this.ensureOpen();
+    const row = this.database
+      .prepare(
+        "SELECT * FROM engagement_suggestions WHERE guild_id = ? AND title = ? AND description = ? AND status != 'archived' ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(guildId, title, description) as SuggestionRow | undefined;
+    return row === undefined ? undefined : toSuggestion(row);
+  }
+
   async updateSuggestionStatus(
     guildId: string,
     id: string,

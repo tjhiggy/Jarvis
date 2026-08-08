@@ -308,7 +308,7 @@ handling.
 
 ## Engagement V1
 
-The Muthaship engagement loop starts with guided introductions. When enabled,
+The Muthaship engagement loop includes guided introductions and suggestions. When enabled,
 `/introduce preview` accepts a bounded name, interests, and reason for coming
 aboard, returns a private preview, and persists or posts nothing until the
 member runs `/introduce confirm` with that preview ID. `/introduce cancel`
@@ -318,8 +318,19 @@ discards the private draft. Confirmed cards post only to
 bot-owned card. Members who opted out cannot submit; active duplicates and
 rapid repeat attempts are rejected. On retention expiry, Jarvis deletes its
 bot-owned card before removing the corresponding SQLite record; if Discord
-cannot delete the card, it retains the record for a later retry. Suggestions, events, recaps, and activity
-remain unimplemented. The complete contract, including opt-out, retention, and
+cannot delete the card, it retains the record for a later retry.
+
+`/suggest preview title:<...> description:<...>` returns a private preview and
+posts nothing until `/suggest confirm draft_id:<id>` is run. Confirmed cards
+post only to `ENGAGEMENT_SUGGESTION_CHANNEL_ID`, with mentions disabled and no
+GitHub issue creation. Configured engagement administrators can acknowledge,
+defer, resolve, or archive a bot-owned suggestion card; these controls update
+only Jarvis SQLite state and expire after 14 days. Before any admin triage, the
+author may run `/suggestion delete id:<id>` to archive their own suggestion.
+Archiving deliberately preserves history for the configured retention period.
+For external tooling, export this retained data through an approved read-only
+triage process, rather than granting the bot write access to GitHub. Events,
+recaps, and activity remain unimplemented. The complete contract, including opt-out, retention, and
 deletion rules, is in the
 [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md).
 

@@ -31,6 +31,11 @@ import {
   handleIntroductionDeletionCommand,
 } from './introduction.js';
 import type { IntroductionService } from '../engagement/introductions.js';
+import type { SuggestionService } from '../engagement/suggestions.js';
+import {
+  handleSuggestionCommand,
+  handleSuggestionDeletionCommand,
+} from './suggestion.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -70,7 +75,7 @@ export interface CommandDependencies {
     }>;
     engagement?: Readonly<{
       enabled: boolean;
-      channels: Readonly<{ introductionId: string }>;
+      channels: Readonly<{ introductionId: string; suggestionId: string }>;
     }>;
   }>;
   readonly conversationService: Readonly<{
@@ -106,6 +111,7 @@ export interface CommandDependencies {
     scheduler: Pick<PollScheduler, 'healthy'>;
   }>;
   readonly introductionService?: IntroductionService;
+  readonly suggestionService?: SuggestionService;
 }
 
 const dmMessage = 'This command is available only in a server channel.';
@@ -197,6 +203,21 @@ export const handleCommand = async (
       await handleIntroductionDeletionCommand(
         interaction,
         dependencies.introductionService,
+      );
+      return;
+    case 'suggest':
+      await handleSuggestionCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId: dependencies.config.engagement?.channels.suggestionId ?? '',
+        ...(dependencies.suggestionService === undefined
+          ? {}
+          : { service: dependencies.suggestionService }),
+      });
+      return;
+    case 'suggestion':
+      await handleSuggestionDeletionCommand(
+        interaction,
+        dependencies.suggestionService,
       );
       return;
     case 'help':

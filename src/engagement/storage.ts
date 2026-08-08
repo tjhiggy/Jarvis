@@ -49,6 +49,11 @@ export interface EngagementRepository {
     guildId: string,
     suggestionId: string,
   ): Promise<Suggestion | undefined>;
+  findActiveSuggestionByContent(
+    guildId: string,
+    title: string,
+    description: string,
+  ): Promise<Suggestion | undefined>;
   updateSuggestionStatus(
     guildId: string,
     suggestionId: string,

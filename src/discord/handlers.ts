@@ -1,5 +1,10 @@
 import { GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
 import type { PollController } from '../polls/poll-controller.js';
+import {
+  SuggestionServiceError,
+  type SuggestionModerationAction,
+  type SuggestionService,
+} from '../engagement/suggestions.js';
 import { isAllowedChannel } from './permissions.js';
 import {
   replySafely,
@@ -55,6 +60,9 @@ interface DiscordButtonInteraction extends DiscordInteraction, ReplyTarget {
     isThread?(): boolean;
   }> | null;
   readonly user: Readonly<{ id: string }>;
+  readonly member?: Readonly<{
+    roles?: Readonly<{ cache?: Readonly<{ has(roleId: string): boolean }> }>;
+  }> | null;
   readonly message: Readonly<{
     id: string;
     guildId: string | null;
@@ -81,6 +89,9 @@ export interface MessageHandlerDependencies {
   }>;
   readonly handleCommand: (interaction: unknown) => Promise<void>;
   readonly pollController?: PollController;
+  readonly suggestionService?: SuggestionService;
+  readonly engagementAdminRoleIds?: ReadonlySet<string>;
+  readonly suggestionChannelId?: string;
 }
 
 export interface DiscordHandlers {
@@ -128,13 +139,93 @@ export const createDiscordHandlers = (
         return;
       }
       try {
-        await handlePollButton(button, dependencies);
+        if (button.customId.trim().startsWith('suggestion:v1:')) {
+          await handleSuggestionButton(button, dependencies);
+        } else {
+          await handlePollButton(button, dependencies);
+        }
       } catch (error) {
         pollButtonDeduplicator.release(eventId);
         throw error;
       }
     },
   };
+};
+
+export const parseSuggestionCustomId = (
+  customId: string,
+):
+  | {
+      readonly suggestionId: string;
+      readonly action: SuggestionModerationAction;
+    }
+  | undefined => {
+  const match =
+    /^suggestion:v1:([a-zA-Z0-9-]{1,64}):(acknowledge|defer|resolve|archive)$/.exec(
+      customId.trim(),
+    );
+  return match === null
+    ? undefined
+    : {
+        suggestionId: match[1]!,
+        action: match[2]! as SuggestionModerationAction,
+      };
+};
+
+const handleSuggestionButton = async (
+  interaction: DiscordButtonInteraction,
+  dependencies: MessageHandlerDependencies,
+): Promise<void> => {
+  const parsed = parseSuggestionCustomId(interaction.customId);
+  const guildId = interaction.guildId?.trim();
+  const channelId = interaction.channelId.trim();
+  if (
+    parsed === undefined ||
+    dependencies.suggestionService === undefined ||
+    guildId === undefined ||
+    guildId === '' ||
+    channelId === '' ||
+    channelId !== dependencies.suggestionChannelId?.trim() ||
+    interaction.message.guildId?.trim() !== guildId ||
+    interaction.message.channelId.trim() !== channelId ||
+    interaction.message.author.id.trim() !== dependencies.botUserId.trim()
+  ) {
+    await replySafely(
+      interaction,
+      'This suggestion control is unavailable.',
+      true,
+    );
+    return;
+  }
+  const roleIds = new Set<string>();
+  for (const roleId of dependencies.engagementAdminRoleIds ?? []) {
+    if (interaction.member?.roles?.cache?.has(roleId)) roleIds.add(roleId);
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const updated = await dependencies.suggestionService.moderate({
+      guildId,
+      channelId,
+      moderatorUserId: interaction.user.id,
+      moderatorRoleIds: roleIds,
+      suggestionId: parsed.suggestionId,
+      action: parsed.action,
+      interactionId: interaction.id,
+    });
+    await interaction.editReply({
+      content: `Suggestion marked ${updated.status}.`,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  } catch (error) {
+    const message =
+      error instanceof SuggestionServiceError && error.code === 'forbidden'
+        ? 'Suggestion controls are restricted to configured MuthaShip administrators.'
+        : 'This suggestion control is unavailable.';
+    await interaction.editReply({
+      content: message,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  }
 };
 
 export const parsePollCustomId = (

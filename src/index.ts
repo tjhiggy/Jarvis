@@ -63,6 +63,11 @@ import {
 } from './engagement/introductions.js';
 import type { EngagementRepository } from './engagement/storage.js';
 import { SQLiteEngagementRepository } from './storage/engagement-sqlite.js';
+import {
+  SuggestionService,
+  type SuggestionGateway,
+} from './engagement/suggestions.js';
+import type { EngagementCard } from './engagement/discord-ui.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -93,6 +98,27 @@ interface IntroductionChannel {
   ): Promise<Readonly<{ id: string }>>;
   messages: Readonly<{ delete(messageId: string): Promise<unknown> }>;
 }
+
+interface SuggestionChannel {
+  send(payload: EngagementCard): Promise<Readonly<{ id: string }>>;
+}
+
+const createDefaultSuggestionGateway = (
+  client: RuntimeDiscordClient,
+): SuggestionGateway => ({
+  async post(channelId, card) {
+    const channel = await client.channels?.fetch(channelId);
+    if (!isSuggestionChannel(channel))
+      throw new Error('Configured suggestion channel is unavailable.');
+    return channel.send(card);
+  },
+});
+
+const isSuggestionChannel = (value: unknown): value is SuggestionChannel =>
+  typeof value === 'object' &&
+  value !== null &&
+  'send' in value &&
+  typeof value.send === 'function';
 
 const createDefaultIntroductionGateway = (
   client: RuntimeDiscordClient,
@@ -516,6 +542,30 @@ export const createApplication = async (
             ),
             createId: () => randomUUID(),
           });
+    const suggestionService =
+      engagementRepository === undefined
+        ? undefined
+        : new SuggestionService({
+            repository: engagementRepository,
+            gateway: createDefaultSuggestionGateway(client),
+            rateLimiter: new RateLimiter(
+              config.security.rateLimitRequests,
+              config.security.rateLimitWindowMs,
+            ),
+            createId: () => randomUUID(),
+            adminRoleIds: config.engagement.adminRoleIds,
+            audit: (event) =>
+              logger?.info(
+                {
+                  operation: event.operation,
+                  action: event.action,
+                  guildId: event.guildId,
+                  suggestionId: event.suggestionId,
+                  actorUserId: event.actorUserId,
+                },
+                'Suggestion moderation recorded.',
+              ),
+          });
     const cleanup = async (): Promise<void> => {
       try {
         await initializedStore.cleanup(
@@ -652,6 +702,7 @@ export const createApplication = async (
           },
           faq,
           ...(introductionService === undefined ? {} : { introductionService }),
+          ...(suggestionService === undefined ? {} : { suggestionService }),
           ...(config.sleeper?.leagueId === undefined ||
           config.sleeper.leagueId === ''
             ? {}
@@ -672,6 +723,13 @@ export const createApplication = async (
               }),
         }),
       ...(pollController === undefined ? {} : { pollController }),
+      ...(suggestionService === undefined
+        ? {}
+        : {
+            suggestionService,
+            engagementAdminRoleIds: config.engagement.adminRoleIds,
+            suggestionChannelId: config.engagement.channels.suggestionId,
+          }),
     });
 
     pollScheduler?.start();

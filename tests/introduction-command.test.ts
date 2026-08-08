@@ -317,6 +317,9 @@ class MemoryRepository implements EngagementRepository {
   async getSuggestion(): Promise<any> {
     return undefined;
   }
+  async findActiveSuggestionByContent(): Promise<any> {
+    return undefined;
+  }
   async updateSuggestionStatus(): Promise<any> {
     return undefined;
   }

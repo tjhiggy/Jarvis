@@ -81,6 +81,21 @@ interface IntroductionSubcommandDefinition {
   readonly options?: readonly IntroductionOptionDefinition[];
 }
 
+interface SuggestionOptionDefinition {
+  readonly type: 3;
+  readonly name: 'title' | 'description' | 'id' | 'draft_id';
+  readonly description: string;
+  readonly required: true;
+  readonly max_length: number;
+}
+
+interface SuggestionSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'confirm' | 'cancel' | 'preview' | 'delete';
+  readonly description: string;
+  readonly options?: readonly SuggestionOptionDefinition[];
+}
+
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
   | FaqTopicOptionDefinition
@@ -90,7 +105,9 @@ export type CommandOptionDefinition =
   | ReminderSubcommandDefinition
   | FantasySubcommandDefinition
   | IntroductionOptionDefinition
-  | IntroductionSubcommandDefinition;
+  | IntroductionSubcommandDefinition
+  | SuggestionOptionDefinition
+  | SuggestionSubcommandDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -106,7 +123,9 @@ export interface CommandDefinition {
     | 'poll-close'
     | 'fantasy'
     | 'introduce'
-    | 'introduction';
+    | 'introduction'
+    | 'suggest'
+    | 'suggestion';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -403,6 +422,83 @@ export const createCommandDefinitions = (
           description: 'Introduction ID to delete.',
           required: true,
           max_length: 128,
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'suggest',
+      description: 'Privately preview and post a crew suggestion.',
+      options: [
+        {
+          type: 1,
+          name: 'preview',
+          description: 'Create a private preview before posting.',
+          options: [
+            {
+              type: 3,
+              name: 'title',
+              description: 'Short suggestion title.',
+              required: true,
+              max_length: 120,
+            },
+            {
+              type: 3,
+              name: 'description',
+              description: 'Suggestion details.',
+              required: true,
+              max_length: 1000,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'confirm',
+          description: 'Post one private preview.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'cancel',
+          description: 'Discard one private preview.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'suggestion',
+      description: 'Manage your untriaged suggestion.',
+      options: [
+        {
+          type: 1,
+          name: 'delete',
+          description: 'Archive one untriaged suggestion.',
+          options: [
+            {
+              type: 3,
+              name: 'id',
+              description: 'Suggestion ID to archive.',
+              required: true,
+              max_length: 128,
+            },
+          ],
         },
       ],
     },
