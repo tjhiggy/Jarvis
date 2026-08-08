@@ -13,6 +13,7 @@ import type { ReminderScheduler } from '../reminders/reminder-scheduler.js';
 import type { ReminderStore } from '../reminders/reminder-store.js';
 import type { ReminderView } from '../reminders/reminder-types.js';
 import type { RuntimeIdentity } from '../config/runtime-identity.js';
+import type { SleeperService } from '../sleeper/sleeper-types.js';
 import { isAllowedChannel } from '../discord/access.js';
 import {
   allowedMentions,
@@ -89,6 +90,7 @@ export interface CommandDependencies {
     scheduler: Pick<ReminderScheduler, 'healthy'>;
   }>;
   readonly faq: FaqCatalog;
+  readonly sleeper?: Readonly<{ leagueId: string; service: SleeperService }>;
   readonly pollController?: PollController;
   readonly pollHealth?: Readonly<{
     store: Pick<PollStore, 'healthCheck'>;
@@ -162,6 +164,9 @@ export const handleCommand = async (
     case 'reminder':
       await handleReminder(interaction, dependencies);
       return;
+    case 'fantasy':
+      await handleFantasy(interaction, dependencies);
+      return;
     case 'poll':
       await handlePoll(interaction, dependencies);
       return;
@@ -197,6 +202,30 @@ const rejectDirectMessage = async (
   }
   await replySafely(interaction, dmMessage, true);
   return true;
+};
+
+const handleFantasy = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) return;
+  if (dependencies.sleeper === undefined) {
+    await replySafely(interaction, 'Sleeper league data is not configured on the MuthaShip.', true);
+    return;
+  }
+  if (interaction.options.getSubcommand() !== 'standings') {
+    await replySafely(interaction, 'Use `/fantasy standings` for the current read-only league standings.', true);
+    return;
+  }
+  try {
+    const standings = await dependencies.sleeper.service.getStandings(dependencies.sleeper.leagueId);
+    const lines = standings.map((standing, index) =>
+      `${index + 1}. Roster ${standing.rosterId} • ${standing.wins}-${standing.losses}-${standing.ties} • ${standing.pointsFor.toFixed(2)} PF`,
+    );
+    await replySafely(interaction, lines.length === 0 ? 'Sleeper returned no standings yet.' : `MuthaShip league standings (read-only)\n${lines.join('\n')}`, true);
+  } catch {
+    await replySafely(interaction, 'Sleeper league data is temporarily unavailable. Jarvis will not guess.', true);
+  }
 };
 
 const handleAsk = async (

@@ -60,13 +60,20 @@ interface ReminderSubcommandDefinition {
   readonly options?: readonly ReminderStringOptionDefinition[];
 }
 
+interface FantasySubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'standings';
+  readonly description: string;
+}
+
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
   | FaqTopicOptionDefinition
   | RequiredStringOptionDefinition
   | OptionalPollOptionDefinition
   | PollDurationOptionDefinition
-  | ReminderSubcommandDefinition;
+  | ReminderSubcommandDefinition
+  | FantasySubcommandDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -79,7 +86,8 @@ export interface CommandDefinition {
     | 'faq'
     | 'reminder'
     | 'poll'
-    | 'poll-close';
+    | 'poll-close'
+    | 'fantasy';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -209,6 +217,18 @@ export const createCommandDefinitions = (
               max_length: 12,
             },
           ],
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'fantasy',
+      description: 'Read-only Muthaship fantasy football data.',
+      options: [
+        {
+          type: 1,
+          name: 'standings',
+          description: 'Show current league standings.',
         },
       ],
     },
