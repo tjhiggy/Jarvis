@@ -426,14 +426,6 @@ export const createCommandDefinitions = (
           options: [
             {
               type: 3,
-              name: 'name',
-              description:
-                'Optional preferred name; defaults to your Discord display name.',
-              required: false,
-              max_length: 80,
-            },
-            {
-              type: 3,
               name: 'interests',
               description: 'A few interests to share.',
               required: true,
@@ -445,6 +437,14 @@ export const createCommandDefinitions = (
               description: 'What brings you aboard.',
               required: true,
               max_length: 500,
+            },
+            {
+              type: 3,
+              name: 'name',
+              description:
+                'Optional preferred name; defaults to your Discord display name.',
+              required: false,
+              max_length: 80,
             },
           ],
         },
