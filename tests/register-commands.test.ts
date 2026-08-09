@@ -72,6 +72,7 @@ describe('registerCommands', () => {
       'trivia',
       'engagement',
       'birthday',
+      'roles',
     ]);
     expect(JSON.stringify(calls[0]?.options.body)).not.toContain(
       'POLL_VOTER_SECRET',
@@ -133,6 +134,7 @@ describe('registerCommands', () => {
       'trivia',
       'engagement',
       'birthday',
+      'roles',
     ]);
     const payload = JSON.stringify(calls[0]?.options.body);
     expect(payload).not.toContain(voterSecret);

@@ -24,6 +24,7 @@ import {
   neutralizeDiscordMentions,
   removeBotMention,
 } from '../utils/mentions.js';
+import { roleMenuSelection, type RoleMenuChoice } from '../engagement/role-menus.js';
 
 export const discordGatewayIntents = Object.freeze([
   GatewayIntentBits.Guilds,
@@ -54,6 +55,7 @@ export interface DiscordMessage {
 export interface DiscordInteraction {
   isChatInputCommand(): boolean;
   isButton(): boolean;
+  isStringSelectMenu?(): boolean;
 }
 
 interface DiscordButtonInteraction extends DiscordInteraction, ReplyTarget {
@@ -103,6 +105,7 @@ export interface MessageHandlerDependencies {
   readonly eventChannelId?: string;
   readonly triviaService?: TriviaService;
   readonly activityChannelId?: string;
+  readonly roleMenuChoices?: readonly RoleMenuChoice[];
   readonly onPreviewActionError?: (
     event: Readonly<{
       kind: 'introduction' | 'suggestion';
@@ -150,6 +153,9 @@ export const createDiscordHandlers = (
         return;
       }
       if (!interaction.isButton()) {
+        if (interaction.isStringSelectMenu?.()) {
+          await handleRoleMenu(interaction as any, dependencies);
+        }
         return;
       }
       const button = interaction as DiscordButtonInteraction;
@@ -175,6 +181,37 @@ export const createDiscordHandlers = (
       }
     },
   };
+};
+
+const handleRoleMenu = async (
+  interaction: Readonly<{
+    customId: string;
+    values: readonly string[];
+    guildId: string | null;
+    user: { id: string };
+    member?: { roles?: { cache?: { has(roleId: string): boolean }; add(roleId: string): Promise<unknown>; remove(roleId: string): Promise<unknown> } } | null;
+    reply(payload: ReplyPayload): Promise<unknown>;
+  }>,
+  dependencies: MessageHandlerDependencies,
+): Promise<void> => {
+  const value = interaction.values[0];
+  const choice = value === undefined ? undefined : roleMenuSelection(dependencies.roleMenuChoices ?? [], value);
+  if (!interaction.customId.startsWith('roles:v1:') || !choice || interaction.guildId === null || !interaction.member?.roles) {
+    await interaction.reply({ content: 'This crew role menu is unavailable.', ephemeral: true, allowedMentions: { parse: [], repliedUser: false } });
+    return;
+  }
+  try {
+    const currentlyAssigned = interaction.member.roles.cache?.has(choice.roleId) ?? false;
+    if (currentlyAssigned) {
+      await interaction.member.roles.remove(choice.roleId);
+      await interaction.reply({ content: `Crew role **${choice.label}** removed.`, ephemeral: true, allowedMentions: { parse: [], repliedUser: false } });
+    } else {
+      await interaction.member.roles.add(choice.roleId);
+      await interaction.reply({ content: `Crew role **${choice.label}** assigned.`, ephemeral: true, allowedMentions: { parse: [], repliedUser: false } });
+    }
+  } catch {
+    await interaction.reply({ content: 'Jarvis could not update that crew role. Ask a MuthaShip administrator to verify role order and permissions.', ephemeral: true, allowedMentions: { parse: [], repliedUser: false } });
+  }
 };
 
 export const parsePreviewCustomId = (

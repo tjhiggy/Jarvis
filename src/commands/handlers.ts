@@ -49,6 +49,8 @@ import type { TriviaService } from '../engagement/activity.js';
 import { handleEngagementCommand } from './engagement.js';
 import type { EngagementSchedulerHealth } from '../engagement/health.js';
 import type { BirthdayService } from '../engagement/birthdays.js';
+import { buildEngagementCard, buildEngagementSelectMenu, toDiscordEngagementCard } from '../engagement/discord-ui.js';
+import type { RoleMenuChoice } from '../engagement/role-menus.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -106,6 +108,7 @@ export interface CommandDependencies {
       recapSchedule: string;
       retentionDays: number;
       adminRoleIds: ReadonlySet<string>;
+      roleMenuChoices?: readonly RoleMenuChoice[];
     }>;
   }>;
   readonly conversationService: Readonly<{
@@ -365,12 +368,15 @@ export const handleCommand = async (
       if (await rejectDirectMessage(interaction)) {
         return;
       }
-      await replySafely(
-        interaction,
-        helpMessage(pollsEnabled(dependencies)),
-        true,
-      );
+      await replySafely(interaction, helpMessage(pollsEnabled(dependencies)), true);
       return;
+    case 'roles': {
+      const choices = dependencies.config.engagement?.roleMenuChoices ?? [];
+      if (choices.length === 0) return replySafely(interaction, 'Self-service crew roles are not configured on the MuthaShip.', true);
+      const card = buildEngagementCard({ title: 'MuthaShip crew roles', description: 'Choose an optional role. Select the same role again to remove it.', components: [{ type: 'actionRow', components: [buildEngagementSelectMenu({ customId: 'roles:v1:select', placeholder: 'Choose a crew role', options: choices.map((choice) => ({ label: choice.label, value: choice.value })) })] }] });
+      await interaction.reply(toDiscordEngagementCard(card));
+      return;
+    }
     case 'status':
       if (await rejectDirectMessage(interaction)) {
         return;

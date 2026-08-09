@@ -999,6 +999,7 @@ export const createApplication = async (
           activityChannelId: config.engagement.channels.activityId,
           }),
       ...(birthdayService === undefined ? {} : { birthdayService }),
+      ...(config.engagement.roleMenuChoices === undefined ? {} : { roleMenuChoices: config.engagement.roleMenuChoices }),
       onPreviewActionError: (event) =>
         logger?.warn(
           {

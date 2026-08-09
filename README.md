@@ -30,7 +30,7 @@ enhancements.
 
 | Verified capability                                                                                                                                                                                     | Current boundary                                                                                                                                                                         |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, `/introduce`, `/suggest`, `/event`, `/game-night`, `/lfg`, `/recap`, `/trivia`, `/engagement`, and read-only `/fantasy standings`, plus direct mentions | Engagement V1 provides introductions, suggestions, events/RSVP, low-friction game nights, crew matchmaking signals, weekly recaps, and trivia only in their configured channels; administrative controls require configured engagement roles |
+| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, `/introduce`, `/suggest`, `/event`, `/game-night`, `/lfg`, `/recap`, `/trivia`, `/roles`, `/engagement`, and read-only `/fantasy standings`, plus direct mentions | Engagement V1 provides introductions, suggestions, events/RSVP, low-friction game nights, crew matchmaking signals, weekly recaps, trivia, and optional self-service crew roles only in their configured channels; administrative controls require configured engagement roles |
 | Optional `/poll` and `/poll-close` commands                                                                                                                                                             | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls                                                           |
 | Short conversation context stored in SQLite                                                                                                                                                             | Isolated by guild and channel or thread; not encrypted by the application                                                                                                                |
 | Local Ollama and OpenAI Responses providers                                                                                                                                                             | Exactly one provider is selected at startup                                                                                                                                              |
@@ -39,7 +39,7 @@ enhancements.
 | Local responses for clearly unsupported action requests                                                                                                                                                 | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                                                                        |
 | Native Node.js and hardened Docker Compose deployment paths                                                                                                                                             | One active Jarvis process and one SQLite database are the supported topology                                                                                                             |
 
-Jarvis does not moderate Discord, change roles or channels, edit content owned
+Jarvis does not moderate Discord, create roles, change channels, or edit content owned
 by others, execute shell commands, access arbitrary files, write to GitHub, or
 grant itself tools. The contracts in `src/extensions/contracts.ts` are inert
 design seams. Calling them "integrations" would be marketing with a fake
@@ -282,7 +282,7 @@ unless duplicate replies are somehow your product strategy.
 ## Security and data
 
 The current release has an explicit no-server-mutation boundary. Jarvis cannot
-modify pre-existing Discord content, roles, channels, permissions, members,
+modify pre-existing Discord content, create or manage arbitrary roles, channels, permissions, members,
 server settings, or webhooks. It creates and edits only its own poll messages
 when polls are enabled. Three deliberate state changes remain:
 
