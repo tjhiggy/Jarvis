@@ -31,9 +31,10 @@ describe('HttpSleeperService', () => {
   it('retrieves validated weekly matchups and maps owner names', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify([
-        { roster_id: 1, matchup_id: 7, owner_id: 'u1', points: 112.5 },
-        { roster_id: 2, matchup_id: 7, owner_id: 'u2', points: 98.25 },
+        { roster_id: 1, matchup_id: 7, points: 112.5 },
+        { roster_id: 2, matchup_id: 7, points: 98.25 },
       ]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ roster_id: 1, owner_id: 'u1' }, { roster_id: 2, owner_id: 'u2' }]), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify([
         { user_id: 'u1', display_name: 'Captain Jim' },
       ]), { status: 200 }));
@@ -48,6 +49,7 @@ describe('HttpSleeperService', () => {
   it('returns safe unassigned matchups before the draft', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify([{ roster_id: 1, matchup_id: null }]), { status: 200 }))
+      .mockResolvedValueOnce(new Response('[]', { status: 200 }))
       .mockResolvedValueOnce(new Response('[]', { status: 200 }));
     const result = await new HttpSleeperService({ fetch }).getMatchups('123456789', 1);
     expect(result[0]).toMatchObject({ rosterId: 1, matchupId: null, ownerId: 'unassigned', points: 0 });

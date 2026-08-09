@@ -61,10 +61,12 @@ export class HttpSleeperService implements SleeperService {
       const payload: unknown = await response.json();
       if (!Array.isArray(payload)) throw new SleeperServiceError('invalid-data', 'Sleeper returned invalid matchup data.');
       const matchups = payload.map(parseMatchup);
+      const rosterOwners = await this.getRosterOwners(leagueId, controller.signal);
       const names = await this.getOwnerNames(leagueId, controller.signal);
       return matchups.map((matchup) => {
-        const ownerName = names.get(matchup.ownerId);
-        return ownerName === undefined ? matchup : { ...matchup, ownerName };
+        const ownerId = matchup.ownerId === 'unassigned' ? (rosterOwners.get(matchup.rosterId) ?? 'unassigned') : matchup.ownerId;
+        const ownerName = names.get(ownerId);
+        return ownerName === undefined ? { ...matchup, ownerId } : { ...matchup, ownerId, ownerName };
       });
     } catch (error) {
       if (error instanceof SleeperServiceError) throw error;
@@ -89,6 +91,26 @@ export class HttpSleeperService implements SleeperService {
         }
       }
       return names;
+    } catch {
+      return new Map();
+    }
+  }
+
+  private async getRosterOwners(leagueId: string, signal: AbortSignal): Promise<ReadonlyMap<number, string>> {
+    try {
+      const response = await this.http.fetch(`${apiBaseUrl}/league/${encodeURIComponent(leagueId)}/rosters`, { signal });
+      if (!response.ok) return new Map();
+      const payload: unknown = await response.json();
+      if (!Array.isArray(payload)) return new Map();
+      const owners = new Map<number, string>();
+      for (const value of payload) {
+        if (typeof value !== 'object' || value === null) continue;
+        const item = value as Record<string, unknown>;
+        if (typeof item.roster_id === 'number' && typeof item.owner_id === 'string' && item.owner_id.trim() !== '') {
+          owners.set(item.roster_id, item.owner_id);
+        }
+      }
+      return owners;
     } catch {
       return new Map();
     }
