@@ -200,6 +200,33 @@ not reposted because a duplicate public reminder is worse than a little
 ambiguity. For persistent store failure, stop duplicate processes, restore local
 database access, then restart gracefully. Do not edit SQLite rows manually.
 
+## Engagement scheduler is paused, unhealthy, or did not post
+
+**Likely cause.** Engagement is paused for the guild, its configured destination
+is unavailable, recap is disabled or lacks a valid schedule, Discord delivery
+failed, or SQLite cannot acquire the local database.
+
+**Safe diagnosis.** A configured administrator runs `/engagement status` and
+checks only the returned aggregate scheduler/database state and content-free
+logs. Confirm one process, the feature's exact configured channel, and minimum
+channel permissions. Do not paste engagement text, RSVP reasons, member IDs,
+or database rows into a ticket.
+
+**Resolution.** Use `/engagement pause` during an unsafe-delivery incident,
+restore the minimum channel or SQLite access, then `/engagement resume` and
+verify status. Do not manually repost a recap/result or edit SQLite rows. For a
+restore or rollback, follow the [Engagement runbook](ENGAGEMENT_RUNBOOK.md).
+
+## Engagement feature or command is unavailable
+
+**Likely cause.** `ENGAGEMENT_ENABLED` is false, the feature's own destination
+channel is blank, administrator roles are missing, or definitions were not
+registered after deployment.
+
+**Resolution.** Correct only the required configuration, restart the single
+process, and run `npm run register-commands` in the intended development guild.
+Grant neither privileged intents nor Discord Administrator as a shortcut.
+
 ## Responses are long or arrive in several messages
 
 **Likely cause.** The response approaches Discord's message limit. Jarvis caps

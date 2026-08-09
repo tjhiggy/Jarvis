@@ -85,6 +85,19 @@ $requiredReadmeLinks = @(
   'docs/SECURITY_MODEL.md'
   'docs/TROUBLESHOOTING.md'
   'docs/extensions/README.md'
+  'docs/ENGAGEMENT_PRODUCT_SPEC.md'
+)
+$engagementProductSpecRelativePath = 'docs/ENGAGEMENT_PRODUCT_SPEC.md'
+$requiredEngagementIssueNumbers = @(16, 18, 27, 28, 30, 43)
+$requiredEngagementCommands = @(
+  '/introduce'
+  '/suggest'
+  '/event create'
+  '/event list'
+  '/event details'
+  '/event cancel'
+  '/recap preview'
+  '/trivia start'
 )
 $errors = @()
 
@@ -599,6 +612,25 @@ foreach ($requiredLink in $requiredReadmeLinks) {
   $escapedLink = [regex]::Escape($requiredLink).Replace('/', '[/\\]')
   if ($readmeContent -notmatch "\]\($escapedLink(?:#[^)]+)?\)") {
     $errors += "README.md: missing documentation link '$requiredLink'"
+  }
+}
+
+$engagementProductSpecPath = Join-Path $repositoryRoot $engagementProductSpecRelativePath
+if (-not (Test-Path -LiteralPath $engagementProductSpecPath)) {
+  $errors += "${engagementProductSpecRelativePath}: required product specification is missing"
+} else {
+  $engagementProductSpec = Get-Content -LiteralPath $engagementProductSpecPath -Raw
+  foreach ($issueNumber in $requiredEngagementIssueNumbers) {
+    $issueUrl = "https://github.com/tjhiggy/Jarvis/issues/$issueNumber"
+    if ($engagementProductSpec -notmatch [regex]::Escape($issueUrl)) {
+      $errors += "${engagementProductSpecRelativePath}: missing required GitHub issue link #$issueNumber"
+    }
+  }
+
+  foreach ($command in $requiredEngagementCommands) {
+    if ($engagementProductSpec -notmatch [regex]::Escape($command)) {
+      $errors += "${engagementProductSpecRelativePath}: missing required planned command '$command'"
+    }
   }
 }
 

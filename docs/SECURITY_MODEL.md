@@ -14,6 +14,8 @@ describe implemented source behavior; proposals are labelled as planned.
 - Approved FAQ catalog content and topic-to-answer integrity.
 - Optional poll administrator IDs, poll questions/options, aggregate totals,
   and the secret-derived voter-token boundary.
+- Optional engagement channel IDs, administrator role IDs, retention and
+  participation limits, and the bot-owned engagement records they govern.
 - Provider account availability, budget, rate limits, and model access.
 - Optional Sleeper league identifier, public roster/display-name data, and the
   integrity of the read-only fantasy standings boundary.
@@ -105,6 +107,26 @@ invalid content fails closed with a sanitized error that names
   messages. It does not delete messages or gain authority over roles, channels,
   permissions, members, moderation, server settings, or webhooks. Poll text is
   untrusted content and does not enter poll telemetry.
+- **Engagement configuration boundary.** Engagement is off unless
+  `ENGAGEMENT_ENABLED=true`; startup rejects enablement without at least one
+  configured engagement channel and administrator role. Each configured channel
+  is a separate scope for its future feature, not permission to read guild chat
+  generally. The recap scheduler additionally requires an enabled recap channel
+  and a strict weekday/time plus valid IANA timezone. Retention, per-user, and
+  participant limits are bounded at startup so an operator cannot quietly turn
+  a social feature into an endless data hoover.
+- **Engagement message authority.** Future engagement handlers may send embeds
+  and bot-owned buttons only in explicitly configured channels after normal
+  Discord channel permission checks. Buttons confer no role, moderation, or
+  server-setting authority. The bot requests no additional privileged intent,
+  and it must not read arbitrary channel history for a recap or activity.
+- **Weekly recap privacy boundary.** Recaps are opt-in per guild and publish
+  only aggregate counts from configured engagement SQLite records and
+  Jarvis-owned posts. They never read historical channel content, names, or
+  individual activity. Every category requires a minimum group of three; small
+  cohorts are replaced with a quiet-week message. Recaps state their seven-day
+  source window and that data may be incomplete, and abstain if that source is
+  unavailable.
 - **Personal reminder boundary.** `/reminder` is owner-scoped, ephemeral at
   command time, and delivers only to the original allowed channel or thread
   after live revalidation. Its public payload permits only the verified owner
@@ -157,6 +179,23 @@ definitions. Neither is general server administration. All
 administrative changes must be deliberate, operator-authorized, scoped to the
 named system, and non-destructive by default. Do not turn a support request into
 an unreviewed change to Discord, source control, or production data.
+
+## Implemented, unreleased engagement controls
+
+Engagement stores only local, guild-scoped records needed to operate its cards,
+events, recaps, and trivia. Member data collection is explicit through a
+submission, RSVP, or activity answer; it does not scan channel history, DMs,
+voice, or general member behavior. Stored fields, deletion paths, retention,
+scheduler leases, and recovery are specified in the
+[Engagement runbook](ENGAGEMENT_RUNBOOK.md). `/engagement delete` removes one
+member's retained guild records, and `/trivia opt-out` removes retained trivia
+participation and blocks future activity until opt-in.
+
+Engagement controls and scheduled work create, edit, or remove only
+Jarvis-owned messages and SQLite rows. Pause, status, recap, event, suggestion,
+and trivia controls do not grant server-setting, role, moderation, webhook,
+or external-write authority. Backup copies remain protected historical data
+until their approved retention period expires.
 
 ## External-service risks
 

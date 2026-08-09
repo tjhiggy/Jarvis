@@ -56,6 +56,34 @@ import { SQLiteReminderStore } from './reminders/sqlite-reminder-store.js';
 import { createLogger, projectOperationalError } from './utils/logger.js';
 import { loadRuntimeIdentity } from './config/runtime-identity.js';
 import { HttpSleeperService } from './sleeper/sleeper-service.js';
+import { randomUUID } from 'node:crypto';
+import {
+  IntroductionService,
+  type IntroductionGateway,
+} from './engagement/introductions.js';
+import type { EngagementRepository } from './engagement/storage.js';
+import { SQLiteEngagementRepository } from './storage/engagement-sqlite.js';
+import {
+  SuggestionService,
+  type SuggestionGateway,
+} from './engagement/suggestions.js';
+import {
+  toDiscordEngagementCard,
+  type DiscordEngagementCard,
+  type EngagementCard,
+} from './engagement/discord-ui.js';
+import { EventService, type EventGateway } from './engagement/events.js';
+import { EventScheduler } from './engagement/event-scheduler.js';
+import {
+  EngagementDeletionService,
+  isUnknownDiscordMessage,
+} from './engagement/deletion.js';
+import { RecapScheduler, RecapService } from './engagement/recap.js';
+import {
+  buildTriviaResultsCard,
+  TriviaExpiryScheduler,
+  TriviaService,
+} from './engagement/activity.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -73,6 +101,101 @@ interface RuntimeDiscordClient {
   login(token: string): Promise<unknown>;
   destroy(): void;
 }
+
+interface IntroductionChannel {
+  send(
+    payload: Readonly<{
+      content: string;
+      allowedMentions: Readonly<{
+        parse: readonly string[];
+        repliedUser: false;
+      }>;
+    }>,
+  ): Promise<Readonly<{ id: string }>>;
+  messages: Readonly<{ delete(messageId: string): Promise<unknown> }>;
+}
+
+interface SuggestionChannel {
+  send(payload: DiscordEngagementCard): Promise<Readonly<{ id: string }>>;
+  messages: Readonly<{ delete(messageId: string): Promise<unknown> }>;
+}
+interface EventChannel {
+  send(payload: unknown): Promise<Readonly<{ id: string }>>;
+}
+const createDefaultEventGateway = (
+  client: RuntimeDiscordClient,
+): EventGateway => ({
+  async post(channelId, card) {
+    const channel = await client.channels?.fetch(channelId);
+    if (!isEventChannel(channel))
+      throw new Error('Configured event channel is unavailable.');
+    return channel.send(toDiscordEngagementCard(card));
+  },
+});
+const isEventChannel = (value: unknown): value is EventChannel =>
+  typeof value === 'object' &&
+  value !== null &&
+  'send' in value &&
+  typeof value.send === 'function';
+
+const createDefaultSuggestionGateway = (
+  client: RuntimeDiscordClient,
+): SuggestionGateway => ({
+  async post(channelId, card) {
+    const channel = await client.channels?.fetch(channelId);
+    if (!isSuggestionChannel(channel))
+      throw new Error('Configured suggestion channel is unavailable.');
+    return channel.send(toDiscordEngagementCard(card));
+  },
+  async delete(channelId, messageId) {
+    const channel = await client.channels?.fetch(channelId);
+    if (!isSuggestionChannel(channel))
+      throw new Error('Configured suggestion channel is unavailable.');
+    await channel.messages.delete(messageId);
+  },
+});
+
+const isSuggestionChannel = (value: unknown): value is SuggestionChannel =>
+  typeof value === 'object' &&
+  value !== null &&
+  'send' in value &&
+  typeof value.send === 'function' &&
+  'messages' in value &&
+  typeof value.messages === 'object' &&
+  value.messages !== null &&
+  'delete' in value.messages &&
+  typeof value.messages.delete === 'function';
+
+const createDefaultIntroductionGateway = (
+  client: RuntimeDiscordClient,
+): IntroductionGateway => ({
+  async post(channelId, content) {
+    const channel = await client.channels?.fetch(channelId);
+    if (!isIntroductionChannel(channel))
+      throw new Error('Configured introduction channel is unavailable.');
+    return channel.send({
+      content,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  },
+  async delete(channelId, messageId) {
+    const channel = await client.channels?.fetch(channelId);
+    if (!isIntroductionChannel(channel))
+      throw new Error('Configured introduction channel is unavailable.');
+    await channel.messages.delete(messageId);
+  },
+});
+
+const isIntroductionChannel = (value: unknown): value is IntroductionChannel =>
+  typeof value === 'object' &&
+  value !== null &&
+  'send' in value &&
+  typeof value.send === 'function' &&
+  'messages' in value &&
+  typeof value.messages === 'object' &&
+  value.messages !== null &&
+  'delete' in value.messages &&
+  typeof value.messages.delete === 'function';
 
 export interface ApplicationTimers {
   setInterval(callback: () => void, delayMs: number): unknown;
@@ -109,6 +232,9 @@ export interface ApplicationDependencies {
     }>,
   ) => PollScheduler;
   readonly createReminderStore?: (databasePath: string) => ReminderStore;
+  readonly createEngagementRepository?: (
+    databasePath: string,
+  ) => EngagementRepository;
   readonly createReminderGateway?: (dependencies: {
     readonly client: RuntimeDiscordClient;
     readonly allowedChannelIds: ReadonlySet<string>;
@@ -301,10 +427,27 @@ export const createApplication = async (
   let pollScheduler: PollScheduler | undefined;
   let reminderStore: ReminderStore | undefined;
   let reminderScheduler: ReminderScheduler | undefined;
+  let engagementRepository: EngagementRepository | undefined;
+  let eventScheduler: EventScheduler | undefined;
+  let recapScheduler: RecapScheduler | undefined;
+  let triviaService: TriviaService | undefined;
+  let triviaScheduler: TriviaExpiryScheduler | undefined;
+  let engagementDeletionService: EngagementDeletionService | undefined;
   let client: RuntimeDiscordClient | undefined;
   let cleanupTimer: unknown;
   let acceptingWork = false;
   let shutdownPromise: Promise<void> | undefined;
+  const activeWork = new Set<Promise<unknown>>();
+  const trackWork = <T>(work: Promise<T>): Promise<T> => {
+    const tracked = work.finally(() => {
+      activeWork.delete(tracked);
+    });
+    activeWork.add(tracked);
+    return tracked;
+  };
+  const drainActiveWork = async (): Promise<void> => {
+    while (activeWork.size > 0) await Promise.allSettled([...activeWork]);
+  };
 
   const shutdown = (): Promise<void> => {
     acceptingWork = false;
@@ -324,17 +467,49 @@ export const createApplication = async (
           );
         }
       }
+      if (eventScheduler !== undefined) {
+        try {
+          await eventScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'event_scheduler_shutdown'),
+            'Event scheduler stop failed during shutdown.',
+          );
+        }
+      }
+      if (recapScheduler !== undefined) {
+        try {
+          await recapScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'recap_scheduler_shutdown'),
+            'Recap scheduler stop failed during shutdown.',
+          );
+        }
+      }
+      if (triviaScheduler !== undefined) {
+        try {
+          await triviaScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'trivia_scheduler_shutdown'),
+            'Trivia scheduler stop failed during shutdown.',
+          );
+        }
+      }
 
       if (pollScheduler !== undefined) {
         try {
           await pollScheduler.stop();
         } catch (error) {
           logger?.warn(
-            { error },
+            projectOperationalError(error, 'poll_scheduler_shutdown'),
             'Poll scheduler stop failed during shutdown.',
           );
         }
       }
+
+      await drainActiveWork();
 
       if (reminderStore !== undefined) {
         try {
@@ -343,6 +518,17 @@ export const createApplication = async (
           logger?.warn(
             projectOperationalError(error, 'reminder_storage_shutdown'),
             'Reminder storage close failed during shutdown.',
+          );
+        }
+      }
+
+      if (engagementRepository !== undefined) {
+        try {
+          await engagementRepository.closeConnection();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'engagement_storage_shutdown'),
+            'Engagement storage close failed during shutdown.',
           );
         }
       }
@@ -393,6 +579,12 @@ export const createApplication = async (
       dependencies.createReminderStore?.(config.storage.databasePath) ??
       new SQLiteReminderStore(config.storage.databasePath);
     const initializedReminderStore = reminderStore;
+    if (config.engagement.enabled) {
+      engagementRepository =
+        dependencies.createEngagementRepository?.(
+          config.storage.databasePath,
+        ) ?? new SQLiteEngagementRepository(config.storage.databasePath);
+    }
     const ai = aiFactory(config);
     client = discordFactory();
 
@@ -432,6 +624,88 @@ export const createApplication = async (
         config.security.rateLimitWindowMs,
       ),
     });
+    const introductionService =
+      engagementRepository === undefined
+        ? undefined
+        : new IntroductionService({
+            repository: engagementRepository,
+            gateway: createDefaultIntroductionGateway(client),
+            rateLimiter: new RateLimiter(
+              config.security.rateLimitRequests,
+              config.security.rateLimitWindowMs,
+            ),
+            createId: () => randomUUID(),
+          });
+    const suggestionService =
+      engagementRepository === undefined
+        ? undefined
+        : new SuggestionService({
+            repository: engagementRepository,
+            gateway: createDefaultSuggestionGateway(client),
+            rateLimiter: new RateLimiter(
+              config.security.rateLimitRequests,
+              config.security.rateLimitWindowMs,
+            ),
+            createId: () => randomUUID(),
+            adminRoleIds: config.engagement.adminRoleIds,
+            maxDraftsPerOwner: config.engagement.maxRecordsPerUser,
+            audit: (event) =>
+              logger?.info(
+                {
+                  operation: event.operation,
+                  action: event.action,
+                  guildId: event.guildId,
+                  suggestionId: event.suggestionId,
+                  actorUserId: event.actorUserId,
+                },
+                'Suggestion moderation recorded.',
+              ),
+            onPersistenceFailure: (event) =>
+              logger?.error(
+                { guildId: event.guildId, suggestionId: event.suggestionId },
+                'Suggestion persistence requires cleanup.',
+              ),
+          });
+    const eventService =
+      engagementRepository === undefined
+        ? undefined
+        : new EventService({
+            repository: engagementRepository as any,
+            createId: () => randomUUID(),
+            adminRoleIds: config.engagement.adminRoleIds,
+            gateway: createDefaultEventGateway(client),
+          });
+    const recapService =
+      engagementRepository === undefined
+        ? undefined
+        : new RecapService({
+            repository: engagementRepository as Required<
+              Pick<EngagementRepository, 'recapSource'>
+            >,
+          });
+    triviaService =
+      engagementRepository === undefined
+        ? undefined
+        : new TriviaService({
+            repository: engagementRepository as Required<
+              Pick<
+                EngagementRepository,
+                | 'getOptOut'
+                | 'createTriviaRound'
+                | 'getTriviaRound'
+                | 'findOpenTriviaRound'
+                | 'recordTriviaAnswer'
+                | 'getTriviaResults'
+                | 'expireTriviaRounds'
+                | 'claimTriviaResultCards'
+                | 'completeTriviaResultCard'
+                | 'releaseTriviaResultCard'
+                | 'optOutTriviaParticipant'
+              >
+            >,
+            createId: () => randomUUID(),
+            maxParticipants: config.engagement.maxParticipants,
+          });
     const cleanup = async (): Promise<void> => {
       try {
         await initializedStore.cleanup(
@@ -443,32 +717,48 @@ export const createApplication = async (
       } catch (error) {
         logger?.warn({ error }, 'Conversation retention cleanup failed.');
       }
+      if (engagementRepository !== undefined) {
+        const cutoff = new Date(
+          Date.now() - config.engagement.retentionDays * 24 * 60 * 60 * 1_000,
+        );
+        try {
+          await engagementDeletionService?.cleanupPending(100);
+          await introductionService?.cleanup(cutoff, 100);
+          suggestionService?.cleanupDrafts();
+          await suggestionService?.cleanupPostedCards(cutoff, 100);
+          await engagementRepository.cleanup(cutoff, 100);
+        } catch (error) {
+          logger?.warn({ error }, 'Engagement retention cleanup failed.');
+        }
+      }
     };
-    await cleanup();
-
     const handlerState: {
       handlers: ReturnType<typeof createDiscordHandlers> | undefined;
     } = { handlers: undefined };
     client.on('messageCreate', (message) => {
       if (acceptingWork && handlerState.handlers !== undefined) {
-        void handlerState.handlers
-          .onMessageCreate(message as DiscordMessage)
-          .catch((error: unknown) => {
-            logger?.warn({ error }, 'Discord message event handling failed.');
-          });
+        void trackWork(
+          handlerState.handlers
+            .onMessageCreate(message as DiscordMessage)
+            .catch((error: unknown) => {
+              logger?.warn({ error }, 'Discord message event handling failed.');
+            }),
+        );
       }
       return undefined;
     });
     client.on('interactionCreate', (interaction) => {
       if (acceptingWork && handlerState.handlers !== undefined) {
-        void handlerState.handlers
-          .onInteractionCreate(interaction as DiscordInteraction)
-          .catch((error: unknown) => {
-            logger?.warn(
-              { error },
-              'Discord interaction event handling failed.',
-            );
-          });
+        void trackWork(
+          handlerState.handlers
+            .onInteractionCreate(interaction as DiscordInteraction)
+            .catch((error: unknown) => {
+              logger?.warn(
+                { error },
+                'Discord interaction event handling failed.',
+              );
+            }),
+        );
       }
       return undefined;
     });
@@ -478,6 +768,33 @@ export const createApplication = async (
     if (botUserId === undefined || botUserId === '') {
       throw new Error('Discord client did not expose a bot user after login.');
     }
+    if (engagementRepository !== undefined)
+      engagementDeletionService = new EngagementDeletionService({
+        repository: engagementRepository as Required<
+          Pick<
+            EngagementRepository,
+            | 'deleteOwnerData'
+            | 'listPendingCardDeletions'
+            | 'listPendingCardDeletionsForOwner'
+            | 'completeCardDeletion'
+          >
+        > &
+          EngagementRepository,
+        gateway: {
+          delete: async (channelId, messageId) => {
+            const channel = await client?.channels?.fetch(channelId);
+            if (!isIntroductionChannel(channel))
+              throw new Error('Configured engagement channel is unavailable.');
+            try {
+              await channel.messages.delete(messageId);
+            } catch (error) {
+              if (!isUnknownDiscordMessage(error)) throw error;
+            }
+          },
+        },
+      });
+    await triviaService?.recover();
+    await cleanup();
     let pollController: PollController | undefined;
     if (pollStore !== undefined) {
       const pollService = new DurablePollService({
@@ -557,9 +874,66 @@ export const createApplication = async (
             scheduler: initializedReminderScheduler,
           },
           faq,
-          ...(config.sleeper?.leagueId === undefined || config.sleeper.leagueId === ''
+          ...(introductionService === undefined ? {} : { introductionService }),
+          ...(suggestionService === undefined ? {} : { suggestionService }),
+          ...(eventService === undefined ? {} : { eventService }),
+          ...(recapService === undefined
             ? {}
-            : { sleeper: { leagueId: config.sleeper.leagueId, service: new HttpSleeperService() } }),
+            : {
+                recapService,
+                recapRepository: engagementRepository as Required<
+                  Pick<EngagementRepository, 'setRecapEnabled'>
+                >,
+              }),
+          ...(triviaService === undefined ? {} : { triviaService }),
+          ...(engagementRepository === undefined
+            ? {}
+            : {
+                engagementHealth: {
+                  repository: {
+                    engagementPaused:
+                      engagementRepository.engagementPaused!.bind(
+                        engagementRepository,
+                      ),
+                    setEngagementPaused:
+                      engagementRepository.setEngagementPaused!.bind(
+                        engagementRepository,
+                      ),
+                    healthCheck:
+                      engagementRepository.healthCheck.bind(
+                        engagementRepository,
+                      ),
+                    statusCounts:
+                      engagementRepository.statusCounts!.bind(
+                        engagementRepository,
+                      ),
+                    deleteOwnerData:
+                      engagementDeletionService!.deleteOwnerData.bind(
+                        engagementDeletionService,
+                      ),
+                  },
+                  schedulers: {
+                    get events() {
+                      return eventScheduler;
+                    },
+                    get recaps() {
+                      return recapScheduler;
+                    },
+                    get trivia() {
+                      return triviaScheduler;
+                    },
+                  },
+                },
+              }),
+          ...(config.sleeper?.leagueId === undefined ||
+          config.sleeper.leagueId === ''
+            ? {}
+            : {
+                sleeper: {
+                  leagueId: config.sleeper.leagueId,
+                  service: new HttpSleeperService(),
+                },
+              }),
           ...(pollController === undefined ? {} : { pollController }),
           ...(pollStore === undefined || pollScheduler === undefined
             ? {}
@@ -571,13 +945,124 @@ export const createApplication = async (
               }),
         }),
       ...(pollController === undefined ? {} : { pollController }),
+      ...(introductionService === undefined ? {} : { introductionService }),
+      ...(suggestionService === undefined
+        ? {}
+        : {
+            suggestionService,
+            engagementAdminRoleIds: config.engagement.adminRoleIds,
+            suggestionChannelId: config.engagement.channels.suggestionId,
+          }),
+      ...(eventService === undefined
+        ? {}
+        : { eventService, eventChannelId: config.engagement.channels.eventId }),
+      ...(triviaService === undefined
+        ? {}
+        : {
+            triviaService,
+            activityChannelId: config.engagement.channels.activityId,
+          }),
+      onPreviewActionError: (event) =>
+        logger?.warn(
+          {
+            operation: 'engagement-preview-action',
+            kind: event.kind,
+            guildId: event.guildId,
+            draftId: event.draftId,
+            code: event.code,
+          },
+          'Engagement preview action failed.',
+        ),
     });
+
+    const schedulerClient = client;
+    if (schedulerClient === undefined)
+      throw new Error('Discord client is unavailable for event scheduling.');
+    if (eventService !== undefined)
+      eventScheduler = new EventScheduler({
+        repository: engagementRepository as any,
+        logger: { warn: (fields, message) => logger?.warn(fields, message) },
+        gateway: {
+          deliver: async (reminder) => {
+            const channel = await schedulerClient.channels?.fetch(
+              reminder.channelId,
+            );
+            if (!isEventChannel(channel))
+              throw new Error('Configured event channel is unavailable.');
+            await channel.send({
+              content: `<@${reminder.userId}> reminder: ${reminder.title} is due now.`,
+              allowedMentions: {
+                parse: [],
+                users: [reminder.userId],
+                repliedUser: false,
+              },
+            });
+          },
+        },
+      });
+    if (
+      recapService !== undefined &&
+      config.engagement.channels.recapId !== '' &&
+      config.engagement.recapSchedule !== ''
+    )
+      recapScheduler = new RecapScheduler({
+        guildId: config.discord.guildId,
+        channelId: config.engagement.channels.recapId,
+        schedule: config.engagement.recapSchedule,
+        timezone: config.engagement.recapTimezone,
+        repository: engagementRepository as Required<
+          Pick<
+            EngagementRepository,
+            | 'recapEnabled'
+            | 'claimRecapRun'
+            | 'completeRecapRun'
+            | 'releaseRecapRun'
+          >
+        >,
+        logger: { warn: (fields, message) => logger?.warn(fields, message) },
+        service: recapService,
+        gateway: {
+          post: async (channelId, content) => {
+            const channel = await schedulerClient.channels?.fetch(channelId);
+            if (!isEventChannel(channel))
+              throw new Error('Configured recap channel is unavailable.');
+            await channel.send({
+              content,
+              allowedMentions: { parse: [], repliedUser: false },
+            });
+          },
+        },
+      });
+
+    if (triviaService !== undefined)
+      triviaScheduler = new TriviaExpiryScheduler({
+        service: triviaService,
+        isPaused: (guildId) =>
+          engagementRepository?.engagementPaused?.(guildId) ??
+          Promise.resolve(true),
+        gateway: {
+          post: async (round, results) => {
+            const channel = await schedulerClient.channels?.fetch(
+              round.channelId,
+            );
+            if (!isEventChannel(channel))
+              throw new Error('Configured activity channel is unavailable.');
+            await channel.send(buildTriviaResultsCard(results));
+          },
+        },
+        logger: {
+          warn: (fields, message) => logger?.warn(fields, message),
+        },
+      });
 
     pollScheduler?.start();
     reminderScheduler.start();
+    eventScheduler?.start();
+    recapScheduler?.start();
+    triviaScheduler?.start();
 
     cleanupTimer = timers.setInterval(() => {
-      void cleanup();
+      void trackWork(cleanup());
     }, cleanupIntervalMs);
     registerSignal('SIGINT', shutdown);
     registerSignal('SIGTERM', shutdown);

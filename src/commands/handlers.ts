@@ -26,6 +26,26 @@ import {
 } from '../discord/delivery.js';
 import { chunkDiscordResponse } from '../utils/chunk-response.js';
 import { neutralizeDiscordMentions } from '../utils/mentions.js';
+import {
+  handleIntroductionCommand,
+  handleIntroductionDeletionCommand,
+} from './introduction.js';
+import type { IntroductionService } from '../engagement/introductions.js';
+import type { SuggestionService } from '../engagement/suggestions.js';
+import {
+  handleSuggestionCommand,
+  handleSuggestionDeletionCommand,
+} from './suggestion.js';
+import { handleEventCommand } from './event.js';
+import type { EventService } from '../engagement/events.js';
+import { handleRecapCommand } from './recap.js';
+import type { RecapService } from '../engagement/recap.js';
+import type { EngagementRepository } from '../engagement/storage.js';
+import type { EngagementDeletionOutcome } from '../engagement/deletion.js';
+import { handleTriviaCommand } from './activity.js';
+import type { TriviaService } from '../engagement/activity.js';
+import { handleEngagementCommand } from './engagement.js';
+import type { EngagementSchedulerHealth } from '../engagement/health.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -39,6 +59,9 @@ export interface CommandInteraction extends ReplyTarget, DeferredReplyTarget {
     isThread?(): boolean;
   }> | null;
   readonly user: Readonly<{ id: string }>;
+  readonly member?: Readonly<{
+    roles?: Readonly<{ cache?: Readonly<{ has(id: string): boolean }> }>;
+  }> | null;
   readonly options: Readonly<{
     getSubcommand(): string;
     getString(name: string): string | null;
@@ -62,6 +85,19 @@ export interface CommandDependencies {
     polls?: Readonly<{
       enabled: boolean;
       adminUserIds: ReadonlySet<string>;
+    }>;
+    engagement?: Readonly<{
+      enabled: boolean;
+      channels: Readonly<{
+        introductionId: string;
+        suggestionId: string;
+        eventId: string;
+        recapId: string;
+        activityId: string;
+      }>;
+      recapSchedule: string;
+      retentionDays: number;
+      adminRoleIds: ReadonlySet<string>;
     }>;
   }>;
   readonly conversationService: Readonly<{
@@ -95,6 +131,33 @@ export interface CommandDependencies {
   readonly pollHealth?: Readonly<{
     store: Pick<PollStore, 'healthCheck'>;
     scheduler: Pick<PollScheduler, 'healthy'>;
+  }>;
+  readonly introductionService?: IntroductionService;
+  readonly suggestionService?: SuggestionService;
+  readonly eventService?: EventService;
+  readonly recapService?: RecapService;
+  readonly recapRepository?: Required<
+    Pick<EngagementRepository, 'setRecapEnabled'>
+  >;
+  readonly triviaService?: TriviaService;
+  readonly engagementHealth?: Readonly<{
+    repository: Required<
+      Pick<
+        EngagementRepository,
+        | 'engagementPaused'
+        | 'setEngagementPaused'
+        | 'healthCheck'
+        | 'statusCounts'
+      >
+    > & {
+      deleteOwnerData(
+        guildId: string,
+        userId: string,
+      ): Promise<EngagementDeletionOutcome>;
+    };
+    schedulers?: Readonly<
+      Record<string, EngagementSchedulerHealth | undefined>
+    >;
   }>;
 }
 
@@ -134,6 +197,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     'Reminder limits: 1 minute to 30 days, 500 characters, and 10 active reminders per server.',
     '/help lists the available commands.',
     '/status reports safe service configuration and database health.',
+    '/engagement status, pause, resume, or delete provides scoped engagement operations.',
     ...(pollsEnabled
       ? [
           '/poll creates an anonymous 2-to-5-option poll for configured administrators.',
@@ -173,6 +237,98 @@ export const handleCommand = async (
     case 'poll-close':
       await handlePollClose(interaction, dependencies);
       return;
+    case 'introduce':
+      await handleIntroductionCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId:
+          dependencies.config.engagement?.channels.introductionId ?? '',
+        ...(dependencies.introductionService === undefined
+          ? {}
+          : { service: dependencies.introductionService }),
+      });
+      return;
+    case 'introduction':
+      await handleIntroductionDeletionCommand(
+        interaction,
+        dependencies.introductionService,
+      );
+      return;
+    case 'suggest':
+      await handleSuggestionCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId: dependencies.config.engagement?.channels.suggestionId ?? '',
+        ...(dependencies.suggestionService === undefined
+          ? {}
+          : { service: dependencies.suggestionService }),
+      });
+      return;
+    case 'suggestion':
+      await handleSuggestionDeletionCommand(
+        interaction,
+        dependencies.suggestionService,
+      );
+      return;
+    case 'event':
+      await handleEventCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId: dependencies.config.engagement?.channels.eventId ?? '',
+        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        ...(dependencies.eventService === undefined
+          ? {}
+          : { service: dependencies.eventService }),
+      });
+      return;
+    case 'recap':
+      await handleRecapCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId: dependencies.config.engagement?.channels.recapId ?? '',
+        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        schedule: dependencies.config.engagement?.recapSchedule ?? '',
+        ...(dependencies.recapService === undefined
+          ? {}
+          : { service: dependencies.recapService }),
+        ...(dependencies.recapRepository === undefined
+          ? {}
+          : { repository: dependencies.recapRepository }),
+      });
+      return;
+    case 'trivia':
+      await handleTriviaCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId: dependencies.config.engagement?.channels.activityId ?? '',
+        retentionDays: dependencies.config.engagement?.retentionDays ?? 30,
+        ...(dependencies.triviaService === undefined
+          ? {}
+          : { service: dependencies.triviaService }),
+      });
+      return;
+    case 'engagement':
+      await handleEngagementCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        features: [
+          ...(dependencies.config.engagement?.channels.introductionId
+            ? ['introductions']
+            : []),
+          ...(dependencies.config.engagement?.channels.suggestionId
+            ? ['suggestions']
+            : []),
+          ...(dependencies.config.engagement?.channels.eventId
+            ? ['events']
+            : []),
+          ...(dependencies.config.engagement?.channels.activityId
+            ? ['trivia']
+            : []),
+          ...(dependencies.config.engagement?.channels.recapId &&
+          dependencies.config.engagement.recapSchedule
+            ? ['recaps']
+            : []),
+        ],
+        ...(dependencies.engagementHealth === undefined
+          ? {}
+          : dependencies.engagementHealth),
+      });
+      return;
     case 'help':
       if (await rejectDirectMessage(interaction)) {
         return;
@@ -210,21 +366,42 @@ const handleFantasy = async (
 ): Promise<void> => {
   if (await rejectDirectMessage(interaction)) return;
   if (dependencies.sleeper === undefined) {
-    await replySafely(interaction, 'Sleeper league data is not configured on the MuthaShip.', true);
+    await replySafely(
+      interaction,
+      'Sleeper league data is not configured on the MuthaShip.',
+      true,
+    );
     return;
   }
   if (interaction.options.getSubcommand() !== 'standings') {
-    await replySafely(interaction, 'Use `/fantasy standings` for the current read-only league standings.', true);
+    await replySafely(
+      interaction,
+      'Use `/fantasy standings` for the current read-only league standings.',
+      true,
+    );
     return;
   }
   try {
-    const standings = await dependencies.sleeper.service.getStandings(dependencies.sleeper.leagueId);
-    const lines = standings.map((standing, index) =>
-      `${index + 1}. ${standing.ownerName ?? `Roster ${standing.rosterId}`} • ${standing.wins}-${standing.losses}-${standing.ties} • ${standing.pointsFor.toFixed(2)} PF`,
+    const standings = await dependencies.sleeper.service.getStandings(
+      dependencies.sleeper.leagueId,
     );
-    await replySafely(interaction, lines.length === 0 ? 'Sleeper returned no standings yet.' : `MuthaShip league standings (read-only)\n${lines.join('\n')}`, true);
+    const lines = standings.map(
+      (standing, index) =>
+        `${index + 1}. ${standing.ownerName ?? `Roster ${standing.rosterId}`} • ${standing.wins}-${standing.losses}-${standing.ties} • ${standing.pointsFor.toFixed(2)} PF`,
+    );
+    await replySafely(
+      interaction,
+      lines.length === 0
+        ? 'Sleeper returned no standings yet.'
+        : `MuthaShip league standings (read-only)\n${lines.join('\n')}`,
+      true,
+    );
   } catch {
-    await replySafely(interaction, 'Sleeper league data is temporarily unavailable. Jarvis will not guess.', true);
+    await replySafely(
+      interaction,
+      'Sleeper league data is temporarily unavailable. Jarvis will not guess.',
+      true,
+    );
   }
 };
 

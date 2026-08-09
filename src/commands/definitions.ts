@@ -66,6 +66,72 @@ interface FantasySubcommandDefinition {
   readonly description: string;
 }
 
+interface IntroductionOptionDefinition {
+  readonly type: 3;
+  readonly name: 'name' | 'interests' | 'aboard' | 'id' | 'draft_id';
+  readonly description: string;
+  readonly required: true;
+  readonly max_length: number;
+}
+
+interface IntroductionSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'preview' | 'confirm' | 'cancel';
+  readonly description: string;
+  readonly options?: readonly IntroductionOptionDefinition[];
+}
+
+interface SuggestionOptionDefinition {
+  readonly type: 3;
+  readonly name: 'title' | 'description' | 'id' | 'draft_id';
+  readonly description: string;
+  readonly required: true;
+  readonly max_length: number;
+}
+
+interface SuggestionSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'confirm' | 'cancel' | 'preview' | 'delete';
+  readonly description: string;
+  readonly options?: readonly SuggestionOptionDefinition[];
+}
+interface EventOptionDefinition {
+  readonly type: 3;
+  readonly name:
+    'title' | 'description' | 'start' | 'timezone' | 'capacity' | 'end' | 'id';
+  readonly description: string;
+  readonly required: boolean;
+  readonly max_length: number;
+}
+interface EventSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'create' | 'list' | 'details' | 'cancel';
+  readonly description: string;
+  readonly options?: readonly EventOptionDefinition[];
+}
+interface RecapSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'preview' | 'enable' | 'pause' | 'resume';
+  readonly description: string;
+}
+interface TriviaSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'start' | 'opt-out' | 'opt-in';
+  readonly description: string;
+}
+interface EngagementSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'status' | 'pause' | 'resume' | 'delete';
+  readonly description: string;
+  readonly options?: readonly {
+    readonly type: 3;
+    readonly name: 'user_id';
+    readonly description: string;
+    readonly required: false;
+    readonly max_length: 20;
+  }[];
+}
+
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
   | FaqTopicOptionDefinition
@@ -73,7 +139,16 @@ export type CommandOptionDefinition =
   | OptionalPollOptionDefinition
   | PollDurationOptionDefinition
   | ReminderSubcommandDefinition
-  | FantasySubcommandDefinition;
+  | FantasySubcommandDefinition
+  | IntroductionOptionDefinition
+  | IntroductionSubcommandDefinition
+  | SuggestionOptionDefinition
+  | SuggestionSubcommandDefinition
+  | EventOptionDefinition
+  | EventSubcommandDefinition
+  | RecapSubcommandDefinition
+  | TriviaSubcommandDefinition
+  | EngagementSubcommandDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -87,7 +162,15 @@ export interface CommandDefinition {
     | 'reminder'
     | 'poll'
     | 'poll-close'
-    | 'fantasy';
+    | 'fantasy'
+    | 'introduce'
+    | 'introduction'
+    | 'suggest'
+    | 'suggestion'
+    | 'event'
+    | 'recap'
+    | 'trivia'
+    | 'engagement';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -308,6 +391,316 @@ export const createCommandDefinitions = (
       },
     );
   }
+
+  definitions.push(
+    {
+      type: 1,
+      name: 'introduce',
+      description: 'Privately preview and post a guided crew introduction.',
+      options: [
+        {
+          type: 1,
+          name: 'preview',
+          description: 'Create a private preview before posting.',
+          options: [
+            {
+              type: 3,
+              name: 'name',
+              description: 'Name or nickname for the card.',
+              required: true,
+              max_length: 80,
+            },
+            {
+              type: 3,
+              name: 'interests',
+              description: 'A few interests to share.',
+              required: true,
+              max_length: 300,
+            },
+            {
+              type: 3,
+              name: 'aboard',
+              description: 'What brings you aboard.',
+              required: true,
+              max_length: 500,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'confirm',
+          description: 'Post one private preview.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'cancel',
+          description: 'Discard one private preview.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'introduction',
+      description: 'Manage your guided introduction.',
+      options: [
+        {
+          type: 3,
+          name: 'id',
+          description: 'Introduction ID to delete.',
+          required: true,
+          max_length: 128,
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'suggest',
+      description: 'Privately preview and post a crew suggestion.',
+      options: [
+        {
+          type: 1,
+          name: 'preview',
+          description: 'Create a private preview before posting.',
+          options: [
+            {
+              type: 3,
+              name: 'title',
+              description: 'Short suggestion title.',
+              required: true,
+              max_length: 120,
+            },
+            {
+              type: 3,
+              name: 'description',
+              description: 'Suggestion details.',
+              required: true,
+              max_length: 1000,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'confirm',
+          description: 'Post one private preview.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'cancel',
+          description: 'Discard one private preview.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'suggestion',
+      description: 'Manage your untriaged suggestion.',
+      options: [
+        {
+          type: 1,
+          name: 'delete',
+          description: 'Archive one untriaged suggestion.',
+          options: [
+            {
+              type: 3,
+              name: 'id',
+              description: 'Suggestion ID to archive.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'event',
+      description: 'Create, browse, and manage MuthaShip events.',
+      options: [
+        {
+          type: 1,
+          name: 'create',
+          description: 'Create an event as an administrator.',
+          options: [
+            {
+              type: 3,
+              name: 'title',
+              description: 'Event title.',
+              required: true,
+              max_length: 200,
+            },
+            {
+              type: 3,
+              name: 'description',
+              description: 'Event details.',
+              required: true,
+              max_length: 2000,
+            },
+            {
+              type: 3,
+              name: 'start',
+              description: 'Local start: YYYY-MM-DD HH:mm.',
+              required: true,
+              max_length: 16,
+            },
+            {
+              type: 3,
+              name: 'timezone',
+              description: 'IANA timezone, such as America/New_York.',
+              required: true,
+              max_length: 100,
+            },
+            {
+              type: 3,
+              name: 'capacity',
+              description: 'Confirmed seat count.',
+              required: true,
+              max_length: 4,
+            },
+            {
+              type: 3,
+              name: 'end',
+              description: 'Optional local end: YYYY-MM-DD HH:mm.',
+              required: false,
+              max_length: 16,
+            },
+          ],
+        },
+        { type: 1, name: 'list', description: 'List upcoming events.' },
+        {
+          type: 1,
+          name: 'details',
+          description: 'Show event RSVP totals.',
+          options: [
+            {
+              type: 3,
+              name: 'id',
+              description: 'Event ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'cancel',
+          description: 'Cancel an event as an administrator.',
+          options: [
+            {
+              type: 3,
+              name: 'id',
+              description: 'Event ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'recap',
+      description: 'Preview or control weekly community recaps.',
+      options: [
+        {
+          type: 1,
+          name: 'preview',
+          description: 'Privately preview the current weekly recap.',
+        },
+        {
+          type: 1,
+          name: 'enable',
+          description: 'Opt this guild into weekly recaps.',
+        },
+        {
+          type: 1,
+          name: 'pause',
+          description: 'Pause scheduled weekly recaps.',
+        },
+        {
+          type: 1,
+          name: 'resume',
+          description: 'Resume scheduled weekly recaps.',
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'trivia',
+      description: 'Start one short optional trivia round.',
+      options: [
+        {
+          type: 1,
+          name: 'start',
+          description: 'Open a one-minute curated trivia round.',
+        },
+        {
+          type: 1,
+          name: 'opt-out',
+          description:
+            'Stop future trivia participation and remove your retained activity data.',
+        },
+        {
+          type: 1,
+          name: 'opt-in',
+          description: 'Allow future trivia participation in this guild.',
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'engagement',
+      description: 'View or control engagement scheduling as an administrator.',
+      options: [
+        { type: 1, name: 'status', description: 'Show safe engagement health.' },
+        { type: 1, name: 'pause', description: 'Pause engagement scheduling.' },
+        { type: 1, name: 'resume', description: 'Resume engagement scheduling.' },
+        {
+          type: 1,
+          name: 'delete',
+          description: 'Delete retained engagement records.',
+          options: [
+            { type: 3, name: 'user_id', description: 'Optional member ID for administrators.', required: false, max_length: 20 },
+          ],
+        },
+      ],
+    },
+  );
 
   return definitions;
 };

@@ -1,6 +1,17 @@
 import { GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
 import type { PollController } from '../polls/poll-controller.js';
-import { isAllowedChannel } from './access.js';
+import {
+  SuggestionServiceError,
+  type SuggestionModerationAction,
+  type SuggestionService,
+} from '../engagement/suggestions.js';
+import {
+  IntroductionServiceError,
+  type IntroductionService,
+} from '../engagement/introductions.js';
+import { EventService, EventServiceError } from '../engagement/events.js';
+import { TriviaService, TriviaServiceError } from '../engagement/activity.js';
+import { isAllowedChannel } from './permissions.js';
 import {
   replySafely,
   type ReplyPayload,
@@ -8,7 +19,7 @@ import {
 } from './delivery.js';
 import type { ConversationResult } from '../services/conversation-service.js';
 import { EventDeduplicator } from '../security/event-deduplicator.js';
-import { chunkDiscordResponse } from '../utils/chunk-response.js';
+import { chunkDiscordResponse } from './response-chunking.js';
 import {
   neutralizeDiscordMentions,
   removeBotMention,
@@ -54,7 +65,10 @@ interface DiscordButtonInteraction extends DiscordInteraction, ReplyTarget {
     parentId: string | null;
     isThread?(): boolean;
   }> | null;
-  readonly user: Readonly<{ id: string }>;
+  readonly user: Readonly<{ id: string; bot?: boolean }>;
+  readonly member?: Readonly<{
+    roles?: Readonly<{ cache?: Readonly<{ has(roleId: string): boolean }> }>;
+  }> | null;
   readonly message: Readonly<{
     id: string;
     guildId: string | null;
@@ -81,6 +95,22 @@ export interface MessageHandlerDependencies {
   }>;
   readonly handleCommand: (interaction: unknown) => Promise<void>;
   readonly pollController?: PollController;
+  readonly introductionService?: IntroductionService;
+  readonly suggestionService?: SuggestionService;
+  readonly engagementAdminRoleIds?: ReadonlySet<string>;
+  readonly suggestionChannelId?: string;
+  readonly eventService?: EventService;
+  readonly eventChannelId?: string;
+  readonly triviaService?: TriviaService;
+  readonly activityChannelId?: string;
+  readonly onPreviewActionError?: (
+    event: Readonly<{
+      kind: 'introduction' | 'suggestion';
+      guildId: string;
+      draftId: string;
+      code: string;
+    }>,
+  ) => void;
 }
 
 export interface DiscordHandlers {
@@ -128,13 +158,362 @@ export const createDiscordHandlers = (
         return;
       }
       try {
-        await handlePollButton(button, dependencies);
+        if (button.customId.trim().startsWith('preview:v1:')) {
+          await handlePreviewButton(button, dependencies);
+        } else if (button.customId.trim().startsWith('suggestion:v1:')) {
+          await handleSuggestionButton(button, dependencies);
+        } else if (button.customId.trim().startsWith('event:v1:')) {
+          await handleEventButton(button, dependencies);
+        } else if (button.customId.trim().startsWith('trivia:v1:')) {
+          await handleTriviaButton(button, dependencies);
+        } else {
+          await handlePollButton(button, dependencies);
+        }
       } catch (error) {
         pollButtonDeduplicator.release(eventId);
         throw error;
       }
     },
   };
+};
+
+export const parsePreviewCustomId = (
+  customId: string,
+):
+  | {
+      readonly kind: 'introduction' | 'suggestion';
+      readonly draftId: string;
+      readonly action: 'confirm' | 'cancel';
+    }
+  | undefined => {
+  const match =
+    /^preview:v1:(introduction|suggestion):([a-zA-Z0-9-]{1,64}):(confirm|cancel)$/.exec(
+      customId.trim(),
+    );
+  return match === null
+    ? undefined
+    : {
+        kind: match[1]! as 'introduction' | 'suggestion',
+        draftId: match[2]!,
+        action: match[3]! as 'confirm' | 'cancel',
+      };
+};
+
+const handlePreviewButton = async (
+  interaction: DiscordButtonInteraction,
+  dependencies: MessageHandlerDependencies,
+): Promise<void> => {
+  const parsed = parsePreviewCustomId(interaction.customId);
+  const guildId = interaction.guildId?.trim();
+  const channelId = interaction.channelId.trim();
+  if (
+    parsed === undefined ||
+    guildId === undefined ||
+    guildId === '' ||
+    channelId === '' ||
+    interaction.message.guildId?.trim() !== guildId ||
+    interaction.message.channelId.trim() !== channelId ||
+    interaction.message.author.id.trim() !== dependencies.botUserId.trim() ||
+    (parsed.kind === 'introduction' &&
+      dependencies.introductionService === undefined) ||
+    (parsed.kind === 'suggestion' &&
+      dependencies.suggestionService === undefined)
+  ) {
+    await replySafely(
+      interaction,
+      'This preview is unavailable or expired.',
+      true,
+    );
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const service =
+      parsed.kind === 'introduction'
+        ? dependencies.introductionService!
+        : dependencies.suggestionService!;
+    if (parsed.action === 'cancel') {
+      const cancelled = service.cancel({
+        guildId,
+        ownerUserId: interaction.user.id,
+        draftId: parsed.draftId,
+      });
+      await interaction.editReply({
+        content: cancelled
+          ? 'Preview cancelled. Nothing was saved or posted.'
+          : 'This preview is unavailable or expired.',
+        allowedMentions: { parse: [], repliedUser: false },
+      });
+      return;
+    }
+    const created = await service.confirm({
+      guildId,
+      ownerUserId: interaction.user.id,
+      draftId: parsed.draftId,
+    });
+    await interaction.editReply({
+      content:
+        parsed.kind === 'introduction'
+          ? `Posted to the configured introduction channel. Your introduction ID is ${created.id}.`
+          : `Posted to the configured suggestion channel. Your suggestion ID is ${created.id}.`,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  } catch (error) {
+    const code =
+      error instanceof IntroductionServiceError ||
+      error instanceof SuggestionServiceError
+        ? error.code
+        : 'unexpected';
+    dependencies.onPreviewActionError?.({
+      kind: parsed.kind,
+      guildId,
+      draftId: parsed.draftId,
+      code,
+    });
+    const unavailable =
+      (error instanceof IntroductionServiceError &&
+        error.code === 'invalid-input') ||
+      (error instanceof SuggestionServiceError &&
+        error.code === 'invalid-input');
+    await interaction.editReply({
+      content: unavailable
+        ? 'This preview is unavailable or expired.'
+        : error instanceof IntroductionServiceError &&
+            error.code === 'duplicate'
+          ? 'You already have an active introduction. Remove it before posting another.'
+          : error instanceof SuggestionServiceError &&
+              error.code === 'duplicate'
+            ? 'That suggestion is already awaiting triage.'
+            : 'This preview could not be completed. Please retry with its UUID command.',
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  }
+};
+
+export const parseEventCustomId = (
+  customId: string,
+):
+  | {
+      eventId: string;
+      response: 'yes' | 'maybe' | 'no';
+      reminderOptIn: boolean;
+    }
+  | undefined => {
+  const match = /^event:v1:([a-zA-Z0-9-]{1,64}):(yes|maybe|no|remind)$/.exec(
+    customId.trim(),
+  );
+  return match === null
+    ? undefined
+    : {
+        eventId: match[1]!,
+        response:
+          match[2] === 'remind' ? 'yes' : (match[2]! as 'yes' | 'maybe' | 'no'),
+        reminderOptIn: match[2] === 'remind',
+      };
+};
+export const parseTriviaCustomId = (
+  customId: string,
+): { readonly roundId: string; readonly answerIndex: number } | undefined => {
+  const match = /^trivia:v1:([a-zA-Z0-9-]{1,64}):([0-3])$/.exec(
+    customId.trim(),
+  );
+  return match === null
+    ? undefined
+    : { roundId: match[1]!, answerIndex: Number(match[2]) };
+};
+const handleTriviaButton = async (
+  interaction: DiscordButtonInteraction,
+  dependencies: MessageHandlerDependencies,
+): Promise<void> => {
+  const parsed = parseTriviaCustomId(interaction.customId);
+  const guildId = interaction.guildId?.trim();
+  const channelId = interaction.channelId.trim();
+  if (
+    !parsed ||
+    !dependencies.triviaService ||
+    !guildId ||
+    channelId !== dependencies.activityChannelId?.trim() ||
+    interaction.message.guildId?.trim() !== guildId ||
+    interaction.message.channelId.trim() !== channelId ||
+    interaction.message.author.id.trim() !== dependencies.botUserId.trim()
+  )
+    return replySafely(
+      interaction,
+      'This trivia control is unavailable.',
+      true,
+    );
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const answer = await dependencies.triviaService.answer({
+      guildId,
+      channelId,
+      roundId: parsed.roundId,
+      userId: interaction.user.id,
+      answerIndex: parsed.answerIndex,
+      isBot: interaction.user.bot === true,
+    });
+    await interaction.editReply({
+      content: answer.correct
+        ? 'Answer recorded. Correct.'
+        : 'Answer recorded. Not quite.',
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  } catch (error) {
+    const message =
+      error instanceof TriviaServiceError && error.code === 'expired'
+        ? await triviaResultsMessage(
+            dependencies.triviaService,
+            guildId,
+            parsed.roundId,
+          )
+        : error instanceof TriviaServiceError &&
+            error.code === 'duplicate-answer'
+          ? 'You already answered this round.'
+          : error instanceof TriviaServiceError && error.code === 'opted-out'
+            ? 'You have opted out of engagement collection.'
+            : 'This trivia control is unavailable.';
+    await interaction.editReply({
+      content: message,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  }
+};
+const triviaResultsMessage = async (
+  service: TriviaService,
+  guildId: string,
+  roundId: string,
+): Promise<string> => {
+  try {
+    const results = await service.results(guildId, roundId);
+    return `Round closed: ${results.correctCount}/${results.participantCount} correct.`;
+  } catch {
+    return 'This trivia round has closed.';
+  }
+};
+const handleEventButton = async (
+  interaction: DiscordButtonInteraction,
+  dependencies: MessageHandlerDependencies,
+): Promise<void> => {
+  const parsed = parseEventCustomId(interaction.customId);
+  const guildId = interaction.guildId?.trim();
+  const channelId = interaction.channelId.trim();
+  if (
+    !parsed ||
+    !dependencies.eventService ||
+    !guildId ||
+    channelId !== dependencies.eventChannelId?.trim() ||
+    interaction.message.guildId?.trim() !== guildId ||
+    interaction.message.channelId.trim() !== channelId ||
+    interaction.message.author.id.trim() !== dependencies.botUserId.trim()
+  ) {
+    await replySafely(interaction, 'This event control is unavailable.', true);
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const rsvp = await dependencies.eventService.rsvp({
+      guildId,
+      eventId: parsed.eventId,
+      userId: interaction.user.id,
+      response: parsed.response,
+      interactionId: interaction.id,
+      reminderOptIn: parsed.reminderOptIn,
+    });
+    await interaction.editReply({
+      content:
+        rsvp.attendance === 'waitlisted'
+          ? 'The confirmed seats are full. You are on the waitlist.'
+          : `RSVP recorded: ${rsvp.response}.`,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  } catch (error) {
+    const message =
+      error instanceof EventServiceError && error.code === 'duplicate-action'
+        ? 'This RSVP was already recorded.'
+        : error instanceof EventServiceError && error.code === 'cancelled'
+          ? 'This event is no longer accepting RSVPs.'
+          : 'The RSVP could not be completed. Please retry later.';
+    await interaction.editReply({
+      content: message,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  }
+};
+
+export const parseSuggestionCustomId = (
+  customId: string,
+):
+  | {
+      readonly suggestionId: string;
+      readonly action: SuggestionModerationAction;
+    }
+  | undefined => {
+  const match =
+    /^suggestion:v1:([a-zA-Z0-9-]{1,64}):(acknowledge|defer|resolve|archive)$/.exec(
+      customId.trim(),
+    );
+  return match === null
+    ? undefined
+    : {
+        suggestionId: match[1]!,
+        action: match[2]! as SuggestionModerationAction,
+      };
+};
+
+const handleSuggestionButton = async (
+  interaction: DiscordButtonInteraction,
+  dependencies: MessageHandlerDependencies,
+): Promise<void> => {
+  const parsed = parseSuggestionCustomId(interaction.customId);
+  const guildId = interaction.guildId?.trim();
+  const channelId = interaction.channelId.trim();
+  if (
+    parsed === undefined ||
+    dependencies.suggestionService === undefined ||
+    guildId === undefined ||
+    guildId === '' ||
+    channelId === '' ||
+    channelId !== dependencies.suggestionChannelId?.trim() ||
+    interaction.message.guildId?.trim() !== guildId ||
+    interaction.message.channelId.trim() !== channelId ||
+    interaction.message.author.id.trim() !== dependencies.botUserId.trim()
+  ) {
+    await replySafely(
+      interaction,
+      'This suggestion control is unavailable.',
+      true,
+    );
+    return;
+  }
+  const roleIds = new Set<string>();
+  for (const roleId of dependencies.engagementAdminRoleIds ?? []) {
+    if (interaction.member?.roles?.cache?.has(roleId)) roleIds.add(roleId);
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const updated = await dependencies.suggestionService.moderate({
+      guildId,
+      channelId,
+      moderatorUserId: interaction.user.id,
+      moderatorRoleIds: roleIds,
+      suggestionId: parsed.suggestionId,
+      action: parsed.action,
+      interactionId: interaction.id,
+    });
+    await interaction.editReply({
+      content: `Suggestion marked ${updated.status}.`,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  } catch (error) {
+    const message =
+      error instanceof SuggestionServiceError && error.code === 'forbidden'
+        ? 'Suggestion controls are restricted to configured MuthaShip administrators.'
+        : 'This suggestion control is unavailable.';
+    await interaction.editReply({
+      content: message,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  }
 };
 
 export const parsePollCustomId = (

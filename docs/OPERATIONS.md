@@ -1,5 +1,9 @@
 # Operations
 
+## Engagement controls
+
+Configured engagement administrators may run `/engagement status`, `/engagement pause`, and `/engagement resume`. Status is private and reports only configured features, aggregate record counts, scheduler state, and last-run outcome. `/engagement delete` durably queues bot-owned cards, deletes each card first, and removes the corresponding content row only afterward; administrators may provide a member ID. Its private response separates records removed immediately from card-backed records still queued for bounded retry. Pause suppresses scheduled recap, event-reminder, and trivia-result delivery without deleting records and persists until explicit resume.
+
 This guide covers routine operation of the deployed Jarvis process. It does
 not authorize Discord administration, repository changes, shell execution, or
 inspection of user message content.
@@ -62,6 +66,20 @@ Stop native Jarvis with `Ctrl+C` in the owning console or a normal `SIGINT` or
 process to exit before copying or restoring the database. Do not run native and
 containerized Jarvis together: both can receive the same Discord events.
 
+## Weekly recap operations
+
+Weekly recaps require a configured `ENGAGEMENT_RECAP_CHANNEL_ID`, valid weekly
+schedule/timezone, and an explicit administrator `/recap enable` opt-in for
+each guild. Administrators can run `/recap preview` for a private, non-posting
+check, then `/recap pause` or `/recap resume` to control scheduled delivery.
+With only a configured recap channel, `/recap preview` is available but no
+weekly run can be enabled. `/recap enable` and `/recap resume` require a valid
+weekly schedule and IANA timezone. The scheduler leases a per-guild, per-week
+run and marks it complete only after Discord accepts the post. Source or
+gateway failure releases the lease for a later retry; a completed run is never
+posted again. If configured engagement storage is unavailable, it abstains
+rather than publishing a partial recap.
+
 ## Logs and incident evidence
 
 The application writes structured Pino logs to its host process output. The
@@ -107,6 +125,35 @@ than `HISTORY_RETENTION_DAYS`. Each append also enforces the global
 history only for the current guild channel or thread. These are the
 application's intentional data deletions; do not run manual database cleanup
 as routine maintenance.
+
+## Trivia operations
+
+Trivia is available only in `ENGAGEMENT_ACTIVITY_CHANNEL_ID`. `/trivia start`
+posts a bot-owned one-minute question from the checked-in curated catalog.
+Buttons are valid only on that bot-owned card in its configured guild and
+channel. A restart expires overdue persisted rounds before new work begins.
+The ordinary engagement cleanup removes round results and participant IDs after
+`ENGAGEMENT_RETENTION_DAYS`; owner-data deletion and guild opt-out also remove
+future participation. Do not use this feature for XP, leaderboards, or member
+profiling. That would turn a friendly quiz into surveillance with confetti.
+
+The process also checks round expiry every 15 seconds and expires stale rounds
+before accepting a new `/trivia start`. SQLite has a partial unique index for
+open guild/channel rounds, so two concurrent starts cannot produce overlapping
+rounds. Members may use `/trivia opt-out` from any server channel to delete
+their retained trivia participant record and block future collection, then
+`/trivia opt-in` to rejoin future rounds.
+
+Each expired round is atomically claimed with a persisted delivery lease, then
+Jarvis posts one concise aggregate results card with mentions disabled. A
+successful post is persisted as complete; an interrupted or failed lease is
+released or recovered after one minute. The scheduler logs only its operation
+name on failures and continues at the next bounded tick. Opt-out marker writes
+and participant-record deletion are one SQLite transaction, so a deletion
+failure rolls back the marker instead of leaving a half-finished preference.
+Within one running process, expiry ticks are single-flight: a slow Discord post
+cannot be reclaimed by a later interval tick. Persisted stale-lease recovery
+remains the path for a genuinely abandoned job after a restart.
 
 ## Poll lifecycle, recovery, and rollback
 
@@ -214,3 +261,20 @@ For a bad rollout, stop the process, restore the prior approved revision and
 command set, re-register, then restart one process. Do not delete reminder
 tables as rollback. `/forget` only clears conversation history and cannot be
 used as account-wide reminder deletion.
+
+## Engagement operations
+
+Configured administrators use `/engagement status` for aggregate feature,
+database, record-count, pause, and scheduler health. It excludes contribution
+text, RSVP reasons, and credentials. `/engagement pause` stops scheduled recap,
+event-reminder, and trivia-result delivery for that guild; `/engagement resume`
+re-enables delivery after correction. Member deletion remains available while
+paused.
+
+Before an engagement upgrade, restore, or storage investigation, back up the
+stopped SQLite database or Docker volume. For Discord failure, restore only the
+minimum destination permission and allow scheduled recovery. For SQLite failure,
+stop duplicate processes, restore approved local storage if necessary, and
+restart exactly one process. Never edit engagement rows or manually repost
+scheduled output. See the [Engagement runbook](ENGAGEMENT_RUNBOOK.md) for
+pause, backup, restore, outage, retention, and rollback procedures.

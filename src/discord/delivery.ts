@@ -1,9 +1,10 @@
-import { chunkDiscordResponse } from '../utils/chunk-response.js';
+import { chunkDiscordResponse } from './response-chunking.js';
 import { neutralizeDiscordMentions } from '../utils/mentions.js';
 
 export interface AllowedMentions {
   readonly parse: readonly string[];
   readonly repliedUser: false;
+  readonly users?: readonly string[];
 }
 
 export interface ReplyPayload {

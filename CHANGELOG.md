@@ -8,9 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Implemented, unreleased engagement V1 runtime and SQLite retention work for
+  configured introductions, suggestions, events and RSVP, weekly recaps,
+  curated trivia, member deletion and opt-out, scheduler health/pause controls,
+  bounded cleanup of operational records, and the accompanying operator
+  runbook, backup/restore, outage, and rollback documentation.
 - Personal `/reminder set`, `/reminder list`, and `/reminder cancel` commands with owner-only delivery to the original allowed channel or thread, durable SQLite state, bounded retries, and seven-day terminal retention.
 - Read-only Sleeper `/fantasy standings` with safe pre-draft handling and owner display-name resolution.
-- Shipped: optional administrator-created anonymous polls with fixed
+- Implemented: optional administrator-created anonymous polls with fixed
   durations, live aggregate totals, vote changes, local SQLite recovery,
   bounded expiry/synchronization maintenance, and `/poll-close`.
 - Comprehensive project documentation, policy guidance, GitHub intake forms, and the `docs:check` validation gate.

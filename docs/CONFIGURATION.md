@@ -1,44 +1,58 @@
 # Configuration
 
+`ENGAGEMENT_ENABLED=true` and `ENGAGEMENT_ADMIN_ROLE_IDS` are required before administrator engagement controls are available. No additional token, privileged intent, or Discord Administrator permission is used for `/engagement` operations.
+
 Jarvis loads `.env` through `dotenv` during application startup. Copy `.env.example` to `.env`; do not commit `.env`. All settings are parsed at startup, so restart the process after changing any value. `npm run register-commands` separately loads the registration subset and must be rerun after changing `MAX_INPUT_CHARS`, `FAQ_CATALOG_PATH`, FAQ catalog content, or command definitions.
 
 The table is the complete configuration contract from `.env.example` and `src/config/config.ts`. Defaults below are parser defaults. The committed example file intentionally selects Ollama, which overrides the parser's OpenAI-provider default when it is copied unchanged.
 
-| Key                         | Required condition                                                                          | Default                      | Purpose                                                                                          | Safe example                          | Sensitivity            |
-| --------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------- | ---------------------- |
-| `DISCORD_TOKEN`             | Always; non-empty                                                                           | None                         | Authenticates the Discord bot and command-registration client.                                   | `stored-in-secret-manager`            | Secret                 |
-| `DISCORD_CLIENT_ID`         | Always; non-empty                                                                           | None                         | Discord application ID used for command registration.                                            | `your-application-id`                 | Identifier             |
-| `DISCORD_GUILD_ID`          | Always; non-empty                                                                           | None                         | Development guild targeted by registration.                                                      | `your-development-guild-id`           | Identifier             |
-| `AI_PROVIDER`               | Optional; must be `openai` or `ollama`                                                      | `openai`                     | Selects the AI adapter.                                                                          | `ollama`                              | Operational            |
-| `OPENAI_API_KEY`            | Non-empty when `AI_PROVIDER=openai`                                                         | Empty string                 | Authenticates OpenAI Responses requests.                                                         | `stored-in-secret-manager`            | Secret                 |
-| `OPENAI_MODEL`              | Optional; non-empty when supplied                                                           | `gpt-5.6-luna`               | Model name passed to OpenAI.                                                                     | `gpt-5.6-luna`                        | Operational            |
-| `OPENAI_TIMEOUT_MS`         | Optional integer, at least 1                                                                | `45000`                      | Per-attempt OpenAI timeout in milliseconds.                                                      | `45000`                               | Operational            |
-| `OPENAI_MAX_RETRIES`        | Optional integer from 0 to 10                                                               | `3`                          | Retry count for retryable OpenAI failures.                                                       | `3`                                   | Operational            |
-| `OLLAMA_BASE_URL`           | Optional valid `http` or `https` URL                                                        | `http://127.0.0.1:11434`     | Base URL for the Ollama chat API.                                                                | `http://127.0.0.1:11434`              | Network detail         |
-| `OLLAMA_MODEL`              | Optional; non-empty when supplied                                                           | `gemma3:4b`                  | Model name sent to Ollama.                                                                       | `gemma3:4b`                           | Operational            |
-| `OLLAMA_TIMEOUT_MS`         | Optional integer, at least 1                                                                | `120000`                     | Per-attempt Ollama timeout in milliseconds.                                                      | `120000`                              | Operational            |
-| `OLLAMA_MAX_RETRIES`        | Optional integer from 0 to 10                                                               | `1`                          | Retry count for retryable Ollama failures.                                                       | `1`                                   | Operational            |
-| `TAVILY_API_KEY`            | Optional                                                                                    | Empty string                 | Enables Tavily balanced automatic grounding and forced `/search` when non-empty.                 | `stored-in-secret-manager`            | Secret                 |
-| `WEB_SEARCH_TIMEOUT_MS`     | Optional integer, at least 1                                                                | `10000`                      | Tavily request timeout in milliseconds.                                                          | `10000`                               | Operational            |
-| `WEB_SEARCH_CACHE_TTL_MS`   | Optional integer, at least 1                                                                | `3600000`                    | In-process cache lifetime for equivalent search queries in milliseconds.                         | `3600000`                             | Operational            |
-| `WEB_SEARCH_MAX_RESULTS`    | Optional integer from 1 to 5                                                                | `5`                          | Maximum Tavily results requested and used for grounding.                                         | `5`                                   | Operational            |
-| `MAX_HISTORY_MESSAGES`      | Optional integer, at least 1                                                                | `20`                         | Maximum stored messages included as model context before the current prompt.                     | `20`                                  | Data and cost control  |
-| `MAX_STORED_MESSAGES`       | Optional integer, at least 1                                                                | `10000`                      | Global SQLite row cap; oldest rows are removed after an append.                                  | `10000`                               | Data retention         |
-| `HISTORY_RETENTION_DAYS`    | Optional integer, at least 1                                                                | `30`                         | Deletes stored rows older than this age during startup and approximately daily cleanup.          | `30`                                  | Data retention         |
-| `DATABASE_PATH`             | Optional; non-empty when supplied                                                           | `./data/discord-bot.db`      | SQLite database file path.                                                                       | `./data/discord-bot.db`               | Local data location    |
-| `MAX_INPUT_CHARS`           | Optional integer, at least 1                                                                | `12000`                      | Unicode-character limit for user prompts; command options are also capped by Discord at 6,000.   | `12000`                               | Abuse and cost control |
-| `RATE_LIMIT_REQUESTS`       | Optional integer, at least 1                                                                | `5`                          | Requests permitted per guild/user rate-limit key within the window.                              | `5`                                   | Abuse and cost control |
-| `RATE_LIMIT_WINDOW_MS`      | Optional integer, at least 1                                                                | `60000`                      | Rate-limit window in milliseconds.                                                               | `60000`                               | Abuse and cost control |
-| `ALLOWED_CHANNEL_IDS`       | Optional comma-separated IDs                                                                | Empty set                    | Limits requests to named channels or their threads.                                              | `your-channel-id,another-channel-id`  | Access boundary        |
-| `RESTRAINED_CHANNEL_IDS`    | Optional comma-separated IDs                                                                | Empty set                    | Uses the restrained persona mode in named channels or their threads.                             | `your-technical-channel-id`           | Operational            |
-| `PERSONA_PROMPT_PATH`       | Optional; non-empty when supplied                                                           | `./config/jarvis-persona.md` | Operator-controlled persona file loaded at startup.                                              | `./config/jarvis-persona.md`          | Trusted local content  |
-| `FAQ_CATALOG_PATH`          | Optional; non-empty when supplied                                                           | `./config/faq.json`          | Operator-controlled approved FAQ catalog loaded before Discord login.                            | `./config/faq.json`                   | Trusted local content  |
-| `SLEEPER_LEAGUE_ID`         | Optional; blank or an 8-to-20 digit ID                                                     | Empty string                 | Enables read-only `/fantasy standings` for one Sleeper league; no API key is required.            | `1388545313588924416`                | Public identifier     |
-| `POLL_ADMIN_USER_IDS`       | Blank only when `POLL_VOTER_SECRET` is also blank; otherwise one or more 17-to-20 digit IDs | Empty set                    | Exact Discord user IDs authorized to create and close polls.                                     | `12345678901234567,98765432109876543` | Access boundary        |
-| `POLL_VOTER_SECRET`         | Blank only when `POLL_ADMIN_USER_IDS` is also blank; otherwise at least 32 characters       | Empty string                 | Private HMAC key for anonymous poll voter tokens.                                                | `stored-in-secret-manager`            | Secret                 |
-| `POLL_RETENTION_DAYS`       | Optional integer, at least 1                                                                | `30`                         | Retains terminal poll rows and final aggregates for this age before cleanup.                     | `30`                                  | Data retention         |
-| `POLL_EXPIRY_CHECK_SECONDS` | Optional integer, at least 1                                                                | `30`                         | Interval for bounded poll expiry, synchronization retry, and retention work after Discord login. | `30`                                  | Operational            |
-| `LOG_LEVEL`                 | Optional enum                                                                               | `info`                       | Pino logging level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, or `silent`.             | `info`                                | Operational            |
+| Key                                  | Required condition                                                                          | Default                      | Purpose                                                                                          | Safe example                          | Sensitivity            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------- | ---------------------- |
+| `DISCORD_TOKEN`                      | Always; non-empty                                                                           | None                         | Authenticates the Discord bot and command-registration client.                                   | `stored-in-secret-manager`            | Secret                 |
+| `DISCORD_CLIENT_ID`                  | Always; non-empty                                                                           | None                         | Discord application ID used for command registration.                                            | `your-application-id`                 | Identifier             |
+| `DISCORD_GUILD_ID`                   | Always; non-empty                                                                           | None                         | Development guild targeted by registration.                                                      | `your-development-guild-id`           | Identifier             |
+| `AI_PROVIDER`                        | Optional; must be `openai` or `ollama`                                                      | `openai`                     | Selects the AI adapter.                                                                          | `ollama`                              | Operational            |
+| `OPENAI_API_KEY`                     | Non-empty when `AI_PROVIDER=openai`                                                         | Empty string                 | Authenticates OpenAI Responses requests.                                                         | `stored-in-secret-manager`            | Secret                 |
+| `OPENAI_MODEL`                       | Optional; non-empty when supplied                                                           | `gpt-5.6-luna`               | Model name passed to OpenAI.                                                                     | `gpt-5.6-luna`                        | Operational            |
+| `OPENAI_TIMEOUT_MS`                  | Optional integer, at least 1                                                                | `45000`                      | Per-attempt OpenAI timeout in milliseconds.                                                      | `45000`                               | Operational            |
+| `OPENAI_MAX_RETRIES`                 | Optional integer from 0 to 10                                                               | `3`                          | Retry count for retryable OpenAI failures.                                                       | `3`                                   | Operational            |
+| `OLLAMA_BASE_URL`                    | Optional valid `http` or `https` URL                                                        | `http://127.0.0.1:11434`     | Base URL for the Ollama chat API.                                                                | `http://127.0.0.1:11434`              | Network detail         |
+| `OLLAMA_MODEL`                       | Optional; non-empty when supplied                                                           | `gemma3:4b`                  | Model name sent to Ollama.                                                                       | `gemma3:4b`                           | Operational            |
+| `OLLAMA_TIMEOUT_MS`                  | Optional integer, at least 1                                                                | `120000`                     | Per-attempt Ollama timeout in milliseconds.                                                      | `120000`                              | Operational            |
+| `OLLAMA_MAX_RETRIES`                 | Optional integer from 0 to 10                                                               | `1`                          | Retry count for retryable Ollama failures.                                                       | `1`                                   | Operational            |
+| `TAVILY_API_KEY`                     | Optional                                                                                    | Empty string                 | Enables Tavily balanced automatic grounding and forced `/search` when non-empty.                 | `stored-in-secret-manager`            | Secret                 |
+| `WEB_SEARCH_TIMEOUT_MS`              | Optional integer, at least 1                                                                | `10000`                      | Tavily request timeout in milliseconds.                                                          | `10000`                               | Operational            |
+| `WEB_SEARCH_CACHE_TTL_MS`            | Optional integer, at least 1                                                                | `3600000`                    | In-process cache lifetime for equivalent search queries in milliseconds.                         | `3600000`                             | Operational            |
+| `WEB_SEARCH_MAX_RESULTS`             | Optional integer from 1 to 5                                                                | `5`                          | Maximum Tavily results requested and used for grounding.                                         | `5`                                   | Operational            |
+| `MAX_HISTORY_MESSAGES`               | Optional integer, at least 1                                                                | `20`                         | Maximum stored messages included as model context before the current prompt.                     | `20`                                  | Data and cost control  |
+| `MAX_STORED_MESSAGES`                | Optional integer, at least 1                                                                | `10000`                      | Global SQLite row cap; oldest rows are removed after an append.                                  | `10000`                               | Data retention         |
+| `HISTORY_RETENTION_DAYS`             | Optional integer, at least 1                                                                | `30`                         | Deletes stored rows older than this age during startup and approximately daily cleanup.          | `30`                                  | Data retention         |
+| `DATABASE_PATH`                      | Optional; non-empty when supplied                                                           | `./data/discord-bot.db`      | SQLite database file path.                                                                       | `./data/discord-bot.db`               | Local data location    |
+| `MAX_INPUT_CHARS`                    | Optional integer, at least 1                                                                | `12000`                      | Unicode-character limit for user prompts; command options are also capped by Discord at 6,000.   | `12000`                               | Abuse and cost control |
+| `RATE_LIMIT_REQUESTS`                | Optional integer, at least 1                                                                | `5`                          | Requests permitted per guild/user rate-limit key within the window.                              | `5`                                   | Abuse and cost control |
+| `RATE_LIMIT_WINDOW_MS`               | Optional integer, at least 1                                                                | `60000`                      | Rate-limit window in milliseconds.                                                               | `60000`                               | Abuse and cost control |
+| `ALLOWED_CHANNEL_IDS`                | Optional comma-separated IDs                                                                | Empty set                    | Limits requests to named channels or their threads.                                              | `your-channel-id,another-channel-id`  | Access boundary        |
+| `RESTRAINED_CHANNEL_IDS`             | Optional comma-separated IDs                                                                | Empty set                    | Uses the restrained persona mode in named channels or their threads.                             | `your-technical-channel-id`           | Operational            |
+| `PERSONA_PROMPT_PATH`                | Optional; non-empty when supplied                                                           | `./config/jarvis-persona.md` | Operator-controlled persona file loaded at startup.                                              | `./config/jarvis-persona.md`          | Trusted local content  |
+| `FAQ_CATALOG_PATH`                   | Optional; non-empty when supplied                                                           | `./config/faq.json`          | Operator-controlled approved FAQ catalog loaded before Discord login.                            | `./config/faq.json`                   | Trusted local content  |
+| `SLEEPER_LEAGUE_ID`                  | Optional; blank or an 8-to-20 digit ID                                                      | Empty string                 | Enables read-only `/fantasy standings` for one Sleeper league; no API key is required.           | `1388545313588924416`                 | Public identifier      |
+| `POLL_ADMIN_USER_IDS`                | Blank only when `POLL_VOTER_SECRET` is also blank; otherwise one or more 17-to-20 digit IDs | Empty set                    | Exact Discord user IDs authorized to create and close polls.                                     | `12345678901234567,98765432109876543` | Access boundary        |
+| `POLL_VOTER_SECRET`                  | Blank only when `POLL_ADMIN_USER_IDS` is also blank; otherwise at least 32 characters       | Empty string                 | Private HMAC key for anonymous poll voter tokens.                                                | `stored-in-secret-manager`            | Secret                 |
+| `POLL_RETENTION_DAYS`                | Optional integer, at least 1                                                                | `30`                         | Retains terminal poll rows and final aggregates for this age before cleanup.                     | `30`                                  | Data retention         |
+| `POLL_EXPIRY_CHECK_SECONDS`          | Optional integer, at least 1                                                                | `30`                         | Interval for bounded poll expiry, synchronization retry, and retention work after Discord login. | `30`                                  | Operational            |
+| `ENGAGEMENT_ENABLED`                 | Optional `true` or `false`                                                                  | `false`                      | Enables the engagement platform only after its channels and administrator roles are configured.  | `true`                                | Feature gate           |
+| `ENGAGEMENT_INTRODUCTION_CHANNEL_ID` | Optional blank or one 17-to-20 digit Discord channel ID                                     | Empty string                 | Sole destination for guided introductions.                                                       | `12345678901234567`                   | Access boundary        |
+| `ENGAGEMENT_SUGGESTION_CHANNEL_ID`   | Optional blank or one 17-to-20 digit Discord channel ID                                     | Empty string                 | Sole destination for normalized suggestion cards.                                                | `12345678901234567`                   | Access boundary        |
+| `ENGAGEMENT_EVENT_CHANNEL_ID`        | Optional blank or one 17-to-20 digit Discord channel ID                                     | Empty string                 | Sole destination for event cards and RSVP controls.                                              | `12345678901234567`                   | Access boundary        |
+| `ENGAGEMENT_RECAP_CHANNEL_ID`        | Optional blank or one 17-to-20 digit Discord channel ID                                     | Empty string                 | Sole destination for community recaps.                                                           | `12345678901234567`                   | Access boundary        |
+| `ENGAGEMENT_ACTIVITY_CHANNEL_ID`     | Optional blank or one 17-to-20 digit Discord channel ID                                     | Empty string                 | Sole destination for the bounded community activity.                                             | `12345678901234567`                   | Access boundary        |
+| `ENGAGEMENT_ADMIN_ROLE_IDS`          | Required when engagement is enabled; comma-separated 17-to-20 digit Discord role IDs        | Empty set                    | Role allowlist for engagement management. It does not grant Discord permissions.                 | `12345678901234567,23456789012345678` | Access boundary        |
+| `ENGAGEMENT_RECAP_SCHEDULE`          | Optional blank or `DAY HH:MM` with an uppercase weekday and 24-hour time                    | Empty string                 | Weekly recap trigger; requires enabled engagement and a recap channel.                           | `MONDAY 09:30`                        | Operational            |
+| `ENGAGEMENT_RECAP_TIMEZONE`          | Optional valid IANA timezone                                                                | `UTC`                        | Timezone used to interpret the recap schedule.                                                   | `America/New_York`                    | Operational            |
+| `ENGAGEMENT_RETENTION_DAYS`          | Optional integer from 1 to 90                                                               | `30`                         | Maximum age for engagement records before scheduled cleanup.                                     | `30`                                  | Data retention         |
+| `ENGAGEMENT_MAX_RECORDS_PER_USER`    | Optional integer from 1 to 25                                                               | `5`                          | Per-user cap for active engagement records of a feature type.                                    | `5`                                   | Abuse control          |
+| `ENGAGEMENT_MAX_PARTICIPANTS`        | Optional integer from 2 to 1000                                                             | `100`                        | Maximum participants accepted for one configured event or activity.                              | `100`                                 | Abuse control          |
+| `LOG_LEVEL`                          | Optional enum                                                                               | `info`                       | Pino logging level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, or `silent`.             | `info`                                | Operational            |
 
 ## Sleeper behavior
 
@@ -99,6 +113,68 @@ a poll immediately removes its individual voter tokens but leaves aggregate
 totals for the retention window. `POLL_EXPIRY_CHECK_SECONDS` controls a
 single-process scheduler that closes overdue polls, retries safe message
 synchronization, and runs poll retention cleanup in bounded batches.
+
+## Optional engagement configuration
+
+Engagement is disabled when `ENGAGEMENT_ENABLED` is absent, blank, or `false`.
+Enabling it requires at least one configured engagement channel and at least
+one administrator role ID. Each non-blank channel setting is an independent
+allowlist: future engagement features may read or post only in their named
+channel, never by scanning ordinary guild chat. Blank feature-channel settings
+leave that feature unavailable.
+
+`ENGAGEMENT_ADMIN_ROLE_IDS` is an application authorization allowlist, not a
+Discord role grant. Administrators must still have the channel permissions
+needed to invoke application commands. `ENGAGEMENT_RECAP_SCHEDULE` uses an
+uppercase weekday and 24-hour local time, for example `MONDAY 09:30`; it is
+valid only with enabled engagement and a configured recap channel. The timezone
+must be a valid IANA name. No schedule means no automatic recap: administrators
+may still use `/recap preview`, but `/recap enable` and `/recap resume` refuse
+to enable scheduled posting until the schedule is configured.
+
+Disposable engagement records are retained for `ENGAGEMENT_RETENTION_DAYS`, from 1 through
+90 days. The per-user and participant caps are hard startup limits, not hints
+for a later handler to ignore. Restart after any engagement configuration
+change; re-register commands after enabling engagement or changing the
+introduction channel. `/introduce` posts only to
+`ENGAGEMENT_INTRODUCTION_CHANNEL_ID`; `/introduce preview` creates a private
+draft with owner-bound Confirm and Cancel buttons (the UUID commands remain as
+a fallback) and `/introduce confirm` posts it, while `/introduction id:<id>` is the
+owner-only deletion path for its SQLite record and bot-owned card. Retention
+cleanup runs after Discord is ready, removes expired bot-owned cards before
+deleting their records, and marks a failed card deletion `cleanup_pending` so
+generic SQLite cleanup cannot erase the retry state.
+Active opt-outs, recap enablement, and guild pause preferences are control
+state, not expiring content. Retention cleanup never removes them; only the
+corresponding explicit opt-in, recap control, or resume command changes them.
+
+Suggestions use the same private-preview pattern: `/suggest preview` offers
+owner-bound Confirm and Cancel buttons, while `/suggest confirm` remains a
+UUID fallback, posting only to `ENGAGEMENT_SUGGESTION_CHANNEL_ID`.
+`/suggestion delete id:<id>` lets the author remove an open suggestion and its
+bot-owned card before a configured administrator triages it. The administrator role allowlist may
+acknowledge, defer, resolve, or archive bot-owned suggestion cards. These
+actions change only retained Jarvis state; they do not create GitHub issues or
+perform other external writes.
+
+If Discord accepts a suggestion card but its message ID cannot be persisted,
+Jarvis records a cleanup-pending recovery entry with the card ID and retries
+removal after restart. If that recovery record itself cannot be written, Jarvis
+returns a private administrator-cleanup message and emits a structured log with
+only guild and suggestion IDs.
+
+`/trivia start` is available only in `ENGAGEMENT_ACTIVITY_CHANNEL_ID`. Each
+round uses the checked-in curated catalog, expires after one minute, and is
+also checked by a bounded 15-second in-process expiry scheduler. SQLite allows
+only one open round per guild and activity channel, including concurrent starts.
+Members can use `/trivia opt-out` from any server channel to stop future
+participation and delete their retained trivia participant record; `/trivia
+opt-in` removes that opt-out marker for future rounds. Neither command exposes
+answer text, scores, XP, or a leaderboard.
+
+For exact data fields, deletion semantics, scheduler behavior, and operations,
+see the [Engagement runbook](ENGAGEMENT_RUNBOOK.md). Every engagement setting
+is parsed only at startup; restart the single process after changing one.
 
 ## Retry, persona, and restart rules
 
