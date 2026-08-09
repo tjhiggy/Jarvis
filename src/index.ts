@@ -84,6 +84,7 @@ import {
   TriviaExpiryScheduler,
   TriviaService,
 } from './engagement/activity.js';
+import { BirthdayService, birthdayStoreFromRepository, type BirthdayService as BirthdayServiceType } from './engagement/birthdays.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -440,6 +441,7 @@ export const createApplication = async (
   let eventScheduler: EventScheduler | undefined;
   let recapScheduler: RecapScheduler | undefined;
   let triviaService: TriviaService | undefined;
+  let birthdayService: BirthdayServiceType | undefined;
   let triviaScheduler: TriviaExpiryScheduler | undefined;
   let engagementDeletionService: EngagementDeletionService | undefined;
   let client: RuntimeDiscordClient | undefined;
@@ -645,6 +647,7 @@ export const createApplication = async (
             ),
             createId: () => randomUUID(),
           });
+    birthdayService = engagementRepository === undefined ? undefined : new BirthdayService(birthdayStoreFromRepository(engagementRepository as any));
     const suggestionService =
       engagementRepository === undefined
         ? undefined
@@ -978,8 +981,9 @@ export const createApplication = async (
         ? {}
         : {
             triviaService,
-            activityChannelId: config.engagement.channels.activityId,
+          activityChannelId: config.engagement.channels.activityId,
           }),
+      ...(birthdayService === undefined ? {} : { birthdayService }),
       onPreviewActionError: (event) =>
         logger?.warn(
           {
