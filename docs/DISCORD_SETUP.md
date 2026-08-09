@@ -91,6 +91,14 @@ Global registration is not implemented as a runtime toggle. It is a future, manu
 
 `/ask`, `/search`, `/forget`, `/faq`, `/reminder`, `/poll`, and `/poll-close` enforce the channel allowlist. Reminder commands do not need an administrator ID or extra Discord permissions; scheduled delivery may mention only its verified owner. Poll command creation and early closure additionally require an exact ID in `POLL_ADMIN_USER_IDS`; voting is open to members who can use the poll message. All commands are server-only; direct messages receive a safe unavailable response. Direct mentions require a non-empty prompt after the bot mention.
 
+If `/reminder list` shows `destination access denied`, an administrator should
+verify Jarvis has **View Channel**, **Send Messages**, and **Embed Links** in the
+target channel. Thread reminders also require **Send Messages in Threads** on
+the parent channel, and the channel or parent must remain allowlisted. A
+`destination unavailable` result means the channel was deleted or is no longer
+available; create a new reminder in an active allowed channel. These permanent
+failures are not retried, which prevents duplicate posts.
+
 Continue with [Configuration](CONFIGURATION.md) and [Development](DEVELOPMENT.md).
 
 Use the [Engagement runbook](ENGAGEMENT_RUNBOOK.md) for exact per-channel
