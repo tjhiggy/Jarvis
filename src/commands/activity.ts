@@ -2,6 +2,7 @@ import { replySafely, type ReplyTarget } from '../discord/delivery.js';
 import {
   buildEngagementButton,
   buildEngagementCard,
+  toDiscordEngagementCard,
 } from '../engagement/discord-ui.js';
 import { TriviaService, TriviaServiceError } from '../engagement/activity.js';
 
@@ -89,22 +90,24 @@ export const handleTriviaCommand = async (
       ownerUserId: interaction.user.id,
     });
     await interaction.reply(
-      buildEngagementCard({
-        title: 'MuthaShip trivia',
-        description: `${round.question.prompt}\n\nChoose one answer. This round closes in one minute. Participation is optional; only your ID and correctness are retained for up to ${dependencies.retentionDays ?? 30} days.`,
-        components: [
-          {
-            type: 'actionRow',
-            components: round.question.answers.map((answer, index) =>
-              buildEngagementButton({
-                customId: `trivia:v1:${round.id}:${index}`,
-                label: answer,
-                style: 'secondary',
-              }),
-            ),
-          },
-        ],
-      }),
+      toDiscordEngagementCard(
+        buildEngagementCard({
+          title: 'MuthaShip trivia',
+          description: `${round.question.prompt}\n\nChoose one answer. This round closes in one minute. Participation is optional; only your ID and correctness are retained for up to ${dependencies.retentionDays ?? 30} days.`,
+          components: [
+            {
+              type: 'actionRow',
+              components: round.question.answers.map((answer, index) =>
+                buildEngagementButton({
+                  customId: `trivia:v1:${round.id}:${index}`,
+                  label: answer,
+                  style: 'secondary',
+                }),
+              ),
+            },
+          ],
+        }),
+      ),
     );
   } catch (error) {
     await replySafely(

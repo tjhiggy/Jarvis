@@ -160,5 +160,22 @@ describe('trivia safety', () => {
 
     expect(JSON.stringify(reply)).toContain('retained for up to 7 days');
     expect(JSON.stringify(reply)).not.toContain('30 days');
+    expect(reply.components).toEqual([
+      {
+        type: 1,
+        components: [
+          expect.objectContaining({
+            type: 2,
+            custom_id: 'trivia:v1:round-1:0',
+            style: 2,
+          }),
+          expect.objectContaining({
+            type: 2,
+            custom_id: 'trivia:v1:round-1:1',
+            style: 2,
+          }),
+        ],
+      },
+    ]);
   });
 });
