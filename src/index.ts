@@ -941,6 +941,7 @@ export const createApplication = async (
               }),
         }),
       ...(pollController === undefined ? {} : { pollController }),
+      ...(introductionService === undefined ? {} : { introductionService }),
       ...(suggestionService === undefined
         ? {}
         : {

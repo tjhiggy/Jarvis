@@ -38,6 +38,21 @@ describe('suggestion commands', () => {
     expect(preview.replies[0]).toMatchObject({
       ephemeral: true,
       content: expect.stringMatching(/nothing has been saved/i),
+      allowedMentions: { parse: [], repliedUser: false },
+      components: [
+        {
+          components: [
+            expect.objectContaining({
+              label: 'Confirm',
+              customId: 'preview:v1:suggestion:draft-1:confirm',
+            }),
+            expect.objectContaining({
+              label: 'Cancel',
+              customId: 'preview:v1:suggestion:draft-1:cancel',
+            }),
+          ],
+        },
+      ],
     });
 
     const confirm = interaction('confirm', { draft_id: 'draft-1' });

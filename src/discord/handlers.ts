@@ -5,6 +5,10 @@ import {
   type SuggestionModerationAction,
   type SuggestionService,
 } from '../engagement/suggestions.js';
+import {
+  IntroductionServiceError,
+  type IntroductionService,
+} from '../engagement/introductions.js';
 import { EventService, EventServiceError } from '../engagement/events.js';
 import { TriviaService, TriviaServiceError } from '../engagement/activity.js';
 import { isAllowedChannel } from './permissions.js';
@@ -91,6 +95,7 @@ export interface MessageHandlerDependencies {
   }>;
   readonly handleCommand: (interaction: unknown) => Promise<void>;
   readonly pollController?: PollController;
+  readonly introductionService?: IntroductionService;
   readonly suggestionService?: SuggestionService;
   readonly engagementAdminRoleIds?: ReadonlySet<string>;
   readonly suggestionChannelId?: string;
@@ -145,7 +150,9 @@ export const createDiscordHandlers = (
         return;
       }
       try {
-        if (button.customId.trim().startsWith('suggestion:v1:')) {
+        if (button.customId.trim().startsWith('preview:v1:')) {
+          await handlePreviewButton(button, dependencies);
+        } else if (button.customId.trim().startsWith('suggestion:v1:')) {
           await handleSuggestionButton(button, dependencies);
         } else if (button.customId.trim().startsWith('event:v1:')) {
           await handleEventButton(button, dependencies);
@@ -160,6 +167,102 @@ export const createDiscordHandlers = (
       }
     },
   };
+};
+
+export const parsePreviewCustomId = (
+  customId: string,
+):
+  | {
+      readonly kind: 'introduction' | 'suggestion';
+      readonly draftId: string;
+      readonly action: 'confirm' | 'cancel';
+    }
+  | undefined => {
+  const match =
+    /^preview:v1:(introduction|suggestion):([a-zA-Z0-9-]{1,64}):(confirm|cancel)$/.exec(
+      customId.trim(),
+    );
+  return match === null
+    ? undefined
+    : {
+        kind: match[1]! as 'introduction' | 'suggestion',
+        draftId: match[2]!,
+        action: match[3]! as 'confirm' | 'cancel',
+      };
+};
+
+const handlePreviewButton = async (
+  interaction: DiscordButtonInteraction,
+  dependencies: MessageHandlerDependencies,
+): Promise<void> => {
+  const parsed = parsePreviewCustomId(interaction.customId);
+  const guildId = interaction.guildId?.trim();
+  const channelId = interaction.channelId.trim();
+  if (
+    parsed === undefined ||
+    guildId === undefined ||
+    guildId === '' ||
+    channelId === '' ||
+    interaction.message.guildId?.trim() !== guildId ||
+    interaction.message.channelId.trim() !== channelId ||
+    interaction.message.author.id.trim() !== dependencies.botUserId.trim() ||
+    (parsed.kind === 'introduction' &&
+      dependencies.introductionService === undefined) ||
+    (parsed.kind === 'suggestion' &&
+      dependencies.suggestionService === undefined)
+  ) {
+    await replySafely(
+      interaction,
+      'This preview is unavailable or expired.',
+      true,
+    );
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const service =
+      parsed.kind === 'introduction'
+        ? dependencies.introductionService!
+        : dependencies.suggestionService!;
+    if (parsed.action === 'cancel') {
+      const cancelled = service.cancel({
+        guildId,
+        ownerUserId: interaction.user.id,
+        draftId: parsed.draftId,
+      });
+      await interaction.editReply({
+        content: cancelled
+          ? 'Preview cancelled. Nothing was saved or posted.'
+          : 'This preview is unavailable or expired.',
+        allowedMentions: { parse: [], repliedUser: false },
+      });
+      return;
+    }
+    const created = await service.confirm({
+      guildId,
+      ownerUserId: interaction.user.id,
+      draftId: parsed.draftId,
+    });
+    await interaction.editReply({
+      content:
+        parsed.kind === 'introduction'
+          ? `Posted to the configured introduction channel. Your introduction ID is ${created.id}.`
+          : `Posted to the configured suggestion channel. Your suggestion ID is ${created.id}.`,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  } catch (error) {
+    const unavailable =
+      (error instanceof IntroductionServiceError &&
+        error.code === 'invalid-input') ||
+      (error instanceof SuggestionServiceError &&
+        error.code === 'invalid-input');
+    await interaction.editReply({
+      content: unavailable
+        ? 'This preview is unavailable or expired.'
+        : 'This preview could not be completed. Please retry with its UUID command.',
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  }
 };
 
 export const parseEventCustomId = (

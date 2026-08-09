@@ -53,6 +53,7 @@ export class SuggestionService {
     string,
     Readonly<{ value: Suggestion; expiresAt: Date }>
   >();
+  private readonly confirming = new Set<string>();
 
   constructor(
     private readonly dependencies: Readonly<{
@@ -129,7 +130,8 @@ export class SuggestionService {
     input: Readonly<{ guildId: string; ownerUserId: string; draftId: string }>,
   ): Promise<Suggestion> {
     this.cleanupDrafts();
-    const draft = this.drafts.get(input.draftId.trim());
+    const draftId = input.draftId.trim();
+    const draft = this.drafts.get(draftId);
     const value = draft?.value;
     if (
       value === undefined ||
@@ -137,72 +139,79 @@ export class SuggestionService {
       value.ownerUserId !== input.ownerUserId.trim()
     )
       throw new SuggestionServiceError('invalid-input');
-    if (
-      (await this.dependencies.repository.getOptOut(
-        value.guildId,
-        value.ownerUserId,
-      )) !== undefined
-    )
-      throw new SuggestionServiceError('opted-out');
-    if (
-      (await this.dependencies.repository.findActiveSuggestionByContent(
-        value.guildId,
-        value.title,
-        value.description,
-      )) !== undefined
-    )
-      throw new SuggestionServiceError('duplicate');
-    if (
-      !this.dependencies.rateLimiter.consume(
-        `suggestion:${value.guildId}:${value.ownerUserId}`,
-      ).allowed
-    )
-      throw new SuggestionServiceError('rate-limit');
+    if (this.confirming.has(draftId))
+      throw new SuggestionServiceError('invalid-input');
+    this.confirming.add(draftId);
     try {
-      await this.dependencies.repository.createSuggestion(value);
-    } catch (error) {
-      if (error instanceof EngagementRecordConflictError)
-        throw new SuggestionServiceError('duplicate');
-      throw error;
-    }
-    this.drafts.delete(value.id);
-    let messageId: string | undefined;
-    try {
-      const message = await this.dependencies.gateway.post(
-        value.channelId,
-        buildSuggestionCard(value),
-      );
-      messageId = message.id;
-      return (
-        (await this.dependencies.repository.updateSuggestionMessageId(
+      if (
+        (await this.dependencies.repository.getOptOut(
           value.guildId,
-          value.id,
-          message.id,
-        )) ?? value
-      );
-    } catch (error) {
-      if (messageId !== undefined) {
-        try {
-          await this.dependencies.repository.markSuggestionCleanupPending(
+          value.ownerUserId,
+        )) !== undefined
+      )
+        throw new SuggestionServiceError('opted-out');
+      if (
+        (await this.dependencies.repository.findActiveSuggestionByContent(
+          value.guildId,
+          value.title,
+          value.description,
+        )) !== undefined
+      )
+        throw new SuggestionServiceError('duplicate');
+      if (
+        !this.dependencies.rateLimiter.consume(
+          `suggestion:${value.guildId}:${value.ownerUserId}`,
+        ).allowed
+      )
+        throw new SuggestionServiceError('rate-limit');
+      try {
+        await this.dependencies.repository.createSuggestion(value);
+      } catch (error) {
+        if (error instanceof EngagementRecordConflictError)
+          throw new SuggestionServiceError('duplicate');
+        throw error;
+      }
+      this.drafts.delete(value.id);
+      let messageId: string | undefined;
+      try {
+        const message = await this.dependencies.gateway.post(
+          value.channelId,
+          buildSuggestionCard(value),
+        );
+        messageId = message.id;
+        return (
+          (await this.dependencies.repository.updateSuggestionMessageId(
             value.guildId,
             value.id,
-            messageId,
-            this.now(),
-          );
-        } catch {
-          this.dependencies.onPersistenceFailure?.({
-            guildId: value.guildId,
-            suggestionId: value.id,
-          });
-          throw new SuggestionServiceError('persistence-failed');
-        }
-      } else {
-        await this.dependencies.repository.deleteSuggestionRecord(
-          value.guildId,
-          value.id,
+            message.id,
+          )) ?? value
         );
+      } catch (error) {
+        if (messageId !== undefined) {
+          try {
+            await this.dependencies.repository.markSuggestionCleanupPending(
+              value.guildId,
+              value.id,
+              messageId,
+              this.now(),
+            );
+          } catch {
+            this.dependencies.onPersistenceFailure?.({
+              guildId: value.guildId,
+              suggestionId: value.id,
+            });
+            throw new SuggestionServiceError('persistence-failed');
+          }
+        } else {
+          await this.dependencies.repository.deleteSuggestionRecord(
+            value.guildId,
+            value.id,
+          );
+        }
+        throw error;
       }
-      throw error;
+    } finally {
+      this.confirming.delete(draftId);
     }
   }
 

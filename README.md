@@ -28,16 +28,16 @@ enhancements.
 
 ## What ships
 
-| Verified capability                                                                                                                       | Current boundary                                                                                                                                                     |
-| ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Verified capability                                                                                                                                                                                     | Current boundary                                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, `/introduce`, `/suggest`, `/event`, `/recap`, `/trivia`, `/engagement`, and read-only `/fantasy standings`, plus direct mentions | Engagement V1 provides introductions, suggestions, events/RSVP, weekly recaps, and trivia only in their configured channels; administrative controls require configured engagement roles |
-| Optional `/poll` and `/poll-close` commands                                                                                               | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls                                       |
-| Short conversation context stored in SQLite                                                                                               | Isolated by guild and channel or thread; not encrypted by the application                                                                                            |
-| Local Ollama and OpenAI Responses providers                                                                                               | Exactly one provider is selected at startup                                                                                                                          |
-| Optional balanced Tavily grounding                                                                                                        | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence                                |
-| Bounded input, output, retries, rate limits, retention, and stored rows                                                                   | Single-process controls, not distributed coordination                                                                                                                |
-| Local responses for clearly unsupported action requests                                                                                   | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                                                    |
-| Native Node.js and hardened Docker Compose deployment paths                                                                               | One active Jarvis process and one SQLite database are the supported topology                                                                                         |
+| Optional `/poll` and `/poll-close` commands                                                                                                                                                             | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls                                                           |
+| Short conversation context stored in SQLite                                                                                                                                                             | Isolated by guild and channel or thread; not encrypted by the application                                                                                                                |
+| Local Ollama and OpenAI Responses providers                                                                                                                                                             | Exactly one provider is selected at startup                                                                                                                                              |
+| Optional balanced Tavily grounding                                                                                                                                                                      | Disabled without `TAVILY_API_KEY`; current and evidence-sensitive factual prompts can search, while results remain untrusted evidence                                                    |
+| Bounded input, output, retries, rate limits, retention, and stored rows                                                                                                                                 | Single-process controls, not distributed coordination                                                                                                                                    |
+| Local responses for clearly unsupported action requests                                                                                                                                                 | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                                                                        |
+| Native Node.js and hardened Docker Compose deployment paths                                                                                                                                             | One active Jarvis process and one SQLite database are the supported topology                                                                                                             |
 
 Jarvis does not moderate Discord, change roles or channels, edit content owned
 by others, execute shell commands, access arbitrary files, write to GitHub, or
@@ -318,9 +318,11 @@ The implemented, unreleased Muthaship engagement loop includes guided
 introductions, suggestions, events and RSVP, weekly recaps, and curated trivia.
 When enabled,
 `/introduce preview` accepts a bounded name, interests, and reason for coming
-aboard, returns a private preview, and persists or posts nothing until the
-member runs `/introduce confirm` with that preview ID. `/introduce cancel`
-discards the private draft. Confirmed cards post only to
+aboard, returns a private, mobile-friendly preview with **Confirm** and
+**Cancel** buttons, and persists or posts nothing until the member confirms.
+Those buttons are bound to the preview owner and MuthaShip, expire with the
+draft, and the UUID `/introduce confirm` and `/introduce cancel` commands
+remain available as a fallback. Confirmed cards post only to
 `ENGAGEMENT_INTRODUCTION_CHANNEL_ID`.
 `/introduction id:<id>` removes only the caller's active introduction and its
 bot-owned card. Members who opted out cannot submit; active duplicates and
@@ -328,8 +330,8 @@ rapid repeat attempts are rejected. On retention expiry, Jarvis deletes its
 bot-owned card before removing the corresponding SQLite record; if Discord
 cannot delete the card, it retains the record for a later retry.
 
-`/suggest preview title:<...> description:<...>` returns a private preview and
-posts nothing until `/suggest confirm draft_id:<id>` is run. Confirmed cards
+`/suggest preview title:<...> description:<...>` returns the same private,
+owner-bound button preview and posts nothing until confirmation. Confirmed cards
 post only to `ENGAGEMENT_SUGGESTION_CHANNEL_ID`, with mentions disabled and no
 GitHub issue creation. Configured engagement administrators can acknowledge,
 defer, resolve, or archive a bot-owned suggestion card; these controls update
@@ -413,7 +415,7 @@ Jarvis reports that safely instead of guessing.
 | [Change management](docs/CHANGE_MANAGEMENT.md)                      | Standard request, validation, merge, deployment, and closeout process                       |
 | [GitHub workflow](docs/GITHUB_WORKFLOW.md)                          | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
 | [Extension guide](docs/extensions/README.md)                        | Disabled contracts and requirements for any future integration                              |
-| [Roadmap](docs/ROADMAP.md)                                          | Released, implemented-unreleased, planned, later, and explicitly out-of-scope work         |
+| [Roadmap](docs/ROADMAP.md)                                          | Released, implemented-unreleased, planned, later, and explicitly out-of-scope work          |
 | [Releases](docs/RELEASES.md)                                        | Versioning, validation gates, publication authority, and rollback                           |
 
 Repository policies and project records:

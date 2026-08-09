@@ -138,7 +138,8 @@ for a later handler to ignore. Restart after any engagement configuration
 change; re-register commands after enabling engagement or changing the
 introduction channel. `/introduce` posts only to
 `ENGAGEMENT_INTRODUCTION_CHANNEL_ID`; `/introduce preview` creates a private
-draft and `/introduce confirm` posts it, while `/introduction id:<id>` is the
+draft with owner-bound Confirm and Cancel buttons (the UUID commands remain as
+a fallback) and `/introduce confirm` posts it, while `/introduction id:<id>` is the
 owner-only deletion path for its SQLite record and bot-owned card. Retention
 cleanup runs after Discord is ready, removes expired bot-owned cards before
 deleting their records, and marks a failed card deletion `cleanup_pending` so
@@ -147,8 +148,9 @@ Active opt-outs, recap enablement, and guild pause preferences are control
 state, not expiring content. Retention cleanup never removes them; only the
 corresponding explicit opt-in, recap control, or resume command changes them.
 
-Suggestions use the same private-preview pattern: `/suggest preview` followed
-by `/suggest confirm`, posting only to `ENGAGEMENT_SUGGESTION_CHANNEL_ID`.
+Suggestions use the same private-preview pattern: `/suggest preview` offers
+owner-bound Confirm and Cancel buttons, while `/suggest confirm` remains a
+UUID fallback, posting only to `ENGAGEMENT_SUGGESTION_CHANNEL_ID`.
 `/suggestion delete id:<id>` lets the author remove an open suggestion and its
 bot-owned card before a configured administrator triages it. The administrator role allowlist may
 acknowledge, defer, resolve, or archive bot-owned suggestion cards. These

@@ -4,6 +4,10 @@ import {
   type SuggestionService,
 } from '../engagement/suggestions.js';
 import { replySafely, type ReplyTarget } from '../discord/delivery.js';
+import {
+  buildEngagementButton,
+  buildEngagementCard,
+} from '../engagement/discord-ui.js';
 
 export interface SuggestionCommandInteraction extends ReplyTarget {
   readonly guildId: string | null;
@@ -76,11 +80,34 @@ export const handleSuggestionCommand = async (
       description: interaction.options.getString('description') ?? '',
     });
     const card = buildSuggestionCard(draft);
-    await replySafely(
-      interaction,
-      `Private preview:\n${card.embeds[0]?.title}\n${card.embeds[0]?.description}\n\nNothing has been saved or posted. Use /suggest confirm draft_id:${draft.id} to post, or /suggest cancel draft_id:${draft.id} to discard it.`,
-      true,
-    );
+    await interaction.reply({
+      ...buildEngagementCard({
+        title: `Review: ${card.embeds[0]?.title ?? 'Suggestion'}`,
+        ...(card.embeds[0]?.description === undefined
+          ? {}
+          : { description: card.embeds[0].description }),
+        content:
+          'Nothing has been saved or posted. Confirm or cancel below. The UUID commands remain available as a fallback.',
+        components: [
+          {
+            type: 'actionRow',
+            components: [
+              buildEngagementButton({
+                customId: `preview:v1:suggestion:${draft.id}:confirm`,
+                label: 'Confirm',
+                style: 'success',
+              }),
+              buildEngagementButton({
+                customId: `preview:v1:suggestion:${draft.id}:cancel`,
+                label: 'Cancel',
+                style: 'danger',
+              }),
+            ],
+          },
+        ],
+      }),
+      ephemeral: true,
+    });
   } catch (error) {
     await replySafely(
       interaction,

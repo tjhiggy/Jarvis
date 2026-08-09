@@ -4,6 +4,10 @@ import {
   type IntroductionService,
 } from '../engagement/introductions.js';
 import { replySafely, type ReplyTarget } from '../discord/delivery.js';
+import {
+  buildEngagementButton,
+  buildEngagementCard,
+} from '../engagement/discord-ui.js';
 
 export interface IntroductionCommandInteraction extends ReplyTarget {
   readonly guildId: string | null;
@@ -76,11 +80,32 @@ export const handleIntroductionCommand = async (
       interests: interaction.options.getString('interests') ?? '',
       introduction: interaction.options.getString('aboard') ?? '',
     });
-    await replySafely(
-      interaction,
-      `Private preview:\n${formatIntroduction(draft)}\n\nNothing has been saved or posted. Use /introduce confirm draft_id:${draft.id} to post, or /introduce cancel draft_id:${draft.id} to discard it.`,
-      true,
-    );
+    await interaction.reply({
+      ...buildEngagementCard({
+        title: 'Review your introduction',
+        description: formatIntroduction(draft),
+        content:
+          'Nothing has been saved or posted. Confirm or cancel below. The UUID commands remain available as a fallback.',
+        components: [
+          {
+            type: 'actionRow',
+            components: [
+              buildEngagementButton({
+                customId: `preview:v1:introduction:${draft.id}:confirm`,
+                label: 'Confirm',
+                style: 'success',
+              }),
+              buildEngagementButton({
+                customId: `preview:v1:introduction:${draft.id}:cancel`,
+                label: 'Cancel',
+                style: 'danger',
+              }),
+            ],
+          },
+        ],
+      }),
+      ephemeral: true,
+    });
   } catch (error) {
     const message =
       error instanceof IntroductionServiceError

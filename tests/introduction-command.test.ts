@@ -33,6 +33,33 @@ describe('IntroductionService', () => {
     ).rejects.toMatchObject({ code: 'invalid-input' });
   });
 
+  it('expires an unconfirmed private preview after fifteen minutes', async () => {
+    let now = new Date('2026-08-08T12:00:00.000Z');
+    const service = createService(
+      new MemoryRepository(),
+      new Gateway(),
+      5,
+      () => now,
+    );
+    const draft = await service.preview(introductionInput());
+    now = new Date('2026-08-08T12:15:00.001Z');
+
+    await expect(
+      service.confirm({
+        guildId: 'guild-1',
+        ownerUserId: 'user-1',
+        draftId: draft.id,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-input' });
+    expect(
+      service.cancel({
+        guildId: 'guild-1',
+        ownerUserId: 'user-1',
+        draftId: draft.id,
+      }),
+    ).toBe(false);
+  });
+
   it('posts a bounded opted-in introduction only to the configured channel', async () => {
     const repository = new MemoryRepository();
     const gateway = new Gateway();
@@ -245,6 +272,7 @@ function createService(
   repository: EngagementRepository,
   gateway: Gateway,
   capacity = 5,
+  now: () => Date = () => new Date('2026-08-08T12:00:00.000Z'),
 ) {
   let nextId = 1;
   return new IntroductionService({
@@ -252,7 +280,7 @@ function createService(
     gateway,
     rateLimiter: new RateLimiter(capacity, 60_000),
     createId: () => `intro-${nextId++}`,
-    now: () => new Date('2026-08-08T12:00:00.000Z'),
+    now,
   });
 }
 
