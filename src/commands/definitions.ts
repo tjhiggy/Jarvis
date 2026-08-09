@@ -131,6 +131,18 @@ interface EngagementSubcommandDefinition {
     readonly max_length: 20;
   }[];
 }
+interface GameNightSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'create' | 'list';
+  readonly description: string;
+  readonly options?: readonly {
+    readonly type: 3;
+    readonly name: 'game' | 'start' | 'details' | 'timezone' | 'capacity';
+    readonly description: string;
+    readonly required: boolean;
+    readonly max_length: number;
+  }[];
+}
 interface BirthdaySubcommandDefinition { readonly type: 1; readonly name: 'set' | 'show' | 'delete'; readonly description: string; readonly options?: readonly { readonly type: 3; readonly name: 'date' | 'timezone'; readonly description: string; readonly required: boolean; readonly max_length: number; }[]; }
 
 export type CommandOptionDefinition =
@@ -147,6 +159,7 @@ export type CommandOptionDefinition =
   | SuggestionSubcommandDefinition
   | EventOptionDefinition
   | EventSubcommandDefinition
+  | GameNightSubcommandDefinition
   | RecapSubcommandDefinition
   | TriviaSubcommandDefinition
   | EngagementSubcommandDefinition
@@ -170,6 +183,7 @@ export interface CommandDefinition {
     | 'suggest'
     | 'suggestion'
     | 'event'
+    | 'game-night'
     | 'recap'
     | 'trivia'
     | 'engagement'
@@ -634,6 +648,21 @@ export const createCommandDefinitions = (
             },
           ],
         },
+      ],
+    },
+    {
+      type: 1,
+      name: 'game-night',
+      description: 'Schedule a crew game night with RSVP buttons.',
+      options: [
+        { type: 1, name: 'create', description: 'Schedule a game night as an administrator.', options: [
+          { type: 3, name: 'game', description: 'Game or activity name.', required: true, max_length: 120 },
+          { type: 3, name: 'start', description: 'Local start: YYYY-MM-DD HH:mm.', required: true, max_length: 16 },
+          { type: 3, name: 'details', description: 'Optional details for the crew.', required: false, max_length: 1000 },
+          { type: 3, name: 'timezone', description: 'Optional IANA timezone.', required: false, max_length: 100 },
+          { type: 3, name: 'capacity', description: 'Optional seat count; defaults to 20.', required: false, max_length: 4 },
+        ] },
+        { type: 1, name: 'list', description: 'List upcoming game nights.' },
       ],
     },
     {

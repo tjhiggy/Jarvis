@@ -37,6 +37,7 @@ import {
   handleSuggestionDeletionCommand,
 } from './suggestion.js';
 import { handleEventCommand } from './event.js';
+import { handleGameNightCommand } from './game-night.js';
 import type { EventService } from '../engagement/events.js';
 import { handleRecapCommand } from './recap.js';
 import type { RecapService } from '../engagement/recap.js';
@@ -307,6 +308,14 @@ export const handleCommand = async (
         ...(dependencies.triviaService === undefined
           ? {}
           : { service: dependencies.triviaService }),
+      });
+      return;
+    case 'game-night':
+      await handleGameNightCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId: dependencies.config.engagement?.channels.eventId ?? '',
+        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        ...(dependencies.eventService === undefined ? {} : { service: dependencies.eventService }),
       });
       return;
     case 'birthday': {
