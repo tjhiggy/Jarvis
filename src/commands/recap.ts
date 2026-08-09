@@ -68,8 +68,8 @@ export const handleRecapCommand = async (
     return replySafely(
       interaction,
       enabled
-        ? 'Weekly recaps are enabled for this guild.'
-        : 'Weekly recaps are paused for this guild.',
+        ? 'Weekly recaps are enabled for this MuthaShip.'
+        : 'Weekly recaps are paused for this MuthaShip.',
       true,
     );
   }

@@ -70,7 +70,7 @@ describe('/recap', () => {
     );
     expect(reply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: 'Weekly recaps are paused for this guild.',
+        content: 'Weekly recaps are paused for this MuthaShip.',
       }),
     );
   });
