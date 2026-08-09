@@ -13,8 +13,10 @@ owns. It has no inbound web port, cloud database, queue, webhook, or
 write-capable external integration. Trivia questions are checked-in local
 content; OpenAI, Ollama, Tavily, and Sleeper are not engagement dependencies.
 
-Jarvis does not change roles, permissions, channels, server settings,
-membership, or other users' content. It does not create GitHub issues or make
+Jarvis does not create or manage arbitrary roles, permissions, channels, server settings,
+membership, or other users' content. The optional `/roles` menu only toggles
+administrator-allowlisted role IDs and requires the bot's role hierarchy to permit
+those assignments. It does not create GitHub issues or make
 another external write. `npm run register-commands` is a deliberate operator
 action that replaces only this application's command set in its configured
 development guild, not a runtime server-settings change.

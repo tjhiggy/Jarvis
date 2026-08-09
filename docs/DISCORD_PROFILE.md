@@ -14,7 +14,7 @@ This is the canonical profile package for the MuthaShip Jarvis Discord applicati
 
 **Application description**
 
-`Muthaship Jarvis is a privacy-conscious Discord AI copilot for the MuthaShip. Ask questions by mention or slash command, use guided crew introductions, collect suggestions, run lightweight events and trivia, and review read-only fantasy standings. Jarvis stores only the bounded data required for these features, does not moderate the server, and does not modify roles, channels, repositories, or server settings.`
+`Muthaship Jarvis is a privacy-conscious Discord AI copilot for the MuthaShip. Ask questions by mention or slash command, use guided crew introductions, collect suggestions, run lightweight events and trivia, choose optional allowlisted crew roles, and review read-only fantasy standings. Jarvis stores only the bounded data required for these features, does not moderate the server, and does not create or manage arbitrary roles, channels, repositories, or server settings.`
 
 **Support text**
 

@@ -39,7 +39,7 @@ enhancements.
 | Local responses for clearly unsupported action requests                                                                                                                                                 | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                                                                        |
 | Native Node.js and hardened Docker Compose deployment paths                                                                                                                                             | One active Jarvis process and one SQLite database are the supported topology                                                                                                             |
 
-Jarvis does not moderate Discord, change roles or channels, edit content owned
+Jarvis does not moderate Discord, create roles, change channels, or edit content owned
 by others, execute shell commands, access arbitrary files, write to GitHub, or
 grant itself tools. The contracts in `src/extensions/contracts.ts` are inert
 design seams. Calling them "integrations" would be marketing with a fake
@@ -282,7 +282,7 @@ unless duplicate replies are somehow your product strategy.
 ## Security and data
 
 The current release has an explicit no-server-mutation boundary. Jarvis cannot
-modify pre-existing Discord content, roles, channels, permissions, members,
+modify pre-existing Discord content, create or manage arbitrary roles, channels, permissions, members,
 server settings, or webhooks. It creates and edits only its own poll messages
 when polls are enabled. Three deliberate state changes remain:
 
