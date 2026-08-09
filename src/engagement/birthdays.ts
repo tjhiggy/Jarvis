@@ -17,6 +17,16 @@ export interface BirthdayStore {
   claimAnnouncement(guildId: string, month: number, day: number, userId: string): Promise<boolean>;
 }
 
+export const birthdayStoreFromRepository = (repository: {
+  getBirthday(guildId: string, userId: string): Promise<BirthdayRecord | undefined>;
+  saveBirthday(record: BirthdayRecord): Promise<BirthdayRecord>;
+  deleteBirthday(guildId: string, userId: string): Promise<boolean>;
+  listDueBirthdays(guildId: string, month: number, day: number): Promise<readonly BirthdayRecord[]>;
+  claimBirthdayAnnouncement(guildId: string, month: number, day: number, userId: string): Promise<boolean>;
+}): BirthdayStore => ({
+  get: repository.getBirthday.bind(repository), upsert: repository.saveBirthday.bind(repository), delete: repository.deleteBirthday.bind(repository), due: repository.listDueBirthdays.bind(repository), claimAnnouncement: repository.claimBirthdayAnnouncement.bind(repository),
+});
+
 export interface BirthdayAnnouncementGateway {
   announce(input: {
     guildId: string;

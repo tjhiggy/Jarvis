@@ -28,6 +28,7 @@ import {
   type EngagementRepository,
 } from '../engagement/storage.js';
 import type { EngagementRecordCounts } from '../engagement/health.js';
+import type { BirthdayRecord } from '../engagement/birthdays.js';
 
 interface IntroductionRow {
   id: string;
@@ -102,6 +103,11 @@ interface TriviaRoundRow {
 }
 
 export class SQLiteEngagementRepository implements EngagementRepository {
+  async getBirthday(guildId: string, userId: string): Promise<BirthdayRecord | undefined> { this.ensureOpen(); const row = this.database.prepare('SELECT guild_id,user_id,month,day,timezone,enabled,updated_at FROM engagement_birthdays WHERE guild_id = ? AND user_id = ?').get(guildId,userId) as any; return row ? { guildId: row.guild_id, userId: row.user_id, month: row.month, day: row.day, timezone: row.timezone, enabled: Boolean(row.enabled), updatedAt: new Date(row.updated_at) } : undefined; }
+  async saveBirthday(record: BirthdayRecord): Promise<BirthdayRecord> { this.ensureOpen(); this.database.prepare('INSERT INTO engagement_birthdays (guild_id,user_id,month,day,timezone,enabled,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(guild_id,user_id) DO UPDATE SET month=excluded.month,day=excluded.day,timezone=excluded.timezone,enabled=excluded.enabled,updated_at=excluded.updated_at').run(record.guildId,record.userId,record.month,record.day,record.timezone,record.enabled?1:0,record.updatedAt.getTime()); return record; }
+  async deleteBirthday(guildId: string, userId: string): Promise<boolean> { this.ensureOpen(); return this.database.prepare('DELETE FROM engagement_birthdays WHERE guild_id = ? AND user_id = ?').run(guildId,userId).changes > 0; }
+  async listDueBirthdays(guildId: string, month: number, day: number): Promise<readonly BirthdayRecord[]> { this.ensureOpen(); return (this.database.prepare('SELECT guild_id,user_id,month,day,timezone,enabled,updated_at FROM engagement_birthdays WHERE guild_id = ? AND month = ? AND day = ? AND enabled = 1').all(guildId,month,day) as any[]).map(row=>({guildId:row.guild_id,userId:row.user_id,month:row.month,day:row.day,timezone:row.timezone,enabled:true,updatedAt:new Date(row.updated_at)})); }
+  async claimBirthdayAnnouncement(guildId: string, month: number, day: number, userId: string): Promise<boolean> { this.ensureOpen(); const year = new Date().getUTCFullYear(); const result = this.database.prepare('INSERT OR IGNORE INTO engagement_birthday_announcements (guild_id,year,month,day,user_id,announced_at) VALUES (?,?,?,?,?,?)').run(guildId,year,month,day,userId,Date.now()); return result.changes > 0; }
   private readonly database: Database.Database;
   private closed = false;
 
@@ -1645,6 +1651,10 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           "CREATE TABLE IF NOT EXISTS engagement_card_deletions (kind TEXT NOT NULL CHECK (kind IN ('introduction', 'suggestion', 'event')), guild_id TEXT NOT NULL, record_id TEXT NOT NULL, owner_user_id TEXT NOT NULL, channel_id TEXT NOT NULL, message_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (kind, guild_id, record_id)); CREATE INDEX IF NOT EXISTS engagement_card_deletions_pending ON engagement_card_deletions (created_at, guild_id, record_id);",
         );
         this.recordMigration(19);
+      }
+      if (!this.hasMigration(20)) {
+        this.database.exec("CREATE TABLE IF NOT EXISTS engagement_birthdays (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12), day INTEGER NOT NULL CHECK (day BETWEEN 1 AND 31), timezone TEXT NOT NULL, enabled INTEGER NOT NULL CHECK (enabled IN (0,1)), updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id)); CREATE TABLE IF NOT EXISTS engagement_birthday_announcements (guild_id TEXT NOT NULL, year INTEGER NOT NULL, month INTEGER NOT NULL, day INTEGER NOT NULL, user_id TEXT NOT NULL, announced_at INTEGER NOT NULL, PRIMARY KEY (guild_id, year, month, day, user_id)); CREATE INDEX IF NOT EXISTS engagement_birthdays_due ON engagement_birthdays (guild_id, month, day, enabled);");
+        this.recordMigration(20);
       }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
