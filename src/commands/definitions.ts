@@ -68,7 +68,7 @@ interface ReminderStringOptionDefinition {
 
 interface ReminderSubcommandDefinition {
   readonly type: 1;
-  readonly name: 'set' | 'list' | 'cancel';
+  readonly name: 'set' | 'list' | 'cancel' | 'shared-set' | 'shared-list' | 'shared-cancel';
   readonly description: string;
   readonly options?: readonly ReminderStringOptionDefinition[];
 }
@@ -375,6 +375,12 @@ export const createCommandDefinitions = (
             },
           ],
         },
+        { type: 1, name: 'shared-set', description: 'Create an administrator shared reminder.', options: [
+          { type: 3, name: 'in', description: 'Delay such as 10 minutes or 2 hours.', required: true, max_length: 64 },
+          { type: 3, name: 'message', description: 'Message to post.', required: true, max_length: 500 },
+        ] },
+        { type: 1, name: 'shared-list', description: 'List shared reminders in this server.' },
+        { type: 1, name: 'shared-cancel', description: 'Cancel a shared reminder.', options: [{ type: 3, name: 'id', description: 'The reminder ID.', required: true, max_length: 12 }] },
       ],
     },
     {
