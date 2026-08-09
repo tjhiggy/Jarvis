@@ -645,7 +645,7 @@ export const createCommandDefinitions = (
         {
           type: 1,
           name: 'enable',
-          description: 'Opt this guild into weekly recaps.',
+          description: 'Opt this MuthaShip into weekly recaps.',
         },
         {
           type: 1,
@@ -678,7 +678,7 @@ export const createCommandDefinitions = (
         {
           type: 1,
           name: 'opt-in',
-          description: 'Allow future trivia participation in this guild.',
+          description: 'Allow future trivia participation on this MuthaShip.',
         },
       ],
     },

@@ -79,9 +79,9 @@ export const handleEngagementCommand = async (
     );
     const content =
       deletion.completed === 0 && deletion.pending === 0
-        ? 'No retained engagement records were found for that member in this guild.'
+        ? 'No retained engagement records were found for that member on this MuthaShip.'
         : deletion.pending === 0
-          ? `Removed ${deletion.completed} retained engagement records from this guild.`
+          ? `Removed ${deletion.completed} retained engagement records from this MuthaShip.`
           : `Removed ${deletion.completed} retained engagement records; ${deletion.pending} card-backed records remain queued for deletion retry.`;
     return replySafely(interaction, content, true);
   }
@@ -103,8 +103,8 @@ export const handleEngagementCommand = async (
     return replySafely(
       interaction,
       paused
-        ? 'Engagement scheduling is paused for this guild.'
-        : 'Engagement scheduling is resumed for this guild.',
+        ? 'Engagement scheduling is paused for this MuthaShip.'
+        : 'Engagement scheduling is resumed for this MuthaShip.',
       true,
     );
   }
