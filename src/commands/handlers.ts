@@ -59,6 +59,7 @@ import type { ProactiveEngagementService } from '../engagement/proactive.js';
 import type { DelegatedPostService } from '../engagement/delegated-posts.js';
 import { handleDelegatedPostCommand } from './delegated-post.js';
 import type { GitHubReadOnlyService, GitHubServiceError } from '../github/github-service.js';
+import { formatCommandPermissionRules } from './command-permissions.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -1193,6 +1194,8 @@ const handleConfig = async (
       'Destination channels (IDs masked):',
       ...channelLines,
       'Secrets and tokens are intentionally omitted.',
+      'Command authorization (read-only):',
+      formatCommandPermissionRules(),
     ].join('\n'),
     true,
   );

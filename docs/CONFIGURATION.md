@@ -97,6 +97,21 @@ startup and command-registration configuration. When enabled,
 IDs, and `POLL_VOTER_SECRET` must contain at least 32 characters. It is an
 authorization allowlist, not a Discord role or permission grant.
 
+### Command-specific authorization
+
+Jarvis uses explicit command scopes rather than Discord's broad Administrator
+permission. `/config` shows the current read-only authorization contract to
+configured administrators. Engagement administration and approved-knowledge
+moderation use the roles in `ENGAGEMENT_ADMIN_ROLE_IDS`; poll creation and
+early closure use the exact user IDs in `POLL_ADMIN_USER_IDS`. Ordinary
+questions, personal reminders, birthdays, LFG, and role-menu selection remain
+available to members subject to channel allowlists and feature configuration.
+
+This mapping is an application boundary, not a Discord permission grant. It
+cannot create roles, change role hierarchy, modify channels, or alter server
+settings. Keep the bot's Discord permissions at the documented minimum and
+allowlist only the roles it may assign.
+
 `POLL_VOTER_SECRET` is sensitive. Put it in the same approved secret boundary
 as the bot token, never in source, logs, screenshots, or issue text. Jarvis
 uses it to derive a per-poll HMAC voter token. It does not store the raw voter
