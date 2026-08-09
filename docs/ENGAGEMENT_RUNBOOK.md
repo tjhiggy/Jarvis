@@ -79,6 +79,16 @@ Backups remain historical copies until they expire under the backup policy.
 
 ## Retention, schedulers, and failure response
 
+### Proactive crew posts (V1)
+
+Proactive posts are disabled by default and require an administrator to opt in
+with `/engagement proactive action:Enable`. Administrators can use `Preview`,
+`Pause`, and `Status` from the same command. Posts are restricted to the
+configured engagement destination, neutralize all Discord mentions, observe
+quiet hours, and use an idempotency key plus a minimum interval to avoid
+duplicates. Preview never sends a Discord message. The feature has no access to
+historical chat and cannot change server settings.
+
 `ENGAGEMENT_RETENTION_DAYS` governs normal cleanup of disposable local engagement state:
 introductions, suggestions, expired trivia records and answers,
 idempotency keys, completed recap run leases,
