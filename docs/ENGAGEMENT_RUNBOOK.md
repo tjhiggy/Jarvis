@@ -45,6 +45,7 @@ read general chat.
 | `ENGAGEMENT_EVENT_CHANNEL_ID`        | Sole destination for event cards and RSVP controls.                              |
 | `ENGAGEMENT_RECAP_CHANNEL_ID`        | Sole destination for weekly recaps.                                              |
 | `ENGAGEMENT_ACTIVITY_CHANNEL_ID`     | Sole destination for trivia cards and answers.                                   |
+| `ENGAGEMENT_BIRTHDAY_CHANNEL_ID`     | Sole destination for birthday announcements.                                     |
 | `ENGAGEMENT_ADMIN_ROLE_IDS`          | Comma-separated app authorization allowlist. It grants no Discord permission.    |
 | `ENGAGEMENT_RECAP_SCHEDULE`          | Optional `DAY HH:MM`, for example `MONDAY 09:30`; required for scheduled recaps. |
 | `ENGAGEMENT_RECAP_TIMEZONE`          | Valid IANA timezone, default `UTC`.                                              |

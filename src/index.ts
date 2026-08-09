@@ -84,7 +84,7 @@ import {
   TriviaExpiryScheduler,
   TriviaService,
 } from './engagement/activity.js';
-import { BirthdayService, birthdayStoreFromRepository, type BirthdayService as BirthdayServiceType } from './engagement/birthdays.js';
+import { BirthdayScheduler, BirthdayService, birthdayStoreFromRepository, type BirthdayService as BirthdayServiceType } from './engagement/birthdays.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -442,6 +442,7 @@ export const createApplication = async (
   let recapScheduler: RecapScheduler | undefined;
   let triviaService: TriviaService | undefined;
   let birthdayService: BirthdayServiceType | undefined;
+  let birthdayScheduler: BirthdayScheduler | undefined;
   let triviaScheduler: TriviaExpiryScheduler | undefined;
   let engagementDeletionService: EngagementDeletionService | undefined;
   let client: RuntimeDiscordClient | undefined;
@@ -505,6 +506,16 @@ export const createApplication = async (
           logger?.warn(
             projectOperationalError(error, 'trivia_scheduler_shutdown'),
             'Trivia scheduler stop failed during shutdown.',
+          );
+        }
+      }
+      if (birthdayScheduler !== undefined) {
+        try {
+          await birthdayScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'birthday_scheduler_shutdown'),
+            'Birthday scheduler stop failed during shutdown.',
           );
         }
       }
@@ -647,7 +658,11 @@ export const createApplication = async (
             ),
             createId: () => randomUUID(),
           });
-    birthdayService = engagementRepository === undefined ? undefined : new BirthdayService(birthdayStoreFromRepository(engagementRepository as any));
+    birthdayService =
+      engagementRepository !== undefined &&
+      typeof engagementRepository.getBirthday === 'function'
+        ? new BirthdayService(birthdayStoreFromRepository(engagementRepository as any))
+        : undefined;
     const suggestionService =
       engagementRepository === undefined
         ? undefined
@@ -1077,11 +1092,32 @@ export const createApplication = async (
         },
       });
 
+    if (
+      birthdayService !== undefined &&
+      config.engagement.channels.birthdayId !== ''
+    ) {
+      birthdayScheduler = new BirthdayScheduler({
+        store: birthdayStoreFromRepository(engagementRepository as any),
+        guildId: config.discord.guildId,
+        channelId: config.engagement.channels.birthdayId,
+        timezone: config.engagement.recapTimezone,
+        gateway: {
+          announce: async ({ channelId, content, allowedMentions }) => {
+            const channel = await schedulerClient.channels?.fetch(channelId);
+            if (!isEventChannel(channel))
+              throw new Error('Configured birthday channel is unavailable.');
+            await channel.send({ content, allowedMentions });
+          },
+        },
+      });
+    }
+
     pollScheduler?.start();
     reminderScheduler.start();
     eventScheduler?.start();
     recapScheduler?.start();
     triviaScheduler?.start();
+    birthdayScheduler?.start();
 
     cleanupTimer = timers.setInterval(() => {
       void trackWork(cleanup());

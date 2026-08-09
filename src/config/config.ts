@@ -75,6 +75,7 @@ export interface EngagementConfig {
     eventId: string;
     recapId: string;
     activityId: string;
+    birthdayId: string;
   }>;
   readonly adminRoleIds: ReadonlySet<string>;
   readonly recapSchedule: string;
@@ -231,6 +232,7 @@ const baseEnvironmentSchema = z.object({
   ENGAGEMENT_EVENT_CHANNEL_ID: optionalDiscordSnowflake,
   ENGAGEMENT_RECAP_CHANNEL_ID: optionalDiscordSnowflake,
   ENGAGEMENT_ACTIVITY_CHANNEL_ID: optionalDiscordSnowflake,
+  ENGAGEMENT_BIRTHDAY_CHANNEL_ID: optionalDiscordSnowflake,
   ENGAGEMENT_ADMIN_ROLE_IDS: engagementAdminRoleIds,
   ENGAGEMENT_RECAP_SCHEDULE: z.preprocess(
     (value) =>
@@ -287,6 +289,7 @@ type EngagementEnvironment = Pick<
   | 'ENGAGEMENT_EVENT_CHANNEL_ID'
   | 'ENGAGEMENT_RECAP_CHANNEL_ID'
   | 'ENGAGEMENT_ACTIVITY_CHANNEL_ID'
+  | 'ENGAGEMENT_BIRTHDAY_CHANNEL_ID'
   | 'ENGAGEMENT_ADMIN_ROLE_IDS'
   | 'ENGAGEMENT_RECAP_SCHEDULE'
 >;
@@ -301,6 +304,7 @@ const validateEngagementConfiguration = (
     value.ENGAGEMENT_EVENT_CHANNEL_ID,
     value.ENGAGEMENT_RECAP_CHANNEL_ID,
     value.ENGAGEMENT_ACTIVITY_CHANNEL_ID,
+    value.ENGAGEMENT_BIRTHDAY_CHANNEL_ID,
   ];
   const hasConfiguredChannel = channelIds.some((channelId) => channelId !== '');
 
@@ -451,6 +455,7 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
         eventId: parsed.ENGAGEMENT_EVENT_CHANNEL_ID,
         recapId: parsed.ENGAGEMENT_RECAP_CHANNEL_ID,
         activityId: parsed.ENGAGEMENT_ACTIVITY_CHANNEL_ID,
+        birthdayId: parsed.ENGAGEMENT_BIRTHDAY_CHANNEL_ID,
       }),
       adminRoleIds: readonlySet(parsed.ENGAGEMENT_ADMIN_ROLE_IDS),
       recapSchedule: parsed.ENGAGEMENT_RECAP_SCHEDULE,
