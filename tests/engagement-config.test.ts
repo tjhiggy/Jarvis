@@ -32,6 +32,7 @@ describe('engagement configuration', () => {
       retentionDays: 30,
       maxRecordsPerUser: 5,
       maxParticipants: 100,
+      roleMenuChoices: [],
     });
     expect([...engagement.adminRoleIds]).toEqual([]);
     expect(Object.isFrozen(engagement)).toBe(true);

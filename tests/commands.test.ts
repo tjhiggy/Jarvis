@@ -45,6 +45,7 @@ describe('command definitions', () => {
       'trivia',
       'engagement',
       'birthday',
+      'roles',
     ]);
     expect(definitions[0]).toMatchObject({
       name: 'ask',
@@ -155,6 +156,7 @@ describe('command definitions', () => {
       'trivia',
       'engagement',
       'birthday',
+      'roles',
     ]);
     expect(definitions[8]).toMatchObject({
       name: 'poll',

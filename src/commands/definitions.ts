@@ -190,7 +190,8 @@ export interface CommandDefinition {
     | 'recap'
     | 'trivia'
     | 'engagement'
-    | 'birthday';
+    | 'birthday'
+    | 'roles';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -751,6 +752,7 @@ export const createCommandDefinitions = (
       { type: 1, name: 'show', description: 'Show your saved birthday privately.' },
       { type: 1, name: 'delete', description: 'Delete your saved birthday.' },
     ] },
+    { type: 1, name: 'roles', description: 'Choose your optional MuthaShip crew roles.' },
   );
 
   return definitions;

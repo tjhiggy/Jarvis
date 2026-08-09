@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseRoleMenuConfig } from '../engagement/role-menus.js';
 import type { RuntimeIdentity } from './runtime-identity.js';
 
 type LogLevel =
@@ -83,6 +84,7 @@ export interface EngagementConfig {
   readonly retentionDays: number;
   readonly maxRecordsPerUser: number;
   readonly maxParticipants: number;
+  readonly roleMenuChoices?: readonly import('../engagement/role-menus.js').RoleMenuChoice[];
 }
 
 export interface DiscordRegistrationConfig {
@@ -233,6 +235,7 @@ const baseEnvironmentSchema = z.object({
   ENGAGEMENT_RECAP_CHANNEL_ID: optionalDiscordSnowflake,
   ENGAGEMENT_ACTIVITY_CHANNEL_ID: optionalDiscordSnowflake,
   ENGAGEMENT_BIRTHDAY_CHANNEL_ID: optionalDiscordSnowflake,
+  ENGAGEMENT_ROLE_MENU_OPTIONS: z.string().trim().default(''),
   ENGAGEMENT_ADMIN_ROLE_IDS: engagementAdminRoleIds,
   ENGAGEMENT_RECAP_SCHEDULE: z.preprocess(
     (value) =>
@@ -463,6 +466,7 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
       retentionDays: parsed.ENGAGEMENT_RETENTION_DAYS,
       maxRecordsPerUser: parsed.ENGAGEMENT_MAX_RECORDS_PER_USER,
       maxParticipants: parsed.ENGAGEMENT_MAX_PARTICIPANTS,
+      roleMenuChoices: Object.freeze(parseRoleMenuConfig(parsed.ENGAGEMENT_ROLE_MENU_OPTIONS)),
     }),
     logging: Object.freeze({ level: parsed.LOG_LEVEL }),
   });
