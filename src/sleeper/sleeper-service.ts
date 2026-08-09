@@ -1,4 +1,4 @@
-import { SleeperServiceError, type SleeperService, type SleeperStanding } from './sleeper-types.js';
+import { SleeperServiceError, type SleeperService, type SleeperStanding, type SleeperMatchup } from './sleeper-types.js';
 
 const apiBaseUrl = 'https://api.sleeper.app/v1';
 
@@ -45,6 +45,35 @@ export class HttpSleeperService implements SleeperService {
     }
   }
 
+  async getMatchups(leagueId: string, week: number): Promise<readonly SleeperMatchup[]> {
+    if (!/^\d{8,20}$/.test(leagueId.trim()) || !Number.isInteger(week) || week < 1 || week > 30) {
+      throw new SleeperServiceError('invalid-data', 'Invalid Sleeper league or week.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.http.fetch(
+        `${apiBaseUrl}/league/${encodeURIComponent(leagueId)}/matchups/${week}`,
+        { signal: controller.signal },
+      );
+      if (response.status === 429) throw new SleeperServiceError('rate-limited', 'Sleeper rate limit reached.');
+      if (!response.ok) throw new SleeperServiceError('unavailable', 'Sleeper is unavailable.');
+      const payload: unknown = await response.json();
+      if (!Array.isArray(payload)) throw new SleeperServiceError('invalid-data', 'Sleeper returned invalid matchup data.');
+      const matchups = payload.map(parseMatchup);
+      const names = await this.getOwnerNames(leagueId, controller.signal);
+      return matchups.map((matchup) => {
+        const ownerName = names.get(matchup.ownerId);
+        return ownerName === undefined ? matchup : { ...matchup, ownerName };
+      });
+    } catch (error) {
+      if (error instanceof SleeperServiceError) throw error;
+      throw new SleeperServiceError('unavailable', 'Sleeper is unavailable.');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private async getOwnerNames(leagueId: string, signal: AbortSignal): Promise<ReadonlyMap<string, string>> {
     try {
       const response = await this.http.fetch(`${apiBaseUrl}/league/${encodeURIComponent(leagueId)}/users`, { signal });
@@ -82,5 +111,22 @@ const parseStanding = (value: unknown): SleeperStanding => {
     ties: number('ties'),
     pointsFor: number('fpts'),
     pointsAgainst: number('fpts_against'),
+  };
+};
+
+const parseMatchup = (value: unknown): SleeperMatchup => {
+  if (typeof value !== 'object' || value === null) throw new SleeperServiceError('invalid-data', 'Sleeper returned invalid matchup data.');
+  const item = value as Record<string, unknown>;
+  if (typeof item.roster_id !== 'number' || !Number.isInteger(item.roster_id) ||
+      (item.matchup_id !== null && typeof item.matchup_id !== 'number') ||
+      typeof item.owner_id !== 'undefined' && item.owner_id !== null && typeof item.owner_id !== 'string') {
+    throw new SleeperServiceError('invalid-data', 'Sleeper returned invalid matchup data.');
+  }
+  const points = typeof item.points === 'number' && Number.isFinite(item.points) ? item.points : 0;
+  return {
+    rosterId: item.roster_id,
+    matchupId: item.matchup_id ?? null,
+    points,
+    ownerId: typeof item.owner_id === 'string' && item.owner_id !== '' ? item.owner_id : 'unassigned',
   };
 };

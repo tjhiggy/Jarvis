@@ -16,7 +16,7 @@ import type { ReminderStore } from '../reminders/reminder-store.js';
 import type { ReminderView } from '../reminders/reminder-types.js';
 import type { RuntimeIdentity } from '../config/runtime-identity.js';
 import { formatRuntimeIdentity } from '../config/runtime-identity.js';
-import type { SleeperService } from '../sleeper/sleeper-types.js';
+import type { SleeperService, SleeperMatchup } from '../sleeper/sleeper-types.js';
 import { isAllowedChannel } from '../discord/access.js';
 import {
   allowedMentions,
@@ -82,6 +82,7 @@ export interface CommandInteraction extends ReplyTarget, DeferredReplyTarget {
   readonly options: Readonly<{
     getSubcommand(): string;
     getString(name: string): string | null;
+    getInteger?(name: string): number | null;
   }>;
   deferReply(payload: ReplyPayload): Promise<unknown>;
   fetchReply(): Promise<Readonly<{ id: string }>>;
@@ -449,11 +450,30 @@ const handleFantasy = async (
     return;
   }
   if (interaction.options.getSubcommand() !== 'standings') {
-    await replySafely(
-      interaction,
-      'Use `/fantasy standings` for the current read-only league standings.',
-      true,
-    );
+    const week = interaction.options.getInteger?.('week') ?? 1;
+    try {
+      const matchups = await dependencies.sleeper.service.getMatchups(dependencies.sleeper.leagueId, week);
+      if (matchups.length === 0) {
+        await replySafely(interaction, `Sleeper has no matchup data for week ${week}. The season may not have started yet.`, true);
+        return;
+      }
+      const groups = new Map<number, SleeperMatchup[]>();
+      for (const matchup of matchups) {
+        if (matchup.matchupId === null) continue;
+        const group = groups.get(matchup.matchupId) ?? [];
+        group.push(matchup);
+        groups.set(matchup.matchupId, group);
+      }
+      const lines = [...groups.entries()].map(([id, entries]) => {
+        const sides = entries.map((entry) => `${entry.ownerName ?? `Roster ${entry.rosterId}`} ${entry.points.toFixed(2)}`).join(' vs ');
+        return `Matchup ${id}: ${sides}`;
+      });
+      await replySafely(interaction, lines.length === 0
+        ? `Sleeper has no completed matchups for week ${week}. Pre-draft or unassigned rosters are not guessed.`
+        : `MuthaShip week ${week} matchups (read-only)\n${lines.join('\n')}`, true);
+    } catch {
+      await replySafely(interaction, 'Sleeper matchup data is temporarily unavailable. Jarvis will not guess.', true);
+    }
     return;
   }
   try {
