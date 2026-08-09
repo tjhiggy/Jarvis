@@ -96,7 +96,7 @@ interface IntroductionSubcommandDefinition {
 
 interface SuggestionOptionDefinition {
   readonly type: 3;
-  readonly name: 'title' | 'description' | 'id' | 'draft_id';
+  readonly name: 'title' | 'description' | 'content' | 'id' | 'draft_id';
   readonly description: string;
   readonly required: true;
   readonly max_length: number;
@@ -200,7 +200,8 @@ export interface CommandDefinition {
     | 'status'
     | 'faq'
     | 'knowledge'
-    | 'catch-me-up'
+  | 'catch-me-up'
+    | 'post'
     | 'channel-summary'
     | 'reminder'
     | 'poll'
@@ -593,6 +594,16 @@ export const createCommandDefinitions = (
             },
           ],
         },
+      ],
+    },
+    {
+      type: 1,
+      name: 'post',
+      description: 'Preview and send a MuthaShip transmission for an administrator.',
+      options: [
+        { type: 1, name: 'preview', description: 'Create a private transmission preview.', options: [{ type: 3, name: 'content', description: 'Message to post in the configured test channel.', required: true, max_length: 1500 }] },
+        { type: 1, name: 'confirm', description: 'Post a reviewed transmission.', options: [{ type: 3, name: 'draft_id', description: 'Private preview ID.', required: true, max_length: 128 }] },
+        { type: 1, name: 'cancel', description: 'Discard a private transmission preview.', options: [{ type: 3, name: 'draft_id', description: 'Private preview ID.', required: true, max_length: 128 }] },
       ],
     },
     {
