@@ -1,6 +1,7 @@
 import type { ConversationResult } from '../services/conversation-service.js';
 import type { ConversationStore } from '../storage/conversation-store.js';
 import type { FaqCatalog } from '../faq/faq-catalog.js';
+import type { ApprovedKnowledgeCatalog } from '../knowledge/approved-knowledge.js';
 import type { PollController } from '../polls/poll-controller.js';
 import type { PollDurationValue } from '../polls/poll-duration.js';
 import type { PollScheduler } from '../polls/poll-scheduler.js';
@@ -137,6 +138,7 @@ export interface CommandDependencies {
     scheduler: Pick<ReminderScheduler, 'healthy'>;
   }>;
   readonly faq: FaqCatalog;
+  readonly knowledge?: ApprovedKnowledgeCatalog;
   readonly sleeper?: Readonly<{ leagueId: string; service: SleeperService }>;
   readonly pollController?: PollController;
   readonly pollHealth?: Readonly<{
@@ -203,6 +205,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/search query:<question> searches current web sources before Jarvis answers.',
     '/forget clears Jarvis history in this channel or thread.',
     '/faq topic:<approved topic> browses approved Jarvis information.',
+    '/knowledge query:<search> searches administrator-approved MuthaShip knowledge.',
     '/reminder set in:<duration> message:<text> creates a private personal reminder request.',
     '/reminder list shows your retained reminders in this server.',
     '/reminder cancel id:<id> cancels one of your reminders.',
@@ -236,6 +239,9 @@ export const handleCommand = async (
       return;
     case 'faq':
       await handleFaq(interaction, dependencies);
+      return;
+    case 'knowledge':
+      await handleKnowledge(interaction, dependencies);
       return;
     case 'reminder':
       await handleReminder(interaction, dependencies);
@@ -914,6 +920,16 @@ const faqQuestions = (faq: FaqCatalog): string =>
 
 const faqLabels = (faq: FaqCatalog): string =>
   faq.entries.map((entry) => `- ${entry.label}`).join('\n');
+
+const handleKnowledge = async (interaction: CommandInteraction, dependencies: CommandDependencies): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) return;
+  const catalog = dependencies.knowledge;
+  if (!catalog) return replySafely(interaction, 'Approved MuthaShip knowledge is not configured.', true);
+  const query = interaction.options.getString('query')?.trim() ?? '';
+  const results = catalog.search(query);
+  if (results.length === 0) return replySafely(interaction, 'No approved knowledge matches that query. Jarvis will not guess.', true);
+  await replySafely(interaction, results.map((entry) => `**${entry.title}**\n${entry.content}\nSource: ${entry.source}`).join('\n\n'), true);
+};
 
 const handleStatus = async (
   interaction: CommandInteraction,

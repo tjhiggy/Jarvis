@@ -19,6 +19,13 @@ interface FaqTopicOptionDefinition {
     readonly value: string;
   }[];
 }
+interface KnowledgeQueryOptionDefinition {
+  readonly type: 3;
+  readonly name: 'query';
+  readonly description: string;
+  readonly required: true;
+  readonly max_length: number;
+}
 
 interface RequiredStringOptionDefinition {
   readonly type: 3;
@@ -149,6 +156,7 @@ interface BirthdaySubcommandDefinition { readonly type: 1; readonly name: 'set' 
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
   | FaqTopicOptionDefinition
+  | KnowledgeQueryOptionDefinition
   | RequiredStringOptionDefinition
   | OptionalPollOptionDefinition
   | PollDurationOptionDefinition
@@ -176,6 +184,7 @@ export interface CommandDefinition {
     | 'help'
     | 'status'
     | 'faq'
+    | 'knowledge'
     | 'reminder'
     | 'poll'
     | 'poll-close'
@@ -276,6 +285,12 @@ export const createCommandDefinitions = (
           })),
         },
       ],
+    },
+    {
+      type: 1,
+      name: 'knowledge',
+      description: 'Search approved MuthaShip knowledge.',
+      options: [{ type: 3, name: 'query', description: 'Search approved knowledge.', required: true, max_length: Math.min(maxInputChars, discordStringOptionMaxLength) }],
     },
     {
       type: 1,

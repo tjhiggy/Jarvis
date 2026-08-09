@@ -14,6 +14,7 @@ import {
   type DiscordMessage,
 } from './discord/handlers.js';
 import { loadFaqCatalog, type FaqCatalog } from './faq/faq-catalog.js';
+import { loadKnowledgeCatalog, type ApprovedKnowledgeCatalog } from './knowledge/approved-knowledge.js';
 import {
   OpenAIResponsesService,
   type AIService,
@@ -217,6 +218,7 @@ export interface ApplicationDependencies {
   readonly loadConfig?: (env: NodeJS.ProcessEnv) => AppConfig;
   readonly loadPersona?: (path: string) => Promise<TrustedPersona>;
   readonly loadFaqCatalog?: (path: string) => Promise<FaqCatalog>;
+  readonly loadKnowledgeCatalog?: (path: string) => Promise<ApprovedKnowledgeCatalog>;
   readonly createStore?: (
     databasePath: string,
     maxStoredMessages: number,
@@ -413,6 +415,7 @@ export const createApplication = async (
   const configLoader = dependencies.loadConfig ?? loadConfig;
   const personaLoader = dependencies.loadPersona ?? loadPersona;
   const faqCatalogLoader = dependencies.loadFaqCatalog ?? loadFaqCatalog;
+  const knowledgeCatalogLoader = dependencies.loadKnowledgeCatalog ?? loadKnowledgeCatalog;
   const storeFactory =
     dependencies.createStore ??
     ((path, maxStoredMessages) =>
@@ -592,6 +595,9 @@ export const createApplication = async (
     logger = loggerFactory(config.logging.level);
     const persona = await personaLoader(config.persona.promptPath);
     const faq = await faqCatalogLoader(config.faq.catalogPath);
+    let knowledge: ApprovedKnowledgeCatalog | undefined;
+    const knowledgePath = process.env.KNOWLEDGE_CATALOG_PATH?.trim() || './config/knowledge.json';
+    try { knowledge = await knowledgeCatalogLoader(knowledgePath); } catch { knowledge = undefined; }
     store = storeFactory(
       config.storage.databasePath,
       config.storage.maxStoredMessages,
@@ -910,6 +916,7 @@ export const createApplication = async (
             scheduler: initializedReminderScheduler,
           },
           faq,
+          ...(knowledge === undefined ? {} : { knowledge }),
           ...(introductionService === undefined ? {} : { introductionService }),
           ...(suggestionService === undefined ? {} : { suggestionService }),
           ...(eventService === undefined ? {} : { eventService }),
