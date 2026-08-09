@@ -46,6 +46,7 @@ import { handleTriviaCommand } from './activity.js';
 import type { TriviaService } from '../engagement/activity.js';
 import { handleEngagementCommand } from './engagement.js';
 import type { EngagementSchedulerHealth } from '../engagement/health.js';
+import type { BirthdayService } from '../engagement/birthdays.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -145,6 +146,7 @@ export interface CommandDependencies {
     Pick<EngagementRepository, 'setRecapEnabled'>
   >;
   readonly triviaService?: TriviaService;
+  readonly birthdayService?: BirthdayService;
   readonly engagementHealth?: Readonly<{
     repository: Required<
       Pick<
@@ -307,6 +309,15 @@ export const handleCommand = async (
           : { service: dependencies.triviaService }),
       });
       return;
+    case 'birthday': {
+      if (!interaction.guildId || !dependencies.birthdayService) return replySafely(interaction, 'Birthday features are not configured on the MuthaShip.', true);
+      const sub = interaction.options.getSubcommand();
+      if (sub === 'delete') { await dependencies.birthdayService.remove(interaction.guildId, interaction.user.id); return replySafely(interaction, 'Your MuthaShip birthday has been deleted.', true); }
+      if (sub === 'show') { const value = await dependencies.birthdayService.get(interaction.guildId, interaction.user.id); return replySafely(interaction, value ? `Your birthday is saved as ${String(value.month).padStart(2,'0')}-${String(value.day).padStart(2,'0')} (${value.timezone}).` : 'You have not opted in to birthday announcements.', true); }
+      const date = interaction.options.getString('date') ?? '';
+      const timezone = interaction.options.getString('timezone')?.trim() || 'UTC';
+      try { await dependencies.birthdayService.set({ guildId: interaction.guildId, userId: interaction.user.id, date, timezone }); return replySafely(interaction, 'Your birthday is saved privately. Jarvis will announce it on the MuthaShip without revealing the date.', true); } catch { return replySafely(interaction, 'Birthday must use valid MM-DD format. No year is stored.', true); }
+    }
     case 'engagement':
       await handleEngagementCommand(interaction, {
         enabled: dependencies.config.engagement?.enabled ?? false,

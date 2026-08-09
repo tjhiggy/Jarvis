@@ -131,6 +131,7 @@ interface EngagementSubcommandDefinition {
     readonly max_length: 20;
   }[];
 }
+interface BirthdaySubcommandDefinition { readonly type: 1; readonly name: 'set' | 'show' | 'delete'; readonly description: string; readonly options?: readonly { readonly type: 3; readonly name: 'date' | 'timezone'; readonly description: string; readonly required: boolean; readonly max_length: number; }[]; }
 
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
@@ -148,7 +149,8 @@ export type CommandOptionDefinition =
   | EventSubcommandDefinition
   | RecapSubcommandDefinition
   | TriviaSubcommandDefinition
-  | EngagementSubcommandDefinition;
+  | EngagementSubcommandDefinition
+  | BirthdaySubcommandDefinition;
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -170,7 +172,8 @@ export interface CommandDefinition {
     | 'event'
     | 'recap'
     | 'trivia'
-    | 'engagement';
+    | 'engagement'
+    | 'birthday';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -701,6 +704,11 @@ export const createCommandDefinitions = (
         },
       ],
     },
+    { type: 1, name: 'birthday', description: 'Opt in to a private MuthaShip birthday announcement.', options: [
+      { type: 1, name: 'set', description: 'Save your birthday as MM-DD (no year).', options: [{ type: 3, name: 'date', description: 'Month and day, for example 07-04.', required: true, max_length: 5 }, { type: 3, name: 'timezone', description: 'IANA timezone, for example America/New_York.', required: false, max_length: 64 }] },
+      { type: 1, name: 'show', description: 'Show your saved birthday privately.' },
+      { type: 1, name: 'delete', description: 'Delete your saved birthday.' },
+    ] },
   );
 
   return definitions;

@@ -75,6 +75,7 @@ const config: AppConfig = {
       eventId: '',
       recapId: '',
       activityId: '',
+      birthdayId: '',
     },
     adminRoleIds: new Set(),
     recapSchedule: '',

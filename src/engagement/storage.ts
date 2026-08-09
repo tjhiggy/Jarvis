@@ -35,6 +35,11 @@ export interface EngagementCardDeletion {
 }
 
 export interface EngagementRepository {
+  getBirthday?(guildId: string, userId: string): Promise<import('./birthdays.js').BirthdayRecord | undefined>;
+  saveBirthday?(record: import('./birthdays.js').BirthdayRecord): Promise<import('./birthdays.js').BirthdayRecord>;
+  deleteBirthday?(guildId: string, userId: string): Promise<boolean>;
+  listDueBirthdays?(guildId: string, month: number, day: number): Promise<readonly import('./birthdays.js').BirthdayRecord[]>;
+  claimBirthdayAnnouncement?(guildId: string, month: number, day: number, userId: string): Promise<boolean>;
   engagementPaused?(guildId: string): Promise<boolean>;
   setEngagementPaused?(
     guildId: string,

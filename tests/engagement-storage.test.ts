@@ -37,6 +37,8 @@ describe('SQLiteEngagementRepository', () => {
     database.close();
 
     expect(tables.map((row) => row.name)).toEqual([
+      'engagement_birthday_announcements',
+      'engagement_birthdays',
       'engagement_card_deletions',
       'engagement_events',
       'engagement_idempotency_keys',
