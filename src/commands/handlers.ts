@@ -965,8 +965,8 @@ const handleKnowledge = async (interaction: CommandInteraction, dependencies: Co
     if (!isAdmin) return replySafely(interaction, 'Only configured MuthaShip administrators can manage approved knowledge.', true);
     const id = interaction.options.getString('id')?.trim() ?? '';
     if (subcommand === 'list') {
-      const entries = await store!.list(guildId, catalog);
-      return replySafely(interaction, entries.length === 0 ? 'No approved MuthaShip knowledge sources are active.' : `Approved MuthaShip knowledge sources:\n${entries.map((entry) => `- ${entry.id}: ${entry.title}`).join('\n')}`, true);
+      const entries = await store!.listForAdmin(guildId, catalog);
+      return replySafely(interaction, entries.length === 0 ? 'No MuthaShip knowledge sources are configured.' : `MuthaShip knowledge sources (administrator view):\n${entries.map((entry) => `- ${entry.id}: ${entry.title} [${entry.active ? 'active' : entry.approved ? 'expired' : 'pending'}]`).join('\n')}`, true);
     }
     const changed = subcommand === 'approve' ? await store!.approve(guildId, id, catalog) : await store!.revoke(guildId, id, catalog);
     return replySafely(interaction, changed ? `Knowledge source \`${id}\` ${subcommand === 'approve' ? 'approved' : 'revoked'} for this MuthaShip.` : 'That catalog source is unavailable or expired.', true);
