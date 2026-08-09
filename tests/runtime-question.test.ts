@@ -1,8 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { loadRuntimeIdentity } from '../src/config/runtime-identity.js';
+import { loadApplicationVersion, loadRuntimeIdentity } from '../src/config/runtime-identity.js';
 import { classifyRuntimeQuestion } from '../src/services/runtime-question.js';
 
 describe('runtime identity and self-question handling', () => {
+  it('uses the package metadata as the canonical version fallback', () => {
+    expect(loadApplicationVersion()).toBe('0.2.0');
+    expect(loadRuntimeIdentity({}).version).toBe('0.2.0');
+  });
+
+  it('strips control characters from deployment metadata', () => {
+    const identity = loadRuntimeIdentity({
+      JARVIS_VERSION: ' 1.2.3\n',
+      JARVIS_COMMIT_SHA: 'abc\u0000123',
+      JARVIS_BUILD_TIMESTAMP: '2026-08-01T00:00:00Z\r\n',
+      JARVIS_ENVIRONMENT: 'production\t',
+    });
+    expect(identity.version).toBe('1.2.3');
+    expect(identity.commit).toBe('abc123');
+    expect(identity.builtAt).toBe('2026-08-01T00:00:00Z');
+    expect(identity.environment).toBe('production');
+  });
+
   const identity = loadRuntimeIdentity(
     {
       JARVIS_VERSION: '1.2.3',
