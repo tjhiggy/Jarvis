@@ -30,7 +30,7 @@ enhancements.
 
 | Verified capability                                                                                                                                                                                     | Current boundary                                                                                                                                                                         |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, `/introduce`, `/suggest`, `/event`, `/game-night`, `/lfg`, `/recap`, `/trivia`, `/roles`, `/engagement`, and read-only `/fantasy standings`, plus direct mentions | Engagement V1 provides introductions, suggestions, events/RSVP, low-friction game nights, crew matchmaking signals, weekly recaps, trivia, and optional self-service crew roles only in their configured channels; administrative controls require configured engagement roles |
+| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, `/introduce`, `/suggest`, `/event`, `/game-night`, `/lfg`, `/recap`, `/trivia`, `/roles`, `/engagement`, and read-only `/fantasy standings` or `/fantasy matchup week:<number>`, plus direct mentions | Engagement V1 provides introductions, suggestions, events/RSVP, low-friction game nights, crew matchmaking signals, weekly recaps, trivia, and optional self-service crew roles only in their configured channels; administrative controls require configured engagement roles |
 | Optional `/poll` and `/poll-close` commands                                                                                                                                                             | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls                                                           |
 | Short conversation context stored in SQLite                                                                                                                                                             | Isolated by guild and channel or thread; not encrypted by the application                                                                                                                |
 | Local Ollama and OpenAI Responses providers                                                                                                                                                             | Exactly one provider is selected at startup                                                                                                                                              |
@@ -403,8 +403,10 @@ license grant.
 
 Set `SLEEPER_LEAGUE_ID` to enable `/fantasy standings`. Jarvis reads public
 Sleeper league data only and never changes lineups, waivers, trades, rosters,
-or Discord settings. If the league is unavailable or the response is invalid,
-Jarvis reports that safely instead of guessing.
+or Discord settings. `/fantasy matchup week:<number>` reads one weekly matchup
+slate (weeks 1-30), including opponent points when Sleeper provides them. If
+the league is pre-draft, unavailable, or invalid, Jarvis reports that safely
+instead of guessing.
 
 ## Documentation map
 

@@ -27,4 +27,35 @@ describe('HttpSleeperService', () => {
     await expect(new HttpSleeperService({ fetch }).getStandings('not-a-league')).rejects.toBeInstanceOf(SleeperServiceError);
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it('retrieves validated weekly matchups and maps owner names', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([
+        { roster_id: 1, matchup_id: 7, owner_id: 'u1', points: 112.5 },
+        { roster_id: 2, matchup_id: 7, owner_id: 'u2', points: 98.25 },
+      ]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([
+        { user_id: 'u1', display_name: 'Captain Jim' },
+      ]), { status: 200 }));
+    const result = await new HttpSleeperService({ fetch }).getMatchups('123456789', 3);
+    expect(result).toEqual([
+      { rosterId: 1, matchupId: 7, points: 112.5, ownerId: 'u1', ownerName: 'Captain Jim' },
+      { rosterId: 2, matchupId: 7, points: 98.25, ownerId: 'u2' },
+    ]);
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/league/123456789/matchups/3'), expect.anything());
+  });
+
+  it('returns safe unassigned matchups before the draft', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ roster_id: 1, matchup_id: null }]), { status: 200 }))
+      .mockResolvedValueOnce(new Response('[]', { status: 200 }));
+    const result = await new HttpSleeperService({ fetch }).getMatchups('123456789', 1);
+    expect(result[0]).toMatchObject({ rosterId: 1, matchupId: null, ownerId: 'unassigned', points: 0 });
+  });
+
+  it('rejects invalid matchup weeks before making a request', async () => {
+    const fetch = vi.fn();
+    await expect(new HttpSleeperService({ fetch }).getMatchups('123456789', 0)).rejects.toMatchObject({ kind: 'invalid-data' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

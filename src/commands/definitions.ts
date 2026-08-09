@@ -75,8 +75,9 @@ interface ReminderSubcommandDefinition {
 
 interface FantasySubcommandDefinition {
   readonly type: 1;
-  readonly name: 'standings';
+  readonly name: 'standings' | 'matchup';
   readonly description: string;
+  readonly options?: readonly { readonly type: 4; readonly name: 'week'; readonly description: string; readonly required: false; readonly min_value: number; readonly max_value: number }[];
 }
 
 interface IntroductionOptionDefinition {
@@ -381,6 +382,14 @@ export const createCommandDefinitions = (
           type: 1,
           name: 'standings',
           description: 'Show current league standings.',
+        },
+        {
+          type: 1,
+          name: 'matchup',
+          description: 'Show read-only weekly matchup results.',
+          options: [
+            { type: 4, name: 'week', description: 'League week number (1-30).', required: false, min_value: 1, max_value: 30 },
+          ],
         },
       ],
     },
