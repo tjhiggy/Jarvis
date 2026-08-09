@@ -59,6 +59,9 @@ The `assets/` directory contains the administrator overview and product visuals.
 For a live walkthrough, invite Jarvis to an authorized development server and
 try `/help`, `/status`, `/ask`, `/fantasy standings`, and `/forget`.
 
+The canonical public profile copy, visual assets, Developer Portal checklist,
+and capability boundaries are documented in [Discord profile package](docs/DISCORD_PROFILE.md).
+
 See [Architecture](docs/ARCHITECTURE.md) for the source-backed component and
 trust-boundary detail, and [Roadmap](docs/ROADMAP.md) for the sharp line between
 shipped and proposed work.
