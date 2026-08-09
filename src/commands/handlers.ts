@@ -56,6 +56,8 @@ import { buildEngagementCard, buildEngagementSelectMenu, toDiscordEngagementCard
 import type { RoleMenuChoice } from '../engagement/role-menus.js';
 import { buildChannelSummary } from './channel-summary.js';
 import type { ProactiveEngagementService } from '../engagement/proactive.js';
+import type { DelegatedPostService } from '../engagement/delegated-posts.js';
+import { handleDelegatedPostCommand } from './delegated-post.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -108,7 +110,7 @@ export interface CommandDependencies {
         suggestionId: string;
         eventId: string;
         recapId: string;
-        activityId: string;
+      activityId: string;
       }>;
       recapSchedule: string;
       retentionDays: number;
@@ -161,6 +163,7 @@ export interface CommandDependencies {
   readonly triviaService?: TriviaService;
   readonly birthdayService?: BirthdayService;
   readonly proactiveService?: ProactiveEngagementService;
+  readonly delegatedPostService?: DelegatedPostService;
   readonly engagementHealth?: Readonly<{
     repository: Required<
       Pick<
@@ -300,6 +303,9 @@ export const handleCommand = async (
         interaction,
         dependencies.suggestionService,
       );
+      return;
+    case 'post':
+      await handleDelegatedPostCommand(interaction, { enabled: dependencies.config.engagement?.enabled ?? false, channelId: dependencies.config.engagement?.channels.activityId ?? interaction.channelId, adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(), ...(dependencies.delegatedPostService === undefined ? {} : { service: dependencies.delegatedPostService }) });
       return;
     case 'event':
       await handleEventCommand(interaction, {

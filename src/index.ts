@@ -87,6 +87,7 @@ import {
 } from './engagement/activity.js';
 import { BirthdayScheduler, BirthdayService, birthdayStoreFromRepository, type BirthdayService as BirthdayServiceType } from './engagement/birthdays.js';
 import { DurableProactiveScheduler, ProactiveEngagementService } from './engagement/proactive.js';
+import { DelegatedPostService } from './engagement/delegated-posts.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -442,6 +443,7 @@ export const createApplication = async (
   let reminderStore: ReminderStore | undefined;
   let reminderScheduler: ReminderScheduler | undefined;
   let engagementRepository: EngagementRepository | undefined;
+  let delegatedPostService: DelegatedPostService | undefined;
   let eventScheduler: EventScheduler | undefined;
   let recapScheduler: RecapScheduler | undefined;
   let triviaService: TriviaService | undefined;
@@ -734,6 +736,11 @@ export const createApplication = async (
                 'Suggestion moderation card refresh failed; database state retained.',
               ),
           });
+    delegatedPostService = new DelegatedPostService({
+      createId: () => randomUUID(),
+      adminRoleIds: config.engagement.adminRoleIds,
+      gateway: { post: async (channelId, card) => { const channel = await client!.channels?.fetch(channelId); if (!isEventChannel(channel)) throw new Error('Configured test channel is unavailable.'); return channel.send(toDiscordEngagementCard(card)); } },
+    });
     const eventService =
       engagementRepository === undefined
         ? undefined
@@ -1024,6 +1031,7 @@ export const createApplication = async (
             engagementAdminRoleIds: config.engagement.adminRoleIds,
             suggestionChannelId: config.engagement.channels.suggestionId,
           }),
+      ...(delegatedPostService === undefined ? {} : { delegatedPostService }),
       ...(eventService === undefined
         ? {}
         : { eventService, eventChannelId: config.engagement.channels.eventId }),
