@@ -104,6 +104,9 @@ describe('IntroductionService', () => {
 
     repository.optedOut.clear();
     await service.submit(input);
+    await expect(service.preview(input)).rejects.toMatchObject({
+      code: 'duplicate',
+    });
     await expect(service.submit(input)).rejects.toMatchObject({
       code: 'duplicate',
     });

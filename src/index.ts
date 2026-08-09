@@ -962,6 +962,17 @@ export const createApplication = async (
             triviaService,
             activityChannelId: config.engagement.channels.activityId,
           }),
+      onPreviewActionError: (event) =>
+        logger?.warn(
+          {
+            operation: 'engagement-preview-action',
+            kind: event.kind,
+            guildId: event.guildId,
+            draftId: event.draftId,
+            code: event.code,
+          },
+          'Engagement preview action failed.',
+        ),
     });
 
     const schedulerClient = client;

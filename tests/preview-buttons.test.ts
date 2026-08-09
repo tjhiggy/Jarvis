@@ -3,6 +3,7 @@ import {
   createDiscordHandlers,
   parsePreviewCustomId,
 } from '../src/discord/handlers.js';
+import { IntroductionServiceError } from '../src/engagement/introductions.js';
 
 describe('engagement preview buttons', () => {
   it('routes an owner-bound introduction confirmation once and replies privately', async () => {
@@ -78,6 +79,37 @@ describe('engagement preview buttons', () => {
         'preview:v1:introduction:' + 'x'.repeat(65) + ':confirm',
       ),
     ).toBeUndefined();
+  });
+
+  it('explains an active introduction instead of hiding the safe duplicate error', async () => {
+    const interaction = button('preview:v1:introduction:draft-1:confirm');
+    const errors: unknown[] = [];
+    const handlers = createDiscordHandlers({
+      ...dependencies(),
+      onPreviewActionError: (event) => errors.push(event),
+      introductionService: {
+        confirm: async () => {
+          throw new IntroductionServiceError('duplicate');
+        },
+        cancel: () => false,
+      } as any,
+    });
+
+    await handlers.onInteractionCreate(interaction);
+
+    expect(interaction.edits).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/already have an active introduction/i),
+      }),
+    ]);
+    expect(errors).toEqual([
+      {
+        kind: 'introduction',
+        guildId: 'guild-1',
+        draftId: 'draft-1',
+        code: 'duplicate',
+      },
+    ]);
   });
 });
 

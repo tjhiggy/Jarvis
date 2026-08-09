@@ -72,6 +72,13 @@ export class IntroductionService {
       undefined
     )
       throw new IntroductionServiceError('opted-out');
+    if (
+      (await this.dependencies.repository.findActiveIntroductionByOwner(
+        guildId,
+        ownerUserId,
+      )) !== undefined
+    )
+      throw new IntroductionServiceError('duplicate');
 
     const now = (this.dependencies.now ?? (() => new Date()))();
     const value: Introduction = {

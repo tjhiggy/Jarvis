@@ -103,6 +103,14 @@ export interface MessageHandlerDependencies {
   readonly eventChannelId?: string;
   readonly triviaService?: TriviaService;
   readonly activityChannelId?: string;
+  readonly onPreviewActionError?: (
+    event: Readonly<{
+      kind: 'introduction' | 'suggestion';
+      guildId: string;
+      draftId: string;
+      code: string;
+    }>,
+  ) => void;
 }
 
 export interface DiscordHandlers {
@@ -251,6 +259,17 @@ const handlePreviewButton = async (
       allowedMentions: { parse: [], repliedUser: false },
     });
   } catch (error) {
+    const code =
+      error instanceof IntroductionServiceError ||
+      error instanceof SuggestionServiceError
+        ? error.code
+        : 'unexpected';
+    dependencies.onPreviewActionError?.({
+      kind: parsed.kind,
+      guildId,
+      draftId: parsed.draftId,
+      code,
+    });
     const unavailable =
       (error instanceof IntroductionServiceError &&
         error.code === 'invalid-input') ||
@@ -259,7 +278,13 @@ const handlePreviewButton = async (
     await interaction.editReply({
       content: unavailable
         ? 'This preview is unavailable or expired.'
-        : 'This preview could not be completed. Please retry with its UUID command.',
+        : error instanceof IntroductionServiceError &&
+            error.code === 'duplicate'
+          ? 'You already have an active introduction. Remove it before posting another.'
+          : error instanceof SuggestionServiceError &&
+              error.code === 'duplicate'
+            ? 'That suggestion is already awaiting triage.'
+            : 'This preview could not be completed. Please retry with its UUID command.',
       allowedMentions: { parse: [], repliedUser: false },
     });
   }
