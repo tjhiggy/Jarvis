@@ -41,6 +41,7 @@ describe('SQLiteEngagementRepository', () => {
       'engagement_birthdays',
       'engagement_card_deletions',
       'engagement_events',
+      'engagement_feature_flags',
       'engagement_idempotency_keys',
       'engagement_introductions',
       'engagement_operational_audit',
@@ -56,6 +57,14 @@ describe('SQLiteEngagementRepository', () => {
       'engagement_trivia_rounds',
     ]);
     expect(eventIndex).toBeDefined();
+  });
+
+  it('persists per-MuthaShip feature flag overrides', async () => {
+    await expect(repository.getFeatureFlags('guild-1')).resolves.toEqual([]);
+    await repository.setFeatureFlag('guild-1', 'trivia', false);
+    await expect(repository.getFeatureFlags('guild-1')).resolves.toEqual([
+      { name: 'trivia', enabled: false },
+    ]);
   });
 
   it('atomically permits only one open trivia round per guild channel', async () => {
