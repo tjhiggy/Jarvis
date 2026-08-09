@@ -909,6 +909,7 @@ export const createApplication = async (
         handleCommand(interaction as CommandInteraction, {
           config,
           conversationService,
+          conversationHistory: initializedStore,
           store: initializedStore,
           reminderService,
           reminderHealth: {
