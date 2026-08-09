@@ -52,6 +52,7 @@ import type { EngagementSchedulerHealth } from '../engagement/health.js';
 import type { BirthdayService } from '../engagement/birthdays.js';
 import { buildEngagementCard, buildEngagementSelectMenu, toDiscordEngagementCard } from '../engagement/discord-ui.js';
 import type { RoleMenuChoice } from '../engagement/role-menus.js';
+import { buildChannelSummary } from './channel-summary.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -208,6 +209,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/faq topic:<approved topic> browses approved Jarvis information.',
     '/knowledge query:<search> searches administrator-approved MuthaShip knowledge.',
     '/catch-me-up summarizes recent Jarvis conversation in this channel.',
+    '/channel-summary summarizes retained Jarvis conversation from the last 24 hours in this channel or thread.',
     '/reminder set in:<duration> message:<text> creates a private personal reminder request.',
     '/reminder list shows your retained reminders in this server.',
     '/reminder cancel id:<id> cancels one of your reminders.',
@@ -247,6 +249,9 @@ export const handleCommand = async (
       return;
     case 'catch-me-up':
       await handleCatchMeUp(interaction, dependencies);
+      return;
+    case 'channel-summary':
+      await handleChannelSummary(interaction, dependencies);
       return;
     case 'reminder':
       await handleReminder(interaction, dependencies);
@@ -965,6 +970,31 @@ const handleCatchMeUp = async (
       return `• **${role}:** ${neutralizeDiscordMentions(content)}`;
     });
     await replySafely(interaction, `**MuthaShip recent transmission log**\n${lines.join('\n')}`, true);
+  } catch {
+    await replySafely(interaction, 'Recent MuthaShip context is unavailable right now.', true);
+  }
+};
+
+const handleChannelSummary = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) return;
+  const channelId = interaction.channelId.trim();
+  const guildId = interaction.guildId?.trim() ?? '';
+  const parentChannelId = threadParentId(interaction);
+  if (!guildId || !channelId || !isAllowedChannel(channelId, parentChannelId, dependencies.config.security.allowedChannelIds)) {
+    await replySafely(interaction, disallowedMessage, true);
+    return;
+  }
+  const historyStore = dependencies.conversationHistory;
+  if (!historyStore) {
+    await replySafely(interaction, 'Recent MuthaShip context is unavailable right now.', true);
+    return;
+  }
+  try {
+    const messages = await historyStore.getRecent(guildId, channelId, 20);
+    await replySafely(interaction, buildChannelSummary(messages), true);
   } catch {
     await replySafely(interaction, 'Recent MuthaShip context is unavailable right now.', true);
   }

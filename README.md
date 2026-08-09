@@ -203,6 +203,7 @@ gate reduce risk but cannot make language-model output infallible; use
 | `/faq topic:<approved topic>`                                           | Posts the selected answer from the active approved local catalog publicly without provider usage cost or stored conversation history.               |
 | `/knowledge query:<search>`                                             | Searches administrator-approved MuthaShip knowledge without reading Discord history or calling the model.                                          |
 | `/catch-me-up`                                                          | Privately shows up to the 12 most recent Jarvis conversation messages retained for the current channel or thread. It never fetches arbitrary Discord history. |
+| `/channel-summary`                                                      | Privately summarizes up to 20 retained Jarvis messages from the last 24 hours for the current channel or thread. It never fetches arbitrary Discord history. |
 | `/help`                                                                 | Lists the available commands and safety boundary.                                                                                                   |
 | `/status`                                                               | Reports Discord configuration, SQLite health, selected provider configuration, web-search configuration, and FAQ readiness without a model request. |
 | `/reminder set in:<duration> message:<text>`                            | Creates a personal reminder for the original allowed channel or thread. `in` accepts 1 minute through 30 days; text is trimmed to 500 characters.   |
@@ -211,7 +212,7 @@ gate reduce risk but cannot make language-model output infallible; use
 | `/poll question:<text> option1:<text> option2:<text> duration:<preset>` | Configured administrators create an anonymous two-to-five-option poll. Available only when polls are enabled.                                       |
 | `/poll-close poll_id:<id>`                                              | Configured administrators close an open poll early. Available only when polls are enabled.                                                          |
 
-All commands are server-only. `/ask`, `/search`, `/forget`, `/faq`, `/knowledge`, and `/catch-me-up` enforce
+All commands are server-only. `/ask`, `/search`, `/forget`, `/faq`, `/knowledge`, `/catch-me-up`, and `/channel-summary` enforce
 `ALLOWED_CHANNEL_IDS`; an allowlisted parent channel also permits its threads.
 Each thread still keeps separate history. FAQ replies still pass through the
 same mention-neutralizing delivery boundary as other replies.

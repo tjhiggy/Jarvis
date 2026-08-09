@@ -186,6 +186,7 @@ export interface CommandDefinition {
     | 'faq'
     | 'knowledge'
     | 'catch-me-up'
+    | 'channel-summary'
     | 'reminder'
     | 'poll'
     | 'poll-close'
@@ -297,6 +298,11 @@ export const createCommandDefinitions = (
       type: 1,
       name: 'catch-me-up',
       description: 'Summarize recent Jarvis conversation in this channel.',
+    },
+    {
+      type: 1,
+      name: 'channel-summary',
+      description: 'Summarize retained Jarvis conversation for this channel.',
     },
     {
       type: 1,
