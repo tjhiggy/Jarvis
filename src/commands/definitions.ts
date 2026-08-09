@@ -202,6 +202,7 @@ export interface CommandDefinition {
     | 'forget'
     | 'help'
     | 'status'
+    | 'config'
     | 'faq'
     | 'knowledge'
   | 'catch-me-up'
@@ -839,6 +840,7 @@ export const createCommandDefinitions = (
       { type: 1, name: 'delete', description: 'Delete your saved birthday.' },
     ] },
     { type: 1, name: 'roles', description: 'Choose your optional MuthaShip crew roles.' },
+    { type: 1, name: 'config', description: 'Show safe Jarvis configuration (administrators only).' },
   );
 
   return definitions;

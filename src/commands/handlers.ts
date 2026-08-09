@@ -113,13 +113,15 @@ export interface CommandDependencies {
         suggestionId: string;
         eventId: string;
         recapId: string;
-      activityId: string;
+        activityId: string;
+        birthdayId: string;
       }>;
       recapSchedule: string;
       retentionDays: number;
       adminRoleIds: ReadonlySet<string>;
       roleMenuChoices?: readonly RoleMenuChoice[];
     }>;
+    sleeper?: Readonly<{ leagueId: string }>;
   }>;
   readonly conversationService: Readonly<{
     ask(request: {
@@ -228,6 +230,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     'Reminder limits: 1 minute to 30 days, 500 characters, and 10 active reminders per server.',
     '/help lists the available commands.',
     '/status reports safe service configuration and database health.',
+    '/config shows administrators safe, non-secret Jarvis configuration.',
     '/engagement status, pause, resume, or delete provides scoped engagement operations.',
     ...(pollsEnabled
       ? [
@@ -426,6 +429,9 @@ export const handleCommand = async (
         return;
       }
       await handleStatus(interaction, dependencies);
+      return;
+    case 'config':
+      await handleConfig(interaction, dependencies);
       return;
     default:
       await replySafely(interaction, unknownCommandMessage, true);
@@ -1123,6 +1129,70 @@ const handleStatus = async (
       'FAQ catalog: loaded',
       ...reminderStatus,
       ...pollStatus,
+    ].join('\n'),
+    true,
+  );
+};
+
+const maskDiscordId = (value: string): string => {
+  const trimmed = value.trim();
+  if (trimmed === '') return 'not configured';
+  return trimmed.length <= 4 ? 'configured' : `…${trimmed.slice(-4)}`;
+};
+
+const handleConfig = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) return;
+  const adminRoleIds = dependencies.config.engagement?.adminRoleIds ?? new Set<string>();
+  const authorized = [...adminRoleIds].some((role) =>
+    interaction.member?.roles?.cache?.has(role),
+  );
+  if (!authorized) {
+    await replySafely(
+      interaction,
+      'Configuration details are restricted to configured MuthaShip administrators.',
+      true,
+    );
+    return;
+  }
+  const config = dependencies.config;
+  const engagement = config.engagement;
+  const channels = engagement?.channels;
+  const channelLines = channels
+    ? [
+        `  introductions: ${maskDiscordId(channels.introductionId)}`,
+        `  suggestions: ${maskDiscordId(channels.suggestionId)}`,
+        `  events: ${maskDiscordId(channels.eventId)}`,
+        `  activity: ${maskDiscordId(channels.activityId)}`,
+        `  recaps: ${maskDiscordId(channels.recapId)}`,
+        `  birthdays: ${maskDiscordId(channels.birthdayId ?? '')}`,
+      ]
+    : ['  not configured'];
+  const features = [
+    engagement?.enabled ? 'engagement' : undefined,
+    config.polls?.enabled ? 'polls' : undefined,
+    config.webSearch.apiKey.trim() !== '' ? 'web search' : undefined,
+    config.github ? 'GitHub read-only' : undefined,
+    config.sleeper?.leagueId ? 'Sleeper read-only' : undefined,
+    dependencies.knowledge ? 'approved knowledge' : undefined,
+  ].filter((value): value is string => value !== undefined);
+  const providerReady = config.ai.provider === 'openai'
+    ? config.openai.apiKey.trim() !== ''
+    : config.ollama.baseUrl.trim() !== '' && config.ollama.model.trim() !== '';
+  await replySafely(
+    interaction,
+    [
+      '**Jarvis safe configuration**',
+      `Version: ${config.runtimeIdentity ? formatRuntimeIdentity(config.runtimeIdentity) : 'unknown'}`,
+      `AI provider: ${config.ai.provider} (${providerReady ? 'ready' : 'not configured'})`,
+      `Engagement: ${engagement?.enabled ? 'enabled' : 'disabled'}`,
+      `Allowed request channels: ${config.security.allowedChannelIds.size === 0 ? 'all configured channels' : `${config.security.allowedChannelIds.size} configured`}`,
+      `Enabled features: ${features.length > 0 ? features.join(', ') : 'none'}`,
+      'Destination channels (IDs masked):',
+      ...channelLines,
+      'Secrets and tokens are intentionally omitted.',
     ].join('\n'),
     true,
   );
