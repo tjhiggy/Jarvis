@@ -807,9 +807,9 @@ const formatReminderFailure = (
 ): string => {
   switch (category) {
     case 'unknown-channel':
-      return 'destination unavailable';
+      return 'destination unavailable (choose an active allowed channel)';
     case 'permission':
-      return 'destination access denied';
+      return 'destination access denied (admin: verify View Channel, Send Messages, Embed Links, and thread access)';
     case 'rate-limit':
       return 'rate limited';
     case 'network':
