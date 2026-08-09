@@ -54,6 +54,7 @@ export interface AppConfig {
     catalogPath: string;
   }>;
   readonly sleeper?: Readonly<{ leagueId: string }>;
+  readonly github?: Readonly<{ owner: string; repo: string; token: string; timeoutMs: number }>;
   readonly polls: PollConfig;
   readonly engagement: EngagementConfig;
   readonly logging: Readonly<{
@@ -219,6 +220,10 @@ const baseEnvironmentSchema = z.object({
     .trim()
     .regex(/^$|^\d{8,20}$/)
     .default(''),
+  GITHUB_OWNER: z.string().trim().regex(/^$|^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/).default(''),
+  GITHUB_REPO: z.string().trim().regex(/^$|^[A-Za-z0-9_.-]{1,100}$/).default(''),
+  GITHUB_TOKEN: z.string().trim().default(''),
+  GITHUB_TIMEOUT_MS: integer(8000, 1000, 30000),
   ALLOWED_CHANNEL_IDS: channelIds,
   RESTRAINED_CHANNEL_IDS: channelIds,
   POLL_ADMIN_USER_IDS: pollAdminUserIds,
@@ -441,6 +446,7 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
     }),
     faq: Object.freeze({ catalogPath: parsed.FAQ_CATALOG_PATH }),
     sleeper: Object.freeze({ leagueId: parsed.SLEEPER_LEAGUE_ID }),
+    ...(parsed.GITHUB_OWNER && parsed.GITHUB_REPO ? { github: Object.freeze({ owner: parsed.GITHUB_OWNER, repo: parsed.GITHUB_REPO, token: parsed.GITHUB_TOKEN, timeoutMs: parsed.GITHUB_TIMEOUT_MS }) } : {}),
     polls: Object.freeze({
       enabled: parsed.POLL_ADMIN_USER_IDS.length > 0,
       adminUserIds: readonlySet(parsed.POLL_ADMIN_USER_IDS),

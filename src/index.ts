@@ -88,6 +88,7 @@ import {
 import { BirthdayScheduler, BirthdayService, birthdayStoreFromRepository, type BirthdayService as BirthdayServiceType } from './engagement/birthdays.js';
 import { DurableProactiveScheduler, ProactiveEngagementService } from './engagement/proactive.js';
 import { DelegatedPostService } from './engagement/delegated-posts.js';
+import { HttpGitHubReadOnlyService } from './github/github-service.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -941,6 +942,7 @@ export const createApplication = async (
       handleCommand: (interaction) =>
         handleCommand(interaction as CommandInteraction, {
           config,
+          ...(config.github ? { github: { service: new HttpGitHubReadOnlyService(config.github.owner, config.github.repo, config.github.token, config.github.timeoutMs) } } : {}),
           conversationService,
           conversationHistory: initializedStore,
           store: initializedStore,
