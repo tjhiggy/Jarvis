@@ -117,7 +117,10 @@ interface IntroductionChannel {
 
 interface SuggestionChannel {
   send(payload: DiscordEngagementCard): Promise<Readonly<{ id: string }>>;
-  messages: Readonly<{ delete(messageId: string): Promise<unknown> }>;
+  messages: Readonly<{
+    delete(messageId: string): Promise<unknown>;
+    edit(messageId: string, payload: DiscordEngagementCard): Promise<unknown>;
+  }>;
 }
 interface EventChannel {
   send(payload: unknown): Promise<Readonly<{ id: string }>>;
@@ -152,6 +155,12 @@ const createDefaultSuggestionGateway = (
     if (!isSuggestionChannel(channel))
       throw new Error('Configured suggestion channel is unavailable.');
     await channel.messages.delete(messageId);
+  },
+  async edit(channelId, messageId, card) {
+    const channel = await client.channels?.fetch(channelId);
+    if (!isSuggestionChannel(channel))
+      throw new Error('Configured suggestion channel is unavailable.');
+    await channel.messages.edit(messageId, toDiscordEngagementCard(card));
   },
 });
 
@@ -664,6 +673,15 @@ export const createApplication = async (
               logger?.error(
                 { guildId: event.guildId, suggestionId: event.suggestionId },
                 'Suggestion persistence requires cleanup.',
+              ),
+            onCardRefreshFailure: (event) =>
+              logger?.warn(
+                {
+                  guildId: event.guildId,
+                  suggestionId: event.suggestionId,
+                  messageId: event.messageId,
+                },
+                'Suggestion moderation card refresh failed; database state retained.',
               ),
           });
     const eventService =

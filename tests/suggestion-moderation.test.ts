@@ -224,12 +224,8 @@ describe('SuggestionService', () => {
   it('restricts status controls to configured roles, expires controls, and records safe audits', async () => {
     const repository = new SuggestionsRepository();
     const events: unknown[] = [];
-    const service = createService(
-      repository,
-      new SuggestionGateway(),
-      5,
-      events,
-    );
+    const gateway = new SuggestionGateway();
+    const service = createService(repository, gateway, 5, events);
     const created = await service.submit(input());
 
     await expect(
@@ -271,6 +267,20 @@ describe('SuggestionService', () => {
         suggestionId: created.id,
       }),
     ]);
+    expect(gateway.edits).toEqual([
+      expect.objectContaining({
+        channelId: 'suggestions',
+        messageId: 'message-1',
+      }),
+    ]);
+    expect(gateway.edits[0]?.card.embeds[0]?.fields?.[0]?.value).toBe(
+      'acknowledged',
+    );
+    expect(
+      gateway.edits[0]?.card.components?.[0]?.components.every(
+        (component: any) => component.disabled === true,
+      ),
+    ).toBe(true);
 
     await expect(
       service.moderate({
@@ -284,6 +294,39 @@ describe('SuggestionService', () => {
         now: new Date('2026-09-01T00:00:00.000Z'),
       }),
     ).rejects.toMatchObject({ code: 'expired' });
+  });
+
+  it('keeps the database truth when refreshing the Discord card fails', async () => {
+    const repository = new SuggestionsRepository();
+    const gateway = new SuggestionGateway();
+    gateway.failEdit = true;
+    const refreshFailures: unknown[] = [];
+    const service = new SuggestionService({
+      repository,
+      gateway,
+      rateLimiter: new RateLimiter(5, 60_000),
+      createId: () => 'suggestion-1',
+      adminRoleIds: new Set(['role-admin']),
+      onCardRefreshFailure: (event) => refreshFailures.push(event),
+    });
+    const created = await service.submit(input());
+    await expect(
+      service.moderate({
+        guildId: 'guild-1',
+        channelId: 'suggestions',
+        moderatorUserId: 'admin-1',
+        moderatorRoleIds: new Set(['role-admin']),
+        suggestionId: created.id,
+        action: 'resolve',
+        interactionId: 'refresh-failure',
+      }),
+    ).resolves.toMatchObject({ status: 'resolved' });
+    await expect(
+      repository.getSuggestion('guild-1', created.id),
+    ).resolves.toMatchObject({ status: 'resolved' });
+    expect(refreshFailures).toEqual([
+      { guildId: 'guild-1', suggestionId: created.id, messageId: 'message-1' },
+    ]);
   });
 });
 
@@ -323,12 +366,18 @@ function createService(
 class SuggestionGateway {
   cards: Array<any> = [];
   deletes: Array<{ channelId: string; messageId: string }> = [];
+  edits: Array<{ channelId: string; messageId: string; card: any }> = [];
+  failEdit = false;
   async post(channelId: string, card: any) {
     this.cards.push({ channelId, card });
     return { id: 'message-1' };
   }
   async delete(channelId: string, messageId: string) {
     this.deletes.push({ channelId, messageId });
+  }
+  async edit(channelId: string, messageId: string, card: any) {
+    if (this.failEdit) throw new Error('Discord unavailable');
+    this.edits.push({ channelId, messageId, card });
   }
 }
 class SuggestionsRepository implements EngagementRepository {

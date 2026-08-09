@@ -38,6 +38,11 @@ export interface SuggestionGateway {
     card: EngagementCard,
   ): Promise<Readonly<{ id: string }>>;
   delete(channelId: string, messageId: string): Promise<void>;
+  edit(
+    channelId: string,
+    messageId: string,
+    card: EngagementCard,
+  ): Promise<void>;
 }
 
 export interface SuggestionAuditEvent {
@@ -66,6 +71,13 @@ export class SuggestionService {
       audit?: (event: SuggestionAuditEvent) => void;
       onPersistenceFailure?: (
         event: Readonly<{ guildId: string; suggestionId: string }>,
+      ) => void;
+      onCardRefreshFailure?: (
+        event: Readonly<{
+          guildId: string;
+          suggestionId: string;
+          messageId: string;
+        }>,
       ) => void;
       maxDraftsPerOwner?: number;
     }>,
@@ -338,6 +350,31 @@ export class SuggestionService {
       suggestionId: value.id,
       actorUserId: input.moderatorUserId.trim(),
     });
+    if (updated.messageId?.trim()) {
+      try {
+        const card = buildSuggestionCard(updated, false);
+        try {
+          await this.dependencies.gateway.edit(
+            updated.channelId,
+            updated.messageId,
+            card,
+          );
+        } catch {
+          // One bounded retry covers transient Discord transport failures.
+          await this.dependencies.gateway.edit(
+            updated.channelId,
+            updated.messageId,
+            card,
+          );
+        }
+      } catch {
+        this.dependencies.onCardRefreshFailure?.({
+          guildId,
+          suggestionId: updated.id,
+          messageId: updated.messageId,
+        });
+      }
+    }
     return updated;
   }
 
@@ -396,6 +433,7 @@ export class SuggestionService {
 
 export const buildSuggestionCard = (
   value: Pick<Suggestion, 'id' | 'title' | 'description' | 'status'>,
+  controlsEnabled = true,
 ): EngagementCard =>
   buildEngagementCard({
     title: `Suggestion: ${value.title}`,
@@ -409,21 +447,25 @@ export const buildSuggestionCard = (
             customId: `suggestion:v1:${value.id}:acknowledge`,
             label: 'Acknowledge',
             style: 'primary',
+            disabled: !controlsEnabled,
           }),
           buildEngagementButton({
             customId: `suggestion:v1:${value.id}:defer`,
             label: 'Defer',
             style: 'secondary',
+            disabled: !controlsEnabled,
           }),
           buildEngagementButton({
             customId: `suggestion:v1:${value.id}:resolve`,
             label: 'Resolve',
             style: 'success',
+            disabled: !controlsEnabled,
           }),
           buildEngagementButton({
             customId: `suggestion:v1:${value.id}:archive`,
             label: 'Archive',
             style: 'danger',
+            disabled: !controlsEnabled,
           }),
         ],
       },
