@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { parseRoleMenuConfig } from '../engagement/role-menus.js';
 import type { RuntimeIdentity } from './runtime-identity.js';
+import { loadRuntimeIdentity } from './runtime-identity.js';
 
 type LogLevel =
   'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent';
@@ -395,12 +396,9 @@ const readonlySet = (values: string[]): ReadonlySet<string> => {
 export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
   const parsed = parseEnvironment(environmentSchema, env);
   return Object.freeze({
-    runtimeIdentity: Object.freeze({
-      version: env.JARVIS_VERSION?.trim() || '0.1.0',
-      commit: env.JARVIS_COMMIT_SHA?.trim() || 'development',
-      builtAt: env.JARVIS_BUILD_TIMESTAMP?.trim() || 'unknown',
-      environment: env.JARVIS_ENVIRONMENT?.trim() || 'development',
-    }),
+    // Build identity is configuration metadata only. It is never inferred
+    // from the host, package manager, or Discord content.
+    runtimeIdentity: loadRuntimeIdentity(env, '0.1.0'),
     ai: Object.freeze({ provider: parsed.AI_PROVIDER }),
     discord: Object.freeze({
       token: parsed.DISCORD_TOKEN,

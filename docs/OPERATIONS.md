@@ -38,6 +38,16 @@ It does **not** make a model request or prove that Ollama has a loaded model. A
 successful `/ask` with a non-sensitive test prompt is the controlled
 end-to-end provider check.
 
+### Truthful runtime identity
+
+Jarvis reports only build metadata explicitly supplied by deployment
+configuration: `JARVIS_VERSION`, `JARVIS_COMMIT_SHA`,
+`JARVIS_BUILD_TIMESTAMP`, and `JARVIS_ENVIRONMENT`. `/status` labels this as
+**Build identity**. It is metadata, not live host inspection. Jarvis does not
+inspect or claim the host operating system, hardware, uptime, processes, or
+physical ship systems. Missing metadata is shown as safe defaults such as
+`development` or `unknown`; Jarvis will not guess.
+
 ## FAQ registration and live checks
 
 The `/faq` choices are part of the development-guild command definition. After

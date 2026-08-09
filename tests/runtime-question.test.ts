@@ -31,6 +31,17 @@ describe('runtime identity and self-question handling', () => {
     expect(answer).not.toMatch(/Windows|Linux|macOS/i);
   });
 
+  it('does not present missing build metadata as a live deployment fact', () => {
+    const answer = classifyRuntimeQuestion(
+      'Jarvis, what build are you running?',
+      loadRuntimeIdentity({}, '0.1.0'),
+    );
+    expect(answer).toContain('Jarvis 0.1.0');
+    expect(answer).toContain('commit development');
+    expect(answer).toContain('built unknown');
+    expect(answer).not.toMatch(/host|Windows|Linux|macOS/i);
+  });
+
   it('does not classify ordinary general knowledge questions as self-diagnostics', () => {
     expect(
       classifyRuntimeQuestion('How do I check my Windows version?', identity),
