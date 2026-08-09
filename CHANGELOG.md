@@ -4,11 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.2.0] - 2026-08-08
 
 ### Added
 
-- Implemented, unreleased engagement V1 runtime and SQLite retention work for
+- Engagement V1 runtime and SQLite retention work for
   configured introductions, suggestions, events and RSVP, weekly recaps,
   curated trivia, member deletion and opt-out, scheduler health/pause controls,
   bounded cleanup of operational records, and the accompanying operator
