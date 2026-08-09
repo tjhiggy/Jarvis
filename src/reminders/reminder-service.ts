@@ -130,6 +130,20 @@ export class ReminderService {
     return reminder === undefined ? undefined : copyReminder(reminder);
   }
 
+  async sharedSet(request: { guildId: string; channelId: string; ownerUserId: string; duration: string; message: string }): Promise<ReminderView> {
+    return this.set(request);
+  }
+  async sharedList(request: { guildId: string; ownerUserId: string }): Promise<readonly ReminderView[]> {
+    const input = requireRequest(request); const guildId = requireIdentifier(input.guildId); const owner = requireIdentifier(input.ownerUserId); this.consume(guildId, owner);
+    if (!this.dependencies.store.listByGuild) throw new ReminderServiceError('invalid-request');
+    return (await this.dependencies.store.listByGuild(guildId)).map(copyReminder);
+  }
+  async sharedCancel(request: { guildId: string; ownerUserId: string; reminderId: string }): Promise<ReminderView | undefined> {
+    const input = requireRequest(request); const guildId = requireIdentifier(input.guildId); const owner = requireIdentifier(input.ownerUserId); const id = requireReminderId(input.reminderId); this.consume(guildId, owner);
+    if (!this.dependencies.store.cancelAny) throw new ReminderServiceError('invalid-request');
+    return this.dependencies.store.cancelAny(guildId, id, requireValidDate(this.now()));
+  }
+
   private consume(guildId: string, ownerUserId: string): void {
     const result = this.dependencies.rateLimiter.consume(
       JSON.stringify([guildId, ownerUserId]),
