@@ -58,6 +58,7 @@ import { buildChannelSummary } from './channel-summary.js';
 import type { ProactiveEngagementService } from '../engagement/proactive.js';
 import type { DelegatedPostService } from '../engagement/delegated-posts.js';
 import { handleDelegatedPostCommand } from './delegated-post.js';
+import type { GitHubReadOnlyService, GitHubServiceError } from '../github/github-service.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -95,6 +96,7 @@ export interface CommandDependencies {
     openai: Readonly<{ apiKey: string }>;
     ai: Readonly<{ provider: 'openai' | 'ollama' }>;
     ollama: Readonly<{ baseUrl: string; model: string }>;
+    github?: Readonly<{ owner: string; repo: string }>;
     webSearch: Readonly<{ apiKey: string }>;
     security: Readonly<{
       allowedChannelIds: ReadonlySet<string>;
@@ -149,6 +151,7 @@ export interface CommandDependencies {
   readonly knowledge?: ApprovedKnowledgeCatalog;
   readonly knowledgeStore?: SQLiteKnowledgeApprovalStore;
   readonly sleeper?: Readonly<{ leagueId: string; service: SleeperService }>;
+  readonly github?: Readonly<{ service: GitHubReadOnlyService }>;
   readonly pollController?: PollController;
   readonly pollHealth?: Readonly<{
     store: Pick<PollStore, 'healthCheck'>;
@@ -252,6 +255,9 @@ export const handleCommand = async (
       return;
     case 'faq':
       await handleFaq(interaction, dependencies);
+      return;
+    case 'github':
+      await handleGitHub(interaction, dependencies);
       return;
     case 'knowledge':
       await handleKnowledge(interaction, dependencies);
@@ -497,6 +503,26 @@ const handleFantasy = async (
       'Sleeper league data is temporarily unavailable. Jarvis will not guess.',
       true,
     );
+  }
+};
+
+const handleGitHub = async (interaction: CommandInteraction, dependencies: CommandDependencies): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) return;
+  if (!dependencies.github) { await replySafely(interaction, 'GitHub repository data is not configured on the MuthaShip.', true); return; }
+  try {
+    const sub = interaction.options.getSubcommand();
+    if (sub === 'repository') {
+      const d = await dependencies.github.service.repository();
+      await replySafely(interaction, `MuthaShip repository (read-only)\n${d.fullName}\n${d.description ?? 'No description'}\n⭐ ${d.stars} • ${d.openIssues} open issues • default branch ${d.defaultBranch}\n${d.url}`, true);
+      return;
+    }
+    const number = interaction.options.getInteger?.('number') ?? 0;
+    if (!Number.isSafeInteger(number) || number < 1) { await replySafely(interaction, 'Provide a valid GitHub issue or pull request number.', true); return; }
+    const d = sub === 'issue' ? await dependencies.github.service.issue(number) : await dependencies.github.service.pullRequest(number);
+    await replySafely(interaction, `GitHub ${d.kind} #${d.number} (read-only)\n${d.title}\nState: ${d.state} • Author: ${d.author}\nUpdated: ${d.updatedAt}\n${d.url}`, true);
+  } catch (error) {
+    const code = (error as GitHubServiceError).code;
+    await replySafely(interaction, code === 'not-found' ? 'That GitHub item was not found.' : 'GitHub data is temporarily unavailable. Jarvis will not guess.', true);
   }
 };
 

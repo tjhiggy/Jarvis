@@ -166,6 +166,7 @@ interface GameNightSubcommandDefinition {
 }
 interface LfgOptionDefinition { readonly type: 3; readonly name: 'game' | 'when' | 'details'; readonly description: string; readonly required: boolean; readonly max_length: number; }
 interface BirthdaySubcommandDefinition { readonly type: 1; readonly name: 'set' | 'show' | 'delete'; readonly description: string; readonly options?: readonly { readonly type: 3; readonly name: 'date' | 'timezone'; readonly description: string; readonly required: boolean; readonly max_length: number; }[]; }
+interface GitHubSubcommandDefinition { readonly type: 1; readonly name: 'repository' | 'issue' | 'pull-request'; readonly description: string; readonly options?: readonly { readonly type: 4; readonly name: 'number'; readonly description: string; readonly required: true; readonly min_value: number; }[]; }
 
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
@@ -189,7 +190,9 @@ export type CommandOptionDefinition =
   | TriviaSubcommandDefinition
   | EngagementSubcommandDefinition
   | ProactiveSubcommandDefinition
-  | BirthdaySubcommandDefinition;
+  | BirthdaySubcommandDefinition
+  | GitHubSubcommandDefinition;
+  // GitHub is intentionally read-only and repository-scoped.
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -219,7 +222,8 @@ export interface CommandDefinition {
     | 'trivia'
     | 'engagement'
     | 'birthday'
-    | 'roles';
+    | 'roles'
+    | 'github';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -613,6 +617,16 @@ export const createCommandDefinitions = (
         { type: 1, name: 'preview', description: 'Create a private transmission preview.', options: [{ type: 3, name: 'content', description: 'Message to post in the configured test channel.', required: true, max_length: 1500 }] },
         { type: 1, name: 'confirm', description: 'Post a reviewed transmission.', options: [{ type: 3, name: 'draft_id', description: 'Private preview ID.', required: true, max_length: 128 }] },
         { type: 1, name: 'cancel', description: 'Discard a private transmission preview.', options: [{ type: 3, name: 'draft_id', description: 'Private preview ID.', required: true, max_length: 128 }] },
+      ],
+    },
+    {
+      type: 1,
+      name: 'github',
+      description: 'Read approved MuthaShip GitHub metadata.',
+      options: [
+        { type: 1, name: 'repository', description: 'Show repository metadata.' },
+        { type: 1, name: 'issue', description: 'Show an issue.', options: [{ type: 4, name: 'number', description: 'Issue number.', required: true, min_value: 1 }] },
+        { type: 1, name: 'pull-request', description: 'Show a pull request.', options: [{ type: 4, name: 'number', description: 'Pull request number.', required: true, min_value: 1 }] },
       ],
     },
     {
