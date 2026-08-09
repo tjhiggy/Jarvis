@@ -30,6 +30,14 @@ only in the ignored `.env` file or an approved secret manager.
    persistent volume before an upgrade. Registration and live Discord tests are
    operator actions, never deployment side effects.
 
+   Before starting the new process, stamp the deployment identity in the
+   ignored `.env` file. `JARVIS_VERSION` should match the release or package
+   version, `JARVIS_COMMIT_SHA` should match the reviewed revision, and
+   `JARVIS_BUILD_TIMESTAMP` should be an explicit UTC timestamp. Set
+   `JARVIS_ENVIRONMENT=production` for a production host. These values are
+   trusted operator metadata, not host inspection. Never copy them from a
+   Discord message or expose secrets alongside them.
+
 4. Choose and prepare the configured provider. For local Ollama, pull the
    configured model using Ollama's supported workflow. For OpenAI, set the
    project-scoped key and verify the configured model is available to that
@@ -44,6 +52,14 @@ only in the ignored `.env` file or an approved secret manager.
 
    Keep that console available and stop the process with `Ctrl+C`. This manual
    native start and stop flow is the supported path.
+
+6. Verify the running identity after startup. Run `/status` and compare the
+   reported **Build identity** commit with the reviewed revision (`git rev-parse
+   HEAD` in the deployment checkout, or the image tag/label used for Docker).
+   If they differ, stop the process, rebuild or recreate it from the reviewed
+   revision, and check again. A stale commit value is a deployment warning, not
+   evidence that the running code is current. A value of `development` or
+   `unknown` is expected only for an intentionally local development run.
 
 ### Reminder rollout and rollback
 
