@@ -7,6 +7,7 @@ import { replySafely, type ReplyTarget } from '../discord/delivery.js';
 import {
   buildEngagementButton,
   buildEngagementCard,
+  toDiscordEngagementCard,
 } from '../engagement/discord-ui.js';
 
 export interface IntroductionCommandInteraction extends ReplyTarget {
@@ -81,29 +82,31 @@ export const handleIntroductionCommand = async (
       introduction: interaction.options.getString('aboard') ?? '',
     });
     await interaction.reply({
-      ...buildEngagementCard({
-        title: 'Review your introduction',
-        description: formatIntroduction(draft),
-        content:
-          'Nothing has been saved or posted. Confirm or cancel below. The UUID commands remain available as a fallback.',
-        components: [
-          {
-            type: 'actionRow',
-            components: [
-              buildEngagementButton({
-                customId: `preview:v1:introduction:${draft.id}:confirm`,
-                label: 'Confirm',
-                style: 'success',
-              }),
-              buildEngagementButton({
-                customId: `preview:v1:introduction:${draft.id}:cancel`,
-                label: 'Cancel',
-                style: 'danger',
-              }),
-            ],
-          },
-        ],
-      }),
+      ...toDiscordEngagementCard(
+        buildEngagementCard({
+          title: 'Review your introduction',
+          description: formatIntroduction(draft),
+          content:
+            'Nothing has been saved or posted. Confirm or cancel below. The UUID commands remain available as a fallback.',
+          components: [
+            {
+              type: 'actionRow',
+              components: [
+                buildEngagementButton({
+                  customId: `preview:v1:introduction:${draft.id}:confirm`,
+                  label: 'Confirm',
+                  style: 'success',
+                }),
+                buildEngagementButton({
+                  customId: `preview:v1:introduction:${draft.id}:cancel`,
+                  label: 'Cancel',
+                  style: 'danger',
+                }),
+              ],
+            },
+          ],
+        }),
+      ),
       ephemeral: true,
     });
   } catch (error) {

@@ -7,6 +7,7 @@ import { replySafely, type ReplyTarget } from '../discord/delivery.js';
 import {
   buildEngagementButton,
   buildEngagementCard,
+  toDiscordEngagementCard,
 } from '../engagement/discord-ui.js';
 
 export interface SuggestionCommandInteraction extends ReplyTarget {
@@ -81,31 +82,33 @@ export const handleSuggestionCommand = async (
     });
     const card = buildSuggestionCard(draft);
     await interaction.reply({
-      ...buildEngagementCard({
-        title: `Review: ${card.embeds[0]?.title ?? 'Suggestion'}`,
-        ...(card.embeds[0]?.description === undefined
-          ? {}
-          : { description: card.embeds[0].description }),
-        content:
-          'Nothing has been saved or posted. Confirm or cancel below. The UUID commands remain available as a fallback.',
-        components: [
-          {
-            type: 'actionRow',
-            components: [
-              buildEngagementButton({
-                customId: `preview:v1:suggestion:${draft.id}:confirm`,
-                label: 'Confirm',
-                style: 'success',
-              }),
-              buildEngagementButton({
-                customId: `preview:v1:suggestion:${draft.id}:cancel`,
-                label: 'Cancel',
-                style: 'danger',
-              }),
-            ],
-          },
-        ],
-      }),
+      ...toDiscordEngagementCard(
+        buildEngagementCard({
+          title: `Review: ${card.embeds[0]?.title ?? 'Suggestion'}`,
+          ...(card.embeds[0]?.description === undefined
+            ? {}
+            : { description: card.embeds[0].description }),
+          content:
+            'Nothing has been saved or posted. Confirm or cancel below. The UUID commands remain available as a fallback.',
+          components: [
+            {
+              type: 'actionRow',
+              components: [
+                buildEngagementButton({
+                  customId: `preview:v1:suggestion:${draft.id}:confirm`,
+                  label: 'Confirm',
+                  style: 'success',
+                }),
+                buildEngagementButton({
+                  customId: `preview:v1:suggestion:${draft.id}:cancel`,
+                  label: 'Cancel',
+                  style: 'danger',
+                }),
+              ],
+            },
+          ],
+        }),
+      ),
       ephemeral: true,
     });
   } catch (error) {

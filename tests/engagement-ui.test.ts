@@ -6,6 +6,7 @@ import {
   buildEngagementComponents,
   buildEngagementSelectMenu,
   privateEngagementError,
+  toDiscordEngagementCard,
 } from '../src/engagement/discord-ui.js';
 
 describe('engagement Discord UI', () => {
@@ -60,5 +61,41 @@ describe('engagement Discord UI', () => {
       users: ['123456789012345678'],
     });
     expect(() => allowedMentionsForUsers(['@everyone'])).toThrow(/user IDs/i);
+  });
+
+  it('serializes internal component labels into Discord API component types', () => {
+    expect(
+      toDiscordEngagementCard(
+        buildEngagementCard({
+          title: 'Review',
+          components: [
+            {
+              type: 'actionRow',
+              components: [
+                buildEngagementButton({
+                  customId: 'preview:v1:introduction:draft-1:confirm',
+                  label: 'Confirm',
+                  style: 'success',
+                }),
+              ],
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 2,
+              custom_id: 'preview:v1:introduction:draft-1:confirm',
+              label: 'Confirm',
+              style: 3,
+            },
+          ],
+        },
+      ],
+    });
   });
 });

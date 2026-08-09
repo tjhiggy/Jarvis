@@ -44,11 +44,11 @@ describe('suggestion commands', () => {
           components: [
             expect.objectContaining({
               label: 'Confirm',
-              customId: 'preview:v1:suggestion:draft-1:confirm',
+              custom_id: 'preview:v1:suggestion:draft-1:confirm',
             }),
             expect.objectContaining({
               label: 'Cancel',
-              customId: 'preview:v1:suggestion:draft-1:cancel',
+              custom_id: 'preview:v1:suggestion:draft-1:cancel',
             }),
           ],
         },

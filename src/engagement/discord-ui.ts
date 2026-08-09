@@ -54,6 +54,32 @@ export interface EngagementCard extends ReplyPayload {
   readonly components?: readonly EngagementActionRow[];
 }
 
+export interface DiscordEngagementCard extends ReplyPayload {
+  readonly embeds: readonly EngagementEmbed[];
+  readonly components?: readonly {
+    readonly type: 1;
+    readonly components: readonly (
+      | {
+          readonly type: 2;
+          readonly custom_id: string;
+          readonly label: string;
+          readonly style: 1 | 2 | 3 | 4;
+          readonly disabled?: boolean;
+        }
+      | {
+          readonly type: 3;
+          readonly custom_id: string;
+          readonly placeholder: string;
+          readonly options: readonly {
+            readonly label: string;
+            readonly value: string;
+          }[];
+          readonly disabled?: boolean;
+        }
+    )[];
+  }[];
+}
+
 const mentionsOff: AllowedMentions = Object.freeze({
   parse: Object.freeze([]),
   repliedUser: false,
@@ -201,6 +227,55 @@ export const buildEngagementCard = (input: {
     ],
     ...(components === undefined ? {} : { components }),
     allowedMentions: mentionsOff,
+  };
+};
+
+const discordButtonStyle = (
+  style: EngagementButton['style'],
+): 1 | 2 | 3 | 4 => {
+  const styles: Readonly<Record<EngagementButton['style'], 1 | 2 | 3 | 4>> = {
+    primary: 1,
+    secondary: 2,
+    success: 3,
+    danger: 4,
+  };
+  return styles[style];
+};
+
+export const toDiscordEngagementCard = (
+  card: EngagementCard,
+): DiscordEngagementCard => {
+  const { components, ...payload } = card;
+  return {
+    ...payload,
+    ...(components === undefined
+      ? {}
+      : {
+          components: components.map((row) => ({
+            type: 1 as const,
+            components: row.components.map((component) =>
+              component.type === 'button'
+                ? {
+                    type: 2 as const,
+                    custom_id: component.customId,
+                    label: component.label,
+                    style: discordButtonStyle(component.style),
+                    ...(component.disabled === undefined
+                      ? {}
+                      : { disabled: component.disabled }),
+                  }
+                : {
+                    type: 3 as const,
+                    custom_id: component.customId,
+                    placeholder: component.placeholder,
+                    options: component.options,
+                    ...(component.disabled === undefined
+                      ? {}
+                      : { disabled: component.disabled }),
+                  },
+            ),
+          })),
+        }),
   };
 };
 

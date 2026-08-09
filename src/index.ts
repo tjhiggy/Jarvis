@@ -67,7 +67,11 @@ import {
   SuggestionService,
   type SuggestionGateway,
 } from './engagement/suggestions.js';
-import type { EngagementCard } from './engagement/discord-ui.js';
+import {
+  toDiscordEngagementCard,
+  type DiscordEngagementCard,
+  type EngagementCard,
+} from './engagement/discord-ui.js';
 import { EventService, type EventGateway } from './engagement/events.js';
 import { EventScheduler } from './engagement/event-scheduler.js';
 import {
@@ -112,7 +116,7 @@ interface IntroductionChannel {
 }
 
 interface SuggestionChannel {
-  send(payload: EngagementCard): Promise<Readonly<{ id: string }>>;
+  send(payload: DiscordEngagementCard): Promise<Readonly<{ id: string }>>;
   messages: Readonly<{ delete(messageId: string): Promise<unknown> }>;
 }
 interface EventChannel {
@@ -125,7 +129,7 @@ const createDefaultEventGateway = (
     const channel = await client.channels?.fetch(channelId);
     if (!isEventChannel(channel))
       throw new Error('Configured event channel is unavailable.');
-    return channel.send(card);
+    return channel.send(toDiscordEngagementCard(card));
   },
 });
 const isEventChannel = (value: unknown): value is EventChannel =>
@@ -141,7 +145,7 @@ const createDefaultSuggestionGateway = (
     const channel = await client.channels?.fetch(channelId);
     if (!isSuggestionChannel(channel))
       throw new Error('Configured suggestion channel is unavailable.');
-    return channel.send(card);
+    return channel.send(toDiscordEngagementCard(card));
   },
   async delete(channelId, messageId) {
     const channel = await client.channels?.fetch(channelId);
