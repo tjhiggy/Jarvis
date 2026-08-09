@@ -317,8 +317,9 @@ Configured administrators can use `/engagement status` for aggregate feature, sc
 The implemented, unreleased Muthaship engagement loop includes guided
 introductions, suggestions, events and RSVP, weekly recaps, and curated trivia.
 When enabled,
-`/introduce preview` accepts a bounded name, interests, and reason for coming
-aboard, returns a private, mobile-friendly preview with **Confirm** and
+`/introduce preview` accepts an optional preferred name plus bounded interests
+and reason for coming aboard. If no name is supplied, Jarvis uses the member's
+Discord display name (with global name and username fallbacks). It returns a private, mobile-friendly preview with **Confirm** and
 **Cancel** buttons, and persists or posts nothing until the member confirms.
 Those buttons are bound to the preview owner and MuthaShip, expire with the
 draft, and the UUID `/introduce confirm` and `/introduce cancel` commands
