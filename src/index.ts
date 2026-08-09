@@ -86,6 +86,7 @@ import {
   TriviaService,
 } from './engagement/activity.js';
 import { BirthdayScheduler, BirthdayService, birthdayStoreFromRepository, type BirthdayService as BirthdayServiceType } from './engagement/birthdays.js';
+import { DurableProactiveScheduler, ProactiveEngagementService } from './engagement/proactive.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -446,6 +447,8 @@ export const createApplication = async (
   let triviaService: TriviaService | undefined;
   let birthdayService: BirthdayServiceType | undefined;
   let birthdayScheduler: BirthdayScheduler | undefined;
+  let proactiveScheduler: DurableProactiveScheduler | undefined;
+  let proactiveService: ProactiveEngagementService | undefined;
   let triviaScheduler: TriviaExpiryScheduler | undefined;
   let engagementDeletionService: EngagementDeletionService | undefined;
   let client: RuntimeDiscordClient | undefined;
@@ -521,6 +524,9 @@ export const createApplication = async (
             'Birthday scheduler stop failed during shutdown.',
           );
         }
+      }
+      if (proactiveScheduler !== undefined) {
+        try { await proactiveScheduler.stop(); } catch (error) { logger?.warn(projectOperationalError(error, 'proactive_scheduler_shutdown'), 'Proactive scheduler stop failed during shutdown.'); }
       }
 
       if (pollScheduler !== undefined) {
@@ -669,6 +675,26 @@ export const createApplication = async (
       typeof engagementRepository.getBirthday === 'function'
         ? new BirthdayService(birthdayStoreFromRepository(engagementRepository as any))
         : undefined;
+    if (engagementRepository !== undefined && config.engagement.channels.activityId !== '') {
+      proactiveService = new ProactiveEngagementService({
+        store: {
+          get: (guildId) => engagementRepository!.getProactiveState!(guildId),
+          set: (guildId, state, at) => engagementRepository!.setProactiveState!(guildId, state, at),
+          recordPosted: (guildId, at) => engagementRepository!.recordProactivePosted!(guildId, at),
+          claim: (guildId, key, at) => engagementRepository!.claimProactive!(guildId, key, at),
+        },
+        gateway: {
+          post: async (channelId, content) => {
+            const channel = await client!.channels?.fetch(channelId);
+            if (!isEventChannel(channel)) throw new Error('Configured proactive channel is unavailable.');
+            await channel.send({ content, allowedMentions: { parse: [], repliedUser: false } });
+          },
+        },
+        channelId: config.engagement.channels.activityId,
+        guildId: config.discord.guildId,
+        quietHours: [23, 8],
+      });
+    }
     const suggestionService =
       engagementRepository === undefined
         ? undefined
@@ -930,6 +956,7 @@ export const createApplication = async (
                 >,
               }),
           ...(triviaService === undefined ? {} : { triviaService }),
+          ...(proactiveService === undefined ? {} : { proactiveService }),
           ...(engagementRepository === undefined
             ? {}
             : {
@@ -1127,6 +1154,7 @@ export const createApplication = async (
     recapScheduler?.start();
     triviaScheduler?.start();
     birthdayScheduler?.start();
+    if (proactiveService !== undefined) { proactiveScheduler = new DurableProactiveScheduler(proactiveService); proactiveScheduler.start(); }
 
     cleanupTimer = timers.setInterval(() => {
       void trackWork(cleanup());

@@ -29,6 +29,7 @@ import {
 } from '../engagement/storage.js';
 import type { EngagementRecordCounts } from '../engagement/health.js';
 import type { BirthdayRecord } from '../engagement/birthdays.js';
+import type { ProactiveState } from '../engagement/proactive.js';
 
 interface IntroductionRow {
   id: string;
@@ -103,6 +104,10 @@ interface TriviaRoundRow {
 }
 
 export class SQLiteEngagementRepository implements EngagementRepository {
+  async getProactiveState(guildId: string): Promise<{ state: ProactiveState; lastPostedAt?: Date }> { this.ensureOpen(); const row = this.database.prepare('SELECT state,last_posted_at FROM engagement_proactive_preferences WHERE guild_id = ?').get(guildId) as { state: ProactiveState; last_posted_at: number | null } | undefined; return row ? { state: row.state, ...(row.last_posted_at === null ? {} : { lastPostedAt: new Date(row.last_posted_at) }) } : { state: 'disabled' }; }
+  async setProactiveState(guildId: string, state: ProactiveState, updatedAt: Date): Promise<void> { this.ensureOpen(); this.database.prepare('INSERT INTO engagement_proactive_preferences (guild_id,state,last_posted_at,updated_at) VALUES (?,?,NULL,?) ON CONFLICT(guild_id) DO UPDATE SET state=excluded.state,updated_at=excluded.updated_at').run(guildId, state, updatedAt.getTime()); }
+  async recordProactivePosted(guildId: string, postedAt: Date): Promise<void> { this.ensureOpen(); this.database.prepare("UPDATE engagement_proactive_preferences SET last_posted_at = ?, updated_at = ? WHERE guild_id = ? AND state = 'enabled'").run(postedAt.getTime(), postedAt.getTime(), guildId); }
+  async claimProactive(guildId: string, key: string, now: Date): Promise<boolean> { this.ensureOpen(); const result = this.database.prepare('INSERT OR IGNORE INTO engagement_idempotency_keys (guild_id,scope,key,created_at) VALUES (?,?,?,?)').run(guildId, 'scheduled-job', `proactive:${key}`, now.getTime()); return result.changes > 0; }
   async getBirthday(guildId: string, userId: string): Promise<BirthdayRecord | undefined> { this.ensureOpen(); const row = this.database.prepare('SELECT guild_id,user_id,month,day,timezone,enabled,updated_at FROM engagement_birthdays WHERE guild_id = ? AND user_id = ?').get(guildId,userId) as any; return row ? { guildId: row.guild_id, userId: row.user_id, month: row.month, day: row.day, timezone: row.timezone, enabled: Boolean(row.enabled), updatedAt: new Date(row.updated_at) } : undefined; }
   async saveBirthday(record: BirthdayRecord): Promise<BirthdayRecord> { this.ensureOpen(); this.database.prepare('INSERT INTO engagement_birthdays (guild_id,user_id,month,day,timezone,enabled,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(guild_id,user_id) DO UPDATE SET month=excluded.month,day=excluded.day,timezone=excluded.timezone,enabled=excluded.enabled,updated_at=excluded.updated_at').run(record.guildId,record.userId,record.month,record.day,record.timezone,record.enabled?1:0,record.updatedAt.getTime()); return record; }
   async deleteBirthday(guildId: string, userId: string): Promise<boolean> { this.ensureOpen(); return this.database.prepare('DELETE FROM engagement_birthdays WHERE guild_id = ? AND user_id = ?').run(guildId,userId).changes > 0; }
@@ -1655,6 +1660,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       if (!this.hasMigration(20)) {
         this.database.exec("CREATE TABLE IF NOT EXISTS engagement_birthdays (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12), day INTEGER NOT NULL CHECK (day BETWEEN 1 AND 31), timezone TEXT NOT NULL, enabled INTEGER NOT NULL CHECK (enabled IN (0,1)), updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id)); CREATE TABLE IF NOT EXISTS engagement_birthday_announcements (guild_id TEXT NOT NULL, year INTEGER NOT NULL, month INTEGER NOT NULL, day INTEGER NOT NULL, user_id TEXT NOT NULL, announced_at INTEGER NOT NULL, PRIMARY KEY (guild_id, year, month, day, user_id)); CREATE INDEX IF NOT EXISTS engagement_birthdays_due ON engagement_birthdays (guild_id, month, day, enabled);");
         this.recordMigration(20);
+      }
+      if (!this.hasMigration(21)) {
+        this.database.exec(
+          "CREATE TABLE IF NOT EXISTS engagement_proactive_preferences (guild_id TEXT PRIMARY KEY, state TEXT NOT NULL CHECK (state IN ('disabled','enabled','paused')), last_posted_at INTEGER, updated_at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS engagement_proactive_preferences_retention ON engagement_proactive_preferences (updated_at, guild_id);",
+        );
+        this.recordMigration(21);
       }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
