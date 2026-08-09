@@ -15,6 +15,7 @@ import type { ReminderScheduler } from '../reminders/reminder-scheduler.js';
 import type { ReminderStore } from '../reminders/reminder-store.js';
 import type { ReminderView } from '../reminders/reminder-types.js';
 import type { RuntimeIdentity } from '../config/runtime-identity.js';
+import { formatRuntimeIdentity } from '../config/runtime-identity.js';
 import type { SleeperService } from '../sleeper/sleeper-types.js';
 import { isAllowedChannel } from '../discord/access.js';
 import {
@@ -1060,7 +1061,7 @@ const handleStatus = async (
       ...(dependencies.config.runtimeIdentity === undefined
         ? []
         : [
-            `Jarvis version: ${dependencies.config.runtimeIdentity.version} (${dependencies.config.runtimeIdentity.environment})`,
+            `Build identity: ${formatRuntimeIdentity(dependencies.config.runtimeIdentity)}`,
           ]),
       `Web search: ${
         dependencies.config.webSearch.apiKey.trim() !== ''
