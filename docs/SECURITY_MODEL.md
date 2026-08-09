@@ -180,7 +180,7 @@ administrative changes must be deliberate, operator-authorized, scoped to the
 named system, and non-destructive by default. Do not turn a support request into
 an unreviewed change to Discord, source control, or production data.
 
-## Implemented, unreleased engagement controls
+## Implemented engagement controls
 
 Engagement stores only local, guild-scoped records needed to operate its cards,
 events, recaps, and trivia. Member data collection is explicit through a

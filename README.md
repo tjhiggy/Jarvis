@@ -30,7 +30,7 @@ enhancements.
 
 | Verified capability                                                                                                                                                                                     | Current boundary                                                                                                                                                                         |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/ask`, `/search`, `/forget`, `/faq`, `/help`, `/status`, `/reminder`, `/introduce`, `/suggest`, `/event`, `/game-night`, `/lfg`, `/recap`, `/trivia`, `/roles`, `/engagement`, and read-only `/fantasy standings` or `/fantasy matchup week:<number>`, plus direct mentions | Engagement V1 provides introductions, suggestions, events/RSVP, low-friction game nights, crew matchmaking signals, weekly recaps, trivia, and optional self-service crew roles only in their configured channels; administrative controls require configured engagement roles |
+| `/ask`, `/search`, `/forget`, `/faq`, `/knowledge`, `/catch-me-up`, `/channel-summary`, `/help`, `/status`, `/reminder`, `/introduce`, `/suggest`, `/post`, `/event`, `/game-night`, `/lfg`, `/recap`, `/trivia`, `/birthday`, `/roles`, `/engagement`, read-only `/fantasy standings` or `/fantasy matchup week:<number>`, read-only `/github`, and direct mentions | Engagement and knowledge features are restricted to configured channels, approved sources, and configured administrator roles. `/post`, `/github`, and `/knowledge` retain their explicit preview, repository, and source-approval boundaries. |
 | Optional `/poll` and `/poll-close` commands                                                                                                                                                             | Disabled until poll administrators and a voter secret are configured; only configured administrators can create or close polls                                                           |
 | Short conversation context stored in SQLite                                                                                                                                                             | Isolated by guild and channel or thread; not encrypted by the application                                                                                                                |
 | Local Ollama and OpenAI Responses providers                                                                                                                                                             | Exactly one provider is selected at startup                                                                                                                                              |
@@ -202,8 +202,10 @@ gate reduce risk but cannot make language-model output infallible; use
 | `/faq`                                                                  | Lists the approved local FAQ questions publicly without calling AI, Tavily, or SQLite.                                                              |
 | `/faq topic:<approved topic>`                                           | Posts the selected answer from the active approved local catalog publicly without provider usage cost or stored conversation history.               |
 | `/knowledge query:<search>`                                             | Searches administrator-approved MuthaShip knowledge without reading Discord history or calling the model.                                          |
+| `/knowledge list` / `/knowledge approve id:<id>` / `/knowledge revoke id:<id>` | Administrators inspect and change this server's approval override for catalog sources. These commands never edit the checked-in catalog. |
 | `/catch-me-up`                                                          | Privately shows up to the 12 most recent Jarvis conversation messages retained for the current channel or thread. It never fetches arbitrary Discord history. |
 | `/channel-summary`                                                      | Privately summarizes up to 20 retained Jarvis messages from the last 24 hours for the current channel or thread. It never fetches arbitrary Discord history. |
+| `/post preview content:<message>`                                      | Administrators preview and explicitly confirm a bounded MuthaShip transmission to the configured test channel. |
 | `/help`                                                                 | Lists the available commands and safety boundary.                                                                                                   |
 | `/status`                                                               | Reports Discord configuration, SQLite health, selected provider configuration, web-search configuration, and FAQ readiness without a model request. |
 | `/reminder set in:<duration> message:<text>`                            | Creates a personal reminder for the original allowed channel or thread. `in` accepts 1 minute through 30 days; text is trimmed to 500 characters.   |
@@ -211,6 +213,10 @@ gate reduce risk but cannot make language-model output infallible; use
 | `/reminder cancel id:<id>`                                              | Privately cancels one of this user's active reminders. Delivered or failed reminders cannot be cancelled.                                           |
 | `/poll question:<text> option1:<text> option2:<text> duration:<preset>` | Configured administrators create an anonymous two-to-five-option poll. Available only when polls are enabled.                                       |
 | `/poll-close poll_id:<id>`                                              | Configured administrators close an open poll early. Available only when polls are enabled.                                                          |
+| `/birthday set|show|delete`                                             | Members opt in to a month-and-day birthday announcement, view it privately, or delete it. Announcements use the configured birthday channel. |
+| `/github repository|issue|pull-request`                                 | Reads metadata from the configured GitHub repository. The integration is read-only and never writes to GitHub. |
+| `/roles`                                                                | Shows the explicitly allowlisted self-service roles. Jarvis can assign only configured roles below its bot role. |
+| `/engagement proactive preview|enable|pause|status`                    | Administrators preview or control proactive posts. Delivery is disabled by default and remains bounded by the configured activity channel, quiet hours, and cadence. |
 
 All commands are server-only. `/ask`, `/search`, `/forget`, `/faq`, `/knowledge`, `/catch-me-up`, and `/channel-summary` enforce
 `ALLOWED_CHANNEL_IDS`; an allowlisted parent channel also permits its threads.
@@ -320,7 +326,7 @@ deletion, backup, outage, and rollback behavior, use the
 
 Configured administrators can use `/engagement status` for aggregate feature, scheduler, and record health, and `/engagement pause` or `/engagement resume` to control scheduled engagement delivery for their MuthaShip. Members may use `/engagement delete` to remove their retained engagement records on that MuthaShip; configured administrators may supply a member ID for an administrative deletion. These responses and audit records never include submitted content, RSVP reasons, or credentials.
 
-The implemented, unreleased Muthaship engagement loop includes guided
+The implemented Muthaship engagement loop includes guided
 introductions, suggestions, events and RSVP, weekly recaps, and curated trivia.
 When enabled,
 `/introduce preview` accepts an optional preferred name plus bounded interests
@@ -420,11 +426,11 @@ instead of guessing.
 | [Operations](docs/OPERATIONS.md)                                    | Health, logs, provider checks, retention, recovery, and outage handling                     |
 | [Troubleshooting](docs/TROUBLESHOOTING.md)                          | Safe diagnosis and recovery by symptom                                                      |
 | [Security model](docs/SECURITY_MODEL.md)                            | Assets, threats, controls, residual risk, and no-mutation guarantees                        |
-| [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md) | Implemented, unreleased V1 scope, consent, retention, deletion, and non-goals               |
+| [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md) | Implemented V1 scope, consent, retention, deletion, and non-goals               |
 | [Change management](docs/CHANGE_MANAGEMENT.md)                      | Standard request, validation, merge, deployment, and closeout process                       |
 | [GitHub workflow](docs/GITHUB_WORKFLOW.md)                          | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
 | [Extension guide](docs/extensions/README.md)                        | Disabled contracts and requirements for any future integration                              |
-| [Roadmap](docs/ROADMAP.md)                                          | Released, implemented-unreleased, planned, later, and explicitly out-of-scope work          |
+| [Roadmap](docs/ROADMAP.md)                                          | Released, implemented-pending-release, planned, later, and explicitly out-of-scope work          |
 | [Releases](docs/RELEASES.md)                                        | Versioning, validation gates, publication authority, and rollback                           |
 
 Repository policies and project records:
