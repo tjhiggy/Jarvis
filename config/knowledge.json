@@ -1,0 +1,11 @@
+[
+  {
+    "id": "muthaship-boundary",
+    "title": "MuthaShip knowledge boundary",
+    "content": "Jarvis answers from administrator-approved sources only. Unapproved Discord content is not indexed.",
+    "source": "MuthaShip operations",
+    "approved": true,
+    "updatedAt": "2026-08-09T00:00:00Z",
+    "retentionDays": 365
+  }
+]
