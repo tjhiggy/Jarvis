@@ -35,6 +35,10 @@ export interface EngagementCardDeletion {
 }
 
 export interface EngagementRepository {
+  getProactiveState?(guildId: string): Promise<{ state: import('./proactive.js').ProactiveState; lastPostedAt?: Date }>;
+  setProactiveState?(guildId: string, state: import('./proactive.js').ProactiveState, updatedAt: Date): Promise<void>;
+  recordProactivePosted?(guildId: string, postedAt: Date): Promise<void>;
+  claimProactive?(guildId: string, key: string, now: Date): Promise<boolean>;
   getBirthday?(guildId: string, userId: string): Promise<import('./birthdays.js').BirthdayRecord | undefined>;
   saveBirthday?(record: import('./birthdays.js').BirthdayRecord): Promise<import('./birthdays.js').BirthdayRecord>;
   deleteBirthday?(guildId: string, userId: string): Promise<boolean>;

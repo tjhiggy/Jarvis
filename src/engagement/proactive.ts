@@ -9,6 +9,7 @@ export interface ProactiveGateway {
 export interface ProactiveStore {
   get(guildId: string): Promise<{ state: ProactiveState; lastPostedAt?: Date } | undefined>;
   set(guildId: string, state: ProactiveState, updatedAt: Date): Promise<void>;
+  recordPosted?(guildId: string, postedAt: Date): Promise<void>;
   claim(guildId: string, key: string, now: Date): Promise<boolean>;
 }
 
@@ -56,7 +57,8 @@ export class ProactiveEngagementService {
     if (!(await this.dependencies.store.claim(this.dependencies.guildId, key, now))) return false;
     const templates = this.dependencies.templates?.length ? this.dependencies.templates : DEFAULT_PROACTIVE_TEMPLATES;
     await this.dependencies.gateway.post(this.dependencies.channelId, buildProactivePreview(templates[Math.floor(now.getTime() / 3_600_000) % templates.length]));
-    await this.dependencies.store.set(this.dependencies.guildId, 'enabled', now);
+    if (this.dependencies.store.recordPosted) await this.dependencies.store.recordPosted(this.dependencies.guildId, now);
+    else await this.dependencies.store.set(this.dependencies.guildId, 'enabled', now);
     return true;
   }
 
@@ -66,4 +68,16 @@ export class ProactiveEngagementService {
     const hour = now.getHours();
     return start > end ? hour >= start || hour < end : hour >= start && hour < end;
   }
+}
+
+export interface ProactiveScheduler {
+  start(): void;
+  stop(): Promise<void>;
+}
+
+export class DurableProactiveScheduler implements ProactiveScheduler {
+  private timer: ReturnType<typeof setInterval> | undefined;
+  constructor(private readonly service: ProactiveEngagementService, private readonly intervalMs = 60_000) {}
+  start(): void { if (!this.timer) this.timer = setInterval(() => void this.service.tick(), this.intervalMs); }
+  async stop(): Promise<void> { if (this.timer) { clearInterval(this.timer); this.timer = undefined; } }
 }

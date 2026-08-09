@@ -433,3 +433,6 @@ Repository policies and project records:
 - [Security policy](SECURITY.md)
 - [Support](SUPPORT.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
+### Proactive engagement posts
+
+Proactive posts are disabled until an administrator enables them with `/engagement proactive enable`. When enabled, Jarvis uses the configured activity channel (`ENGAGEMENT_ACTIVITY_CHANNEL_ID`), persists state and delivery timestamps in SQLite, applies quiet hours and a six-hour cadence, and suppresses duplicate scheduler runs. `/engagement proactive preview` never posts. Disable the activity channel or pause engagement to prevent delivery.
