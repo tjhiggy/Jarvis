@@ -38,6 +38,7 @@ import {
 } from './suggestion.js';
 import { handleEventCommand } from './event.js';
 import { handleGameNightCommand } from './game-night.js';
+import { handleLookingForGroupCommand } from './looking-for-group.js';
 import type { EventService } from '../engagement/events.js';
 import { handleRecapCommand } from './recap.js';
 import type { RecapService } from '../engagement/recap.js';
@@ -316,6 +317,12 @@ export const handleCommand = async (
         channelId: dependencies.config.engagement?.channels.eventId ?? '',
         adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
         ...(dependencies.eventService === undefined ? {} : { service: dependencies.eventService }),
+      });
+      return;
+    case 'lfg':
+      await handleLookingForGroupCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId: dependencies.config.engagement?.channels.activityId ?? '',
       });
       return;
     case 'birthday': {
