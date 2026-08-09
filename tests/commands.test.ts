@@ -32,6 +32,7 @@ describe('command definitions', () => {
       'help',
       'status',
       'faq',
+      'knowledge',
       'reminder',
       'fantasy',
       'introduce',
@@ -78,7 +79,7 @@ describe('command definitions', () => {
         },
       ],
     });
-    expect(definitions[6]).toEqual({
+    expect(definitions[7]).toEqual({
       type: 1,
       name: 'reminder',
       description: 'Manage your personal reminders.',
@@ -141,6 +142,7 @@ describe('command definitions', () => {
       'help',
       'status',
       'faq',
+      'knowledge',
       'reminder',
       'fantasy',
       'poll',
@@ -158,7 +160,7 @@ describe('command definitions', () => {
       'birthday',
       'roles',
     ]);
-    expect(definitions[8]).toMatchObject({
+    expect(definitions[9]).toMatchObject({
       name: 'poll',
       options: [
         { name: 'question', required: true, max_length: 200 },
@@ -181,7 +183,7 @@ describe('command definitions', () => {
         { name: 'option5', required: false, max_length: 80 },
       ],
     });
-    expect(definitions[9]).toMatchObject({
+    expect(definitions[10]).toMatchObject({
       name: 'poll-close',
       options: [{ name: 'poll_id', required: true, max_length: 12 }],
     });

@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 
 export interface ApprovedKnowledgeEntry {
@@ -45,6 +46,9 @@ const entrySchema = z.object({
 }).strict();
 
 export const knowledgeEntriesSchema = z.array(entrySchema).max(500);
+
+export const loadKnowledgeCatalog = async (path: string): Promise<ApprovedKnowledgeCatalog> =>
+  buildKnowledgeCatalog(JSON.parse(await readFile(path, 'utf8')) as readonly unknown[]);
 
 const isActive = (entry: ApprovedKnowledgeEntry, now: Date): boolean => {
   if (!entry.approved) return false;
