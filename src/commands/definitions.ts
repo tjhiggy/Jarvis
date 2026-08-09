@@ -143,6 +143,7 @@ interface GameNightSubcommandDefinition {
     readonly max_length: number;
   }[];
 }
+interface LfgOptionDefinition { readonly type: 3; readonly name: 'game' | 'when' | 'details'; readonly description: string; readonly required: boolean; readonly max_length: number; }
 interface BirthdaySubcommandDefinition { readonly type: 1; readonly name: 'set' | 'show' | 'delete'; readonly description: string; readonly options?: readonly { readonly type: 3; readonly name: 'date' | 'timezone'; readonly description: string; readonly required: boolean; readonly max_length: number; }[]; }
 
 export type CommandOptionDefinition =
@@ -160,6 +161,7 @@ export type CommandOptionDefinition =
   | EventOptionDefinition
   | EventSubcommandDefinition
   | GameNightSubcommandDefinition
+  | LfgOptionDefinition
   | RecapSubcommandDefinition
   | TriviaSubcommandDefinition
   | EngagementSubcommandDefinition
@@ -184,6 +186,7 @@ export interface CommandDefinition {
     | 'suggestion'
     | 'event'
     | 'game-night'
+    | 'lfg'
     | 'recap'
     | 'trivia'
     | 'engagement'
@@ -663,6 +666,16 @@ export const createCommandDefinitions = (
           { type: 3, name: 'capacity', description: 'Optional seat count; defaults to 20.', required: false, max_length: 4 },
         ] },
         { type: 1, name: 'list', description: 'List upcoming game nights.' },
+      ],
+    },
+    {
+      type: 1,
+      name: 'lfg',
+      description: 'Signal the crew that you are looking for a group.',
+      options: [
+        { type: 3, name: 'game', description: 'Game or activity.', required: true, max_length: 120 },
+        { type: 3, name: 'when', description: 'Optional time or availability.', required: false, max_length: 120 },
+        { type: 3, name: 'details', description: 'Optional platform, mode, or seat details.', required: false, max_length: 500 },
       ],
     },
     {
