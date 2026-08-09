@@ -185,6 +185,7 @@ export interface CommandDefinition {
     | 'status'
     | 'faq'
     | 'knowledge'
+    | 'catch-me-up'
     | 'reminder'
     | 'poll'
     | 'poll-close'
@@ -291,6 +292,11 @@ export const createCommandDefinitions = (
       name: 'knowledge',
       description: 'Search approved MuthaShip knowledge.',
       options: [{ type: 3, name: 'query', description: 'Search approved knowledge.', required: true, max_length: Math.min(maxInputChars, discordStringOptionMaxLength) }],
+    },
+    {
+      type: 1,
+      name: 'catch-me-up',
+      description: 'Summarize recent Jarvis conversation in this channel.',
     },
     {
       type: 1,

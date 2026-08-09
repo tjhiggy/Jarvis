@@ -132,6 +132,7 @@ export interface CommandDependencies {
     }): Promise<number>;
   }>;
   readonly store: Pick<ConversationStore, 'healthCheck'>;
+  readonly conversationHistory?: Pick<ConversationStore, 'getRecent'>;
   readonly reminderService: Pick<ReminderService, 'set' | 'list' | 'cancel'>;
   readonly reminderHealth: Readonly<{
     store: Pick<ReminderStore, 'healthCheck' | 'statusCounts'>;
@@ -206,6 +207,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/forget clears Jarvis history in this channel or thread.',
     '/faq topic:<approved topic> browses approved Jarvis information.',
     '/knowledge query:<search> searches administrator-approved MuthaShip knowledge.',
+    '/catch-me-up summarizes recent Jarvis conversation in this channel.',
     '/reminder set in:<duration> message:<text> creates a private personal reminder request.',
     '/reminder list shows your retained reminders in this server.',
     '/reminder cancel id:<id> cancels one of your reminders.',
@@ -242,6 +244,9 @@ export const handleCommand = async (
       return;
     case 'knowledge':
       await handleKnowledge(interaction, dependencies);
+      return;
+    case 'catch-me-up':
+      await handleCatchMeUp(interaction, dependencies);
       return;
     case 'reminder':
       await handleReminder(interaction, dependencies);
@@ -929,6 +934,40 @@ const handleKnowledge = async (interaction: CommandInteraction, dependencies: Co
   const results = catalog.search(query);
   if (results.length === 0) return replySafely(interaction, 'No approved knowledge matches that query. Jarvis will not guess.', true);
   await replySafely(interaction, results.map((entry) => `**${entry.title}**\n${entry.content}\nSource: ${entry.source}`).join('\n\n'), true);
+};
+
+const handleCatchMeUp = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) return;
+  const channelId = interaction.channelId.trim();
+  const guildId = interaction.guildId?.trim() ?? '';
+  const parentChannelId = threadParentId(interaction);
+  if (!guildId || !channelId || !isAllowedChannel(channelId, parentChannelId, dependencies.config.security.allowedChannelIds)) {
+    await replySafely(interaction, disallowedMessage, true);
+    return;
+  }
+  const historyStore = dependencies.conversationHistory;
+  if (!historyStore) {
+    await replySafely(interaction, 'Recent MuthaShip context is unavailable right now.', true);
+    return;
+  }
+  try {
+    const messages = await historyStore.getRecent(guildId, channelId, 12);
+    if (messages.length === 0) {
+      await replySafely(interaction, 'No recent Jarvis conversation is retained for this channel.', true);
+      return;
+    }
+    const lines = messages.slice(-12).map((message) => {
+      const role = message.role === 'assistant' ? 'Jarvis' : 'Crew';
+      const content = message.content.replace(/\s+/g, ' ').trim().slice(0, 280);
+      return `• **${role}:** ${neutralizeDiscordMentions(content)}`;
+    });
+    await replySafely(interaction, `**MuthaShip recent transmission log**\n${lines.join('\n')}`, true);
+  } catch {
+    await replySafely(interaction, 'Recent MuthaShip context is unavailable right now.', true);
+  }
 };
 
 const handleStatus = async (
