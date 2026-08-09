@@ -581,15 +581,15 @@ export const createCommandDefinitions = (
             {
               type: 3,
               name: 'timezone',
-              description: 'IANA timezone, such as America/New_York.',
-              required: true,
+              description: 'Optional IANA timezone; defaults to America/New_York.',
+              required: false,
               max_length: 100,
             },
             {
               type: 3,
               name: 'capacity',
-              description: 'Confirmed seat count.',
-              required: true,
+              description: 'Optional confirmed seat count; defaults to 20.',
+              required: false,
               max_length: 4,
             },
             {

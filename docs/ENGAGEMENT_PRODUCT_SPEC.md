@@ -114,6 +114,11 @@ Related implemented controls are `/introduction id`, `/suggestion delete`,
 Their handlers enforce the configuration, ownership, opt-in, and deletion
 rules above; a command name is not permission to bypass them.
 
+Event creation is intentionally lightweight: administrators provide a title,
+description, and local start time. Timezone defaults to `America/New_York` and
+capacity defaults to 20 seats; both can be overridden when an event needs
+different settings. An optional end time remains available for longer events.
+
 ## Explicit non-goals
 
 V1 excludes:

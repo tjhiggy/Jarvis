@@ -1,6 +1,9 @@
 import { replySafely, type ReplyTarget } from '../discord/delivery.js';
 import { EventService, EventServiceError } from '../engagement/events.js';
 
+const DEFAULT_EVENT_TIMEZONE = 'America/New_York';
+const DEFAULT_EVENT_CAPACITY = 20;
+
 export interface EventCommandInteraction extends ReplyTarget {
   readonly guildId: string | null;
   readonly user: Readonly<{ id: string }>;
@@ -56,8 +59,13 @@ export const handleEventCommand = async (
         title: interaction.options.getString('title') ?? '',
         description: interaction.options.getString('description') ?? '',
         start: interaction.options.getString('start') ?? '',
-        timezone: interaction.options.getString('timezone') ?? '',
-        capacity: Number(interaction.options.getString('capacity') ?? ''),
+        timezone:
+          interaction.options.getString('timezone')?.trim() ||
+          DEFAULT_EVENT_TIMEZONE,
+        capacity: parseOptionalPositiveInteger(
+          interaction.options.getString('capacity'),
+          DEFAULT_EVENT_CAPACITY,
+        ),
         ...(end ? { end } : {}),
       });
       await replySafely(
@@ -118,3 +126,13 @@ export const handleEventCommand = async (
     );
   }
 };
+
+function parseOptionalPositiveInteger(
+  value: string | null,
+  fallback: number,
+): number {
+  const normalized = value?.trim() ?? '';
+  if (normalized === '') return fallback;
+  const parsed = Number(normalized);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : Number.NaN;
+}
