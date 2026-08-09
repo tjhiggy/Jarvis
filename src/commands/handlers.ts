@@ -58,8 +58,13 @@ export interface CommandInteraction extends ReplyTarget, DeferredReplyTarget {
     parentId: string | null;
     isThread?(): boolean;
   }> | null;
-  readonly user: Readonly<{ id: string }>;
+  readonly user: Readonly<{
+    id: string;
+    globalName?: string | null;
+    username?: string;
+  }>;
   readonly member?: Readonly<{
+    displayName?: string | null;
     roles?: Readonly<{ cache?: Readonly<{ has(id: string): boolean }> }>;
   }> | null;
   readonly options: Readonly<{

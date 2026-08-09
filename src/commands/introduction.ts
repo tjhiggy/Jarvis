@@ -12,12 +12,36 @@ import {
 
 export interface IntroductionCommandInteraction extends ReplyTarget {
   readonly guildId: string | null;
-  readonly user: Readonly<{ id: string }>;
+  readonly user: Readonly<{
+    id: string;
+    globalName?: string | null;
+    username?: string;
+  }>;
+  readonly member?: Readonly<{ displayName?: string | null }> | null;
   readonly options: Readonly<{
     getSubcommand(): string;
     getString(name: string): string | null;
   }>;
 }
+
+/** Resolve a safe, deterministic crew name from Discord identity metadata. */
+export const resolveIntroductionDisplayName = (
+  interaction: Pick<IntroductionCommandInteraction, 'user' | 'member'>,
+  override: string | null,
+): string => {
+  const custom = override?.trim();
+  if (custom) return custom;
+  const candidates = [
+    interaction.member?.displayName,
+    interaction.user.globalName,
+    interaction.user.username,
+  ];
+  const resolved = candidates.find(
+    (candidate): candidate is string =>
+      typeof candidate === 'string' && candidate.trim().length > 0,
+  );
+  return resolved?.trim() || 'Crew Member';
+};
 
 export const handleIntroductionCommand = async (
   interaction: IntroductionCommandInteraction,
@@ -77,7 +101,10 @@ export const handleIntroductionCommand = async (
       guildId: interaction.guildId,
       ownerUserId: interaction.user.id,
       channelId: dependencies.channelId,
-      displayName: interaction.options.getString('name') ?? '',
+      displayName: resolveIntroductionDisplayName(
+        interaction,
+        interaction.options.getString('name'),
+      ),
       interests: interaction.options.getString('interests') ?? '',
       introduction: interaction.options.getString('aboard') ?? '',
     });

@@ -70,7 +70,7 @@ interface IntroductionOptionDefinition {
   readonly type: 3;
   readonly name: 'name' | 'interests' | 'aboard' | 'id' | 'draft_id';
   readonly description: string;
-  readonly required: true;
+  readonly required: boolean;
   readonly max_length: number;
 }
 
@@ -406,8 +406,9 @@ export const createCommandDefinitions = (
             {
               type: 3,
               name: 'name',
-              description: 'Name or nickname for the card.',
-              required: true,
+              description:
+                'Optional preferred name; defaults to your Discord display name.',
+              required: false,
               max_length: 80,
             },
             {

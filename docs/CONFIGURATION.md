@@ -138,7 +138,8 @@ for a later handler to ignore. Restart after any engagement configuration
 change; re-register commands after enabling engagement or changing the
 introduction channel. `/introduce` posts only to
 `ENGAGEMENT_INTRODUCTION_CHANNEL_ID`; `/introduce preview` creates a private
-draft with owner-bound Confirm and Cancel buttons (the UUID commands remain as
+draft with an optional preferred name (defaulting to the member's Discord display
+name) and owner-bound Confirm and Cancel buttons (the UUID commands remain as
 a fallback) and `/introduce confirm` posts it, while `/introduction id:<id>` is the
 owner-only deletion path for its SQLite record and bot-owned card. Retention
 cleanup runs after Discord is ready, removes expired bot-owned cards before
