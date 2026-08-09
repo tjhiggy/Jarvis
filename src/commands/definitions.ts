@@ -26,6 +26,12 @@ interface KnowledgeQueryOptionDefinition {
   readonly required: true;
   readonly max_length: number;
 }
+interface KnowledgeSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'query' | 'list' | 'approve' | 'revoke';
+  readonly description: string;
+  readonly options?: readonly { readonly type: 3; readonly name: 'query' | 'id'; readonly description: string; readonly required: true; readonly max_length: number }[];
+}
 
 interface RequiredStringOptionDefinition {
   readonly type: 3;
@@ -128,15 +134,22 @@ interface TriviaSubcommandDefinition {
 }
 interface EngagementSubcommandDefinition {
   readonly type: 1;
-  readonly name: 'status' | 'pause' | 'resume' | 'delete';
+  readonly name: 'status' | 'pause' | 'resume' | 'delete' | 'proactive';
   readonly description: string;
   readonly options?: readonly {
     readonly type: 3;
-    readonly name: 'user_id';
+    readonly name: 'user_id' | 'action';
     readonly description: string;
-    readonly required: false;
+    readonly required: boolean;
     readonly max_length: 20;
+    readonly choices?: readonly { readonly name: string; readonly value: string }[];
   }[];
+}
+interface ProactiveSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'proactive';
+  readonly description: string;
+  readonly options: readonly [{ readonly type: 3; readonly name: 'action'; readonly description: string; readonly required: true; readonly choices: readonly { readonly name: string; readonly value: string }[] }];
 }
 interface GameNightSubcommandDefinition {
   readonly type: 1;
@@ -157,6 +170,7 @@ export type CommandOptionDefinition =
   | InputCommandOptionDefinition
   | FaqTopicOptionDefinition
   | KnowledgeQueryOptionDefinition
+  | KnowledgeSubcommandDefinition
   | RequiredStringOptionDefinition
   | OptionalPollOptionDefinition
   | PollDurationOptionDefinition
@@ -173,6 +187,7 @@ export type CommandOptionDefinition =
   | RecapSubcommandDefinition
   | TriviaSubcommandDefinition
   | EngagementSubcommandDefinition
+  | ProactiveSubcommandDefinition
   | BirthdaySubcommandDefinition;
 
 export interface CommandDefinition {
@@ -292,7 +307,12 @@ export const createCommandDefinitions = (
       type: 1,
       name: 'knowledge',
       description: 'Search approved MuthaShip knowledge.',
-      options: [{ type: 3, name: 'query', description: 'Search approved knowledge.', required: true, max_length: Math.min(maxInputChars, discordStringOptionMaxLength) }],
+      options: [
+        { type: 1, name: 'query', description: 'Search approved knowledge.', options: [{ type: 3, name: 'query', description: 'Search approved knowledge.', required: true, max_length: Math.min(maxInputChars, discordStringOptionMaxLength) }] },
+        { type: 1, name: 'list', description: 'List approved knowledge sources.' },
+        { type: 1, name: 'approve', description: 'Approve a catalog source for this server.', options: [{ type: 3, name: 'id', description: 'Catalog source ID.', required: true, max_length: 64 }] },
+        { type: 1, name: 'revoke', description: 'Revoke a catalog source for this server.', options: [{ type: 3, name: 'id', description: 'Catalog source ID.', required: true, max_length: 64 }] },
+      ],
     },
     {
       type: 1,
@@ -764,6 +784,11 @@ export const createCommandDefinitions = (
         { type: 1, name: 'status', description: 'Show safe engagement health.' },
         { type: 1, name: 'pause', description: 'Pause engagement scheduling.' },
         { type: 1, name: 'resume', description: 'Resume engagement scheduling.' },
+        { type: 1, name: 'proactive', description: 'Preview or control Jarvis engagement posts.', options: [
+          { type: 3, name: 'action', description: 'Choose a safe proactive action.', required: true, choices: [
+            { name: 'Preview', value: 'preview' }, { name: 'Enable', value: 'enable' }, { name: 'Pause', value: 'pause' }, { name: 'Status', value: 'status' },
+          ] },
+        ] },
         {
           type: 1,
           name: 'delete',

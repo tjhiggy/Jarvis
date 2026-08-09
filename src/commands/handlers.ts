@@ -2,6 +2,7 @@ import type { ConversationResult } from '../services/conversation-service.js';
 import type { ConversationStore } from '../storage/conversation-store.js';
 import type { FaqCatalog } from '../faq/faq-catalog.js';
 import type { ApprovedKnowledgeCatalog } from '../knowledge/approved-knowledge.js';
+import type { SQLiteKnowledgeApprovalStore } from '../knowledge/knowledge-store.js';
 import type { PollController } from '../polls/poll-controller.js';
 import type { PollDurationValue } from '../polls/poll-duration.js';
 import type { PollScheduler } from '../polls/poll-scheduler.js';
@@ -53,6 +54,7 @@ import type { BirthdayService } from '../engagement/birthdays.js';
 import { buildEngagementCard, buildEngagementSelectMenu, toDiscordEngagementCard } from '../engagement/discord-ui.js';
 import type { RoleMenuChoice } from '../engagement/role-menus.js';
 import { buildChannelSummary } from './channel-summary.js';
+import type { ProactiveEngagementService } from '../engagement/proactive.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -141,6 +143,7 @@ export interface CommandDependencies {
   }>;
   readonly faq: FaqCatalog;
   readonly knowledge?: ApprovedKnowledgeCatalog;
+  readonly knowledgeStore?: SQLiteKnowledgeApprovalStore;
   readonly sleeper?: Readonly<{ leagueId: string; service: SleeperService }>;
   readonly pollController?: PollController;
   readonly pollHealth?: Readonly<{
@@ -156,6 +159,7 @@ export interface CommandDependencies {
   >;
   readonly triviaService?: TriviaService;
   readonly birthdayService?: BirthdayService;
+  readonly proactiveService?: ProactiveEngagementService;
   readonly engagementHealth?: Readonly<{
     repository: Required<
       Pick<
@@ -354,6 +358,16 @@ export const handleCommand = async (
       try { await dependencies.birthdayService.set({ guildId: interaction.guildId, userId: interaction.user.id, date, timezone }); return replySafely(interaction, 'Your birthday is saved privately. Jarvis will announce it on the MuthaShip without revealing the date.', true); } catch { return replySafely(interaction, 'Birthday must use valid MM-DD format. No year is stored.', true); }
     }
     case 'engagement':
+      if (interaction.options.getSubcommand() === 'proactive') {
+        const proactive = dependencies.proactiveService;
+        if (!proactive) return replySafely(interaction, 'Proactive engagement is not configured on the MuthaShip.', true);
+        const action = interaction.options.getString('action') ?? 'status';
+        if (action === 'preview') return replySafely(interaction, `Preview only. Nothing was posted.\n\n${await proactive.preview()}`, true);
+        if (action === 'enable') { await proactive.setState('enabled'); return replySafely(interaction, 'Proactive MuthaShip posts enabled. Jarvis will post only to the configured channel, within quiet hours and rate limits.', true); }
+        if (action === 'pause') { await proactive.setState('paused'); return replySafely(interaction, 'Proactive MuthaShip posts paused.', true); }
+        const status = await proactive.status();
+        return replySafely(interaction, `Proactive engagement: ${status.state}${status.lastPostedAt ? `\nLast post: ${status.lastPostedAt.toISOString()}` : ''}`, true);
+      }
       await handleEngagementCommand(interaction, {
         enabled: dependencies.config.engagement?.enabled ?? false,
         adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
@@ -935,8 +949,23 @@ const handleKnowledge = async (interaction: CommandInteraction, dependencies: Co
   if (await rejectDirectMessage(interaction)) return;
   const catalog = dependencies.knowledge;
   if (!catalog) return replySafely(interaction, 'Approved MuthaShip knowledge is not configured.', true);
+  const subcommand = interaction.options.getSubcommand();
+  const guildId = interaction.guildId?.trim() ?? '';
+  const store = dependencies.knowledgeStore;
+  if (subcommand !== 'query' && (!store || !guildId)) return replySafely(interaction, 'Knowledge administration is not configured.', true);
+  if (subcommand !== 'query') {
+    const isAdmin = [...(dependencies.config.engagement?.adminRoleIds ?? new Set())].some((role) => interaction.member?.roles?.cache?.has(role));
+    if (!isAdmin) return replySafely(interaction, 'Only configured MuthaShip administrators can manage approved knowledge.', true);
+    const id = interaction.options.getString('id')?.trim() ?? '';
+    if (subcommand === 'list') {
+      const entries = await store!.list(guildId, catalog);
+      return replySafely(interaction, entries.length === 0 ? 'No approved MuthaShip knowledge sources are active.' : `Approved MuthaShip knowledge sources:\n${entries.map((entry) => `- ${entry.id}: ${entry.title}`).join('\n')}`, true);
+    }
+    const changed = subcommand === 'approve' ? await store!.approve(guildId, id, catalog) : await store!.revoke(guildId, id, catalog);
+    return replySafely(interaction, changed ? `Knowledge source \`${id}\` ${subcommand === 'approve' ? 'approved' : 'revoked'} for this MuthaShip.` : 'That catalog source is unavailable or expired.', true);
+  }
   const query = interaction.options.getString('query')?.trim() ?? '';
-  const results = catalog.search(query);
+  const results = store && guildId ? await store.search(guildId, query, catalog) : catalog.search(query);
   if (results.length === 0) return replySafely(interaction, 'No approved knowledge matches that query. Jarvis will not guess.', true);
   await replySafely(interaction, results.map((entry) => `**${entry.title}**\n${entry.content}\nSource: ${entry.source}`).join('\n\n'), true);
 };
