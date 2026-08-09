@@ -18,7 +18,7 @@ second, imaginary moderator powers never. It answers questions in Discord,
 keeps bounded conversation history per channel or thread, and can use local or
 hosted AI without pretending an interface is a superpower.
 
-Current release: `0.1.0` | Runtime: Node.js 22+ | License: proprietary, except
+Current release: `0.2.0` | Runtime: Node.js 22+ | License: proprietary, except
 the Code of Conduct under CC BY 4.0
 
 Share the [Jarvis administrator overview](assets/jarvis-admin-overview-infographic-v2.png)
@@ -384,7 +384,7 @@ before opening a change.
 
 ## Release and license
 
-The current package and changelog release is `0.1.0`; the supported line is
+The current package and changelog release is `0.2.0`; the supported line is
 `0.1.x`. Release actions are maintainer-owned and documented in
 [Releases](docs/RELEASES.md) and the [Changelog](CHANGELOG.md).
 

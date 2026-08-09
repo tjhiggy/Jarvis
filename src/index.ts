@@ -600,7 +600,7 @@ export const createApplication = async (
   try {
     loadEnvironment();
     const config = configLoader(process.env);
-    const runtimeIdentity = loadRuntimeIdentity(process.env, '0.1.0');
+    const runtimeIdentity = loadRuntimeIdentity(process.env);
     logger = loggerFactory(config.logging.level);
     const persona = await personaLoader(config.persona.promptPath);
     const faq = await faqCatalogLoader(config.faq.catalogPath);
