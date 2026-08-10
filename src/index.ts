@@ -982,6 +982,7 @@ export const createApplication = async (
             providers: { ai: config.ai.provider, openAiConfigured: config.openai.apiKey !== '', ollamaConfigured: config.ollama.baseUrl !== '', webSearchConfigured: config.webSearch.apiKey !== '' },
             integrations: { rss: config.engagement.channels.rssId !== '', sleeper: config.sleeper?.leagueId !== '', github: config.github !== undefined },
             metrics: engagementRepository?.analyticsSummary === undefined ? null : { events: rows.reduce((sum, row) => sum + row.count, 0), failures: rows.filter((row) => row.eventName === 'command_failed').reduce((sum, row) => sum + row.count, 0) },
+            rss: rssStorage === undefined ? undefined : { paused: rssStorage.isPaused(config.discord.guildId), feeds: rssStorage.listFeeds(config.discord.guildId).map(({ label, url }) => ({ label, url })) },
           };
         },
       });
