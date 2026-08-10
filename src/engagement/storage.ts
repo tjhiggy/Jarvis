@@ -15,6 +15,7 @@ import type {
   TriviaRound,
 } from './activity.js';
 import type { EngagementRecordCounts } from './health.js';
+import type { PlatformMetricsRepository } from '../platform/metrics.js';
 
 export type EngagementIdempotencyScope = 'interaction' | 'scheduled-job';
 
@@ -34,7 +35,7 @@ export interface EngagementCardDeletion {
   readonly createdAt: Date;
 }
 
-export interface EngagementRepository {
+export interface EngagementRepository extends Partial<PlatformMetricsRepository> {
   getBirthday?(guildId: string, userId: string): Promise<import('./birthdays.js').BirthdayRecord | undefined>;
   saveBirthday?(record: import('./birthdays.js').BirthdayRecord): Promise<import('./birthdays.js').BirthdayRecord>;
   deleteBirthday?(guildId: string, userId: string): Promise<boolean>;
