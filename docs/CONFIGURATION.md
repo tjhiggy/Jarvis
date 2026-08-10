@@ -72,6 +72,11 @@ and user display names only. Restart Jarvis after changing it. The integration
 never changes lineups, waivers, trades, rosters, league settings, or Discord
 settings.
 
+The `/fantasy player` command uses the same public, read-only Sleeper boundary.
+It validates the player identifier locally, requires a season, optionally
+accepts a week, and returns only a bounded set of numeric statistics. It does
+not accept arbitrary URLs or provider credentials.
+
 ## Provider and web-search behavior
 
 `AI_PROVIDER=openai` makes `OPENAI_API_KEY` mandatory. The OpenAI model, timeout, and retry settings are then used by the Responses adapter. With `AI_PROVIDER=ollama`, an OpenAI key is not required; the process calls `OLLAMA_BASE_URL/api/chat` with the configured Ollama model. The loader accepts only HTTP or HTTPS base URLs and strips trailing slashes before use. Do not publish a local Ollama endpoint to the public internet.
@@ -104,6 +109,21 @@ startup and command-registration configuration. When enabled,
 `POLL_ADMIN_USER_IDS` must contain comma-separated 17-to-20 digit Discord user
 IDs, and `POLL_VOTER_SECRET` must contain at least 32 characters. It is an
 authorization allowlist, not a Discord role or permission grant.
+
+### Command-specific authorization
+
+Jarvis uses explicit command scopes rather than Discord's broad Administrator
+permission. `/config` shows the current read-only authorization contract to
+configured administrators. Engagement administration and approved-knowledge
+moderation use the roles in `ENGAGEMENT_ADMIN_ROLE_IDS`; poll creation and
+early closure use the exact user IDs in `POLL_ADMIN_USER_IDS`. Ordinary
+questions, personal reminders, birthdays, LFG, and role-menu selection remain
+available to members subject to channel allowlists and feature configuration.
+
+This mapping is an application boundary, not a Discord permission grant. It
+cannot create roles, change role hierarchy, modify channels, or alter server
+settings. Keep the bot's Discord permissions at the documented minimum and
+allowlist only the roles it may assign.
 
 `POLL_VOTER_SECRET` is sensitive. Put it in the same approved secret boundary
 as the bot token, never in source, logs, screenshots, or issue text. Jarvis

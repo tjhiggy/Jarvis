@@ -12,6 +12,14 @@ export interface SleeperStanding {
 export interface SleeperService {
   getStandings(leagueId: string): Promise<readonly SleeperStanding[]>;
   getMatchups(leagueId: string, week: number): Promise<readonly SleeperMatchup[]>;
+  readonly getPlayerStats?: (playerId: string, season: number, week?: number) => Promise<SleeperPlayerStats>;
+}
+
+export interface SleeperPlayerStats {
+  readonly playerId: string;
+  readonly season: number;
+  readonly week?: number;
+  readonly stats: Readonly<Record<string, number>>;
 }
 
 export interface SleeperMatchup {
