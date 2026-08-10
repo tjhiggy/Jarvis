@@ -4,6 +4,7 @@ import {
   type EngagementSchedulerHealth,
 } from '../engagement/health.js';
 import type { EngagementDeletionOutcome } from '../engagement/deletion.js';
+import type { MetricsSummaryRow } from '../platform/metrics.js';
 
 type OperationalRepository = Readonly<{
   engagementPaused(guildId: string): Promise<boolean>;
@@ -25,6 +26,7 @@ type OperationalRepository = Readonly<{
     guildId: string,
     userId: string,
   ): Promise<EngagementDeletionOutcome>;
+  analyticsSummary?(guildId: string, since: Date): Promise<readonly MetricsSummaryRow[]>;
 }>;
 
 export const handleEngagementCommand = async (
@@ -107,6 +109,20 @@ export const handleEngagementCommand = async (
         : 'Engagement scheduling is resumed for this MuthaShip.',
       true,
     );
+  }
+
+  if (subcommand === 'metrics') {
+    if (dependencies.repository.analyticsSummary === undefined)
+      return replySafely(interaction, 'Aggregate metrics are not available on this MuthaShip.', true);
+    const since = new Date((dependencies.now ?? (() => new Date()))().getTime() - 7 * 24 * 60 * 60 * 1000);
+    const rows = await dependencies.repository.analyticsSummary(interaction.guildId, since);
+    const total = rows.reduce((sum, row) => sum + row.count, 0);
+    const failures = rows.filter((row) => row.eventName === 'command_failed').reduce((sum, row) => sum + row.count, 0);
+    const top = [...rows].sort((a, b) => b.count - a.count).slice(0, 10);
+    const breakdown = top.length === 0
+      ? 'No command activity recorded in the last 7 days.'
+      : top.map((row) => `${row.command || row.feature}: ${row.eventName} ${row.count}`).join('\n');
+    return replySafely(interaction, [`Metrics, last 7 days: ${total} events, ${failures} command failures.`, breakdown].join('\n'), true);
   }
 
   const health = await collectEngagementHealth({

@@ -158,7 +158,7 @@ interface TriviaSubcommandDefinition {
 }
 interface EngagementSubcommandDefinition {
   readonly type: 1;
-  readonly name: 'status' | 'pause' | 'resume' | 'delete' | 'proactive';
+  readonly name: 'status' | 'metrics' | 'pause' | 'resume' | 'delete' | 'proactive';
   readonly description: string;
   readonly options?: readonly {
     readonly type: 3;
@@ -1143,6 +1143,11 @@ export const createCommandDefinitions = (
           type: 1,
           name: 'status',
           description: 'Show safe engagement health.',
+        },
+        {
+          type: 1,
+          name: 'metrics',
+          description: 'Show aggregate command and scheduler usage.',
         },
         { type: 1, name: 'pause', description: 'Pause engagement scheduling.' },
         {
