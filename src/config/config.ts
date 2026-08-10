@@ -79,7 +79,9 @@ export interface EngagementConfig {
     recapId: string;
     activityId: string;
     birthdayId: string;
+    rssId: string;
   }>;
+  readonly rssAllowedHosts: readonly string[];
   readonly adminRoleIds: ReadonlySet<string>;
   readonly recapSchedule: string;
   readonly recapTimezone: string;
@@ -241,6 +243,8 @@ const baseEnvironmentSchema = z.object({
   ENGAGEMENT_RECAP_CHANNEL_ID: optionalDiscordSnowflake,
   ENGAGEMENT_ACTIVITY_CHANNEL_ID: optionalDiscordSnowflake,
   ENGAGEMENT_BIRTHDAY_CHANNEL_ID: optionalDiscordSnowflake,
+  ENGAGEMENT_RSS_CHANNEL_ID: optionalDiscordSnowflake,
+  ENGAGEMENT_RSS_ALLOWED_HOSTS: z.string().trim().default(''),
   ENGAGEMENT_ROLE_MENU_OPTIONS: z.string().trim().default(''),
   ENGAGEMENT_ADMIN_ROLE_IDS: engagementAdminRoleIds,
   ENGAGEMENT_RECAP_SCHEDULE: z.preprocess(
@@ -463,7 +467,9 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
         recapId: parsed.ENGAGEMENT_RECAP_CHANNEL_ID,
         activityId: parsed.ENGAGEMENT_ACTIVITY_CHANNEL_ID,
         birthdayId: parsed.ENGAGEMENT_BIRTHDAY_CHANNEL_ID,
+        rssId: parsed.ENGAGEMENT_RSS_CHANNEL_ID,
       }),
+      rssAllowedHosts: Object.freeze(parsed.ENGAGEMENT_RSS_ALLOWED_HOSTS.split(',').map((host) => host.trim().toLowerCase()).filter(Boolean)),
       adminRoleIds: readonlySet(parsed.ENGAGEMENT_ADMIN_ROLE_IDS),
       recapSchedule: parsed.ENGAGEMENT_RECAP_SCHEDULE,
       recapTimezone: parsed.ENGAGEMENT_RECAP_TIMEZONE,
