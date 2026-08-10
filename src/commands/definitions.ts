@@ -30,7 +30,13 @@ interface KnowledgeSubcommandDefinition {
   readonly type: 1;
   readonly name: 'query' | 'list' | 'approve' | 'revoke';
   readonly description: string;
-  readonly options?: readonly { readonly type: 3; readonly name: 'query' | 'id'; readonly description: string; readonly required: true; readonly max_length: number }[];
+  readonly options?: readonly {
+    readonly type: 3;
+    readonly name: 'query' | 'id';
+    readonly description: string;
+    readonly required: true;
+    readonly max_length: number;
+  }[];
 }
 
 interface RequiredStringOptionDefinition {
@@ -68,7 +74,8 @@ interface ReminderStringOptionDefinition {
 
 interface ReminderSubcommandDefinition {
   readonly type: 1;
-  readonly name: 'set' | 'list' | 'cancel' | 'shared-set' | 'shared-list' | 'shared-cancel';
+  readonly name:
+    'set' | 'list' | 'cancel' | 'shared-set' | 'shared-list' | 'shared-cancel';
   readonly description: string;
   readonly options?: readonly ReminderStringOptionDefinition[];
 }
@@ -77,7 +84,23 @@ interface FantasySubcommandDefinition {
   readonly type: 1;
   readonly name: 'standings' | 'matchup' | 'player';
   readonly description: string;
-  readonly options?: readonly ({ readonly type: 4; readonly name: 'week' | 'season'; readonly description: string; readonly required: boolean; readonly min_value: number; readonly max_value: number } | { readonly type: 3; readonly name: 'player_id'; readonly description: string; readonly required: true; readonly max_length: number })[];
+  readonly options?: readonly (
+    | {
+        readonly type: 4;
+        readonly name: 'week' | 'season';
+        readonly description: string;
+        readonly required: boolean;
+        readonly min_value: number;
+        readonly max_value: number;
+      }
+    | {
+        readonly type: 3;
+        readonly name: 'player_id';
+        readonly description: string;
+        readonly required: true;
+        readonly max_length: number;
+      }
+  )[];
 }
 
 interface IntroductionOptionDefinition {
@@ -143,14 +166,28 @@ interface EngagementSubcommandDefinition {
     readonly description: string;
     readonly required: boolean;
     readonly max_length: 20;
-    readonly choices?: readonly { readonly name: string; readonly value: string }[];
+    readonly choices?: readonly {
+      readonly name: string;
+      readonly value: string;
+    }[];
   }[];
 }
 interface ProactiveSubcommandDefinition {
   readonly type: 1;
   readonly name: 'proactive';
   readonly description: string;
-  readonly options: readonly [{ readonly type: 3; readonly name: 'action'; readonly description: string; readonly required: true; readonly choices: readonly { readonly name: string; readonly value: string }[] }];
+  readonly options: readonly [
+    {
+      readonly type: 3;
+      readonly name: 'action';
+      readonly description: string;
+      readonly required: true;
+      readonly choices: readonly {
+        readonly name: string;
+        readonly value: string;
+      }[];
+    },
+  ];
 }
 interface GameNightSubcommandDefinition {
   readonly type: 1;
@@ -164,9 +201,49 @@ interface GameNightSubcommandDefinition {
     readonly max_length: number;
   }[];
 }
-interface LfgOptionDefinition { readonly type: 3; readonly name: 'game' | 'when' | 'details'; readonly description: string; readonly required: boolean; readonly max_length: number; }
-interface BirthdaySubcommandDefinition { readonly type: 1; readonly name: 'set' | 'show' | 'delete'; readonly description: string; readonly options?: readonly { readonly type: 3; readonly name: 'date' | 'timezone'; readonly description: string; readonly required: boolean; readonly max_length: number; }[]; }
-interface GitHubSubcommandDefinition { readonly type: 1; readonly name: 'repository' | 'issue' | 'pull-request'; readonly description: string; readonly options?: readonly { readonly type: 4; readonly name: 'number'; readonly description: string; readonly required: true; readonly min_value: number; }[]; }
+interface LfgOptionDefinition {
+  readonly type: 3;
+  readonly name: 'game' | 'when' | 'details';
+  readonly description: string;
+  readonly required: boolean;
+  readonly max_length: number;
+}
+interface BirthdaySubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'set' | 'show' | 'delete';
+  readonly description: string;
+  readonly options?: readonly {
+    readonly type: 3;
+    readonly name: 'date' | 'timezone';
+    readonly description: string;
+    readonly required: boolean;
+    readonly max_length: number;
+  }[];
+}
+interface GitHubSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'repository' | 'issue' | 'pull-request';
+  readonly description: string;
+  readonly options?: readonly {
+    readonly type: 4;
+    readonly name: 'number';
+    readonly description: string;
+    readonly required: true;
+    readonly min_value: number;
+  }[];
+}
+interface RssSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'add' | 'list' | 'remove' | 'pause' | 'resume';
+  readonly description: string;
+  readonly options?: readonly {
+    readonly type: 3;
+    readonly name: 'url' | 'label';
+    readonly description: string;
+    readonly required: true;
+    readonly max_length: number;
+  }[];
+}
 
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
@@ -191,8 +268,9 @@ export type CommandOptionDefinition =
   | EngagementSubcommandDefinition
   | ProactiveSubcommandDefinition
   | BirthdaySubcommandDefinition
-  | GitHubSubcommandDefinition;
-  // GitHub is intentionally read-only and repository-scoped.
+  | GitHubSubcommandDefinition
+  | RssSubcommandDefinition;
+// GitHub is intentionally read-only and repository-scoped.
 
 export interface CommandDefinition {
   readonly type: 1;
@@ -205,7 +283,7 @@ export interface CommandDefinition {
     | 'config'
     | 'faq'
     | 'knowledge'
-  | 'catch-me-up'
+    | 'catch-me-up'
     | 'post'
     | 'channel-summary'
     | 'reminder'
@@ -224,7 +302,8 @@ export interface CommandDefinition {
     | 'engagement'
     | 'birthday'
     | 'roles'
-    | 'github';
+    | 'github'
+    | 'rss';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -315,10 +394,53 @@ export const createCommandDefinitions = (
       name: 'knowledge',
       description: 'Search approved MuthaShip knowledge.',
       options: [
-        { type: 1, name: 'query', description: 'Search approved knowledge.', options: [{ type: 3, name: 'query', description: 'Search approved knowledge.', required: true, max_length: Math.min(maxInputChars, discordStringOptionMaxLength) }] },
-        { type: 1, name: 'list', description: 'List approved knowledge sources.' },
-        { type: 1, name: 'approve', description: 'Approve a catalog source for this server.', options: [{ type: 3, name: 'id', description: 'Catalog source ID.', required: true, max_length: 64 }] },
-        { type: 1, name: 'revoke', description: 'Revoke a catalog source for this server.', options: [{ type: 3, name: 'id', description: 'Catalog source ID.', required: true, max_length: 64 }] },
+        {
+          type: 1,
+          name: 'query',
+          description: 'Search approved knowledge.',
+          options: [
+            {
+              type: 3,
+              name: 'query',
+              description: 'Search approved knowledge.',
+              required: true,
+              max_length: Math.min(maxInputChars, discordStringOptionMaxLength),
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'list',
+          description: 'List approved knowledge sources.',
+        },
+        {
+          type: 1,
+          name: 'approve',
+          description: 'Approve a catalog source for this server.',
+          options: [
+            {
+              type: 3,
+              name: 'id',
+              description: 'Catalog source ID.',
+              required: true,
+              max_length: 64,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'revoke',
+          description: 'Revoke a catalog source for this server.',
+          options: [
+            {
+              type: 3,
+              name: 'id',
+              description: 'Catalog source ID.',
+              required: true,
+              max_length: 64,
+            },
+          ],
+        },
       ],
     },
     {
@@ -376,12 +498,46 @@ export const createCommandDefinitions = (
             },
           ],
         },
-        { type: 1, name: 'shared-set', description: 'Create an administrator shared reminder.', options: [
-          { type: 3, name: 'in', description: 'Delay such as 10 minutes or 2 hours.', required: true, max_length: 64 },
-          { type: 3, name: 'message', description: 'Message to post.', required: true, max_length: 500 },
-        ] },
-        { type: 1, name: 'shared-list', description: 'List shared reminders in this server.' },
-        { type: 1, name: 'shared-cancel', description: 'Cancel a shared reminder.', options: [{ type: 3, name: 'id', description: 'The reminder ID.', required: true, max_length: 12 }] },
+        {
+          type: 1,
+          name: 'shared-set',
+          description: 'Create an administrator shared reminder.',
+          options: [
+            {
+              type: 3,
+              name: 'in',
+              description: 'Delay such as 10 minutes or 2 hours.',
+              required: true,
+              max_length: 64,
+            },
+            {
+              type: 3,
+              name: 'message',
+              description: 'Message to post.',
+              required: true,
+              max_length: 500,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'shared-list',
+          description: 'List shared reminders in this server.',
+        },
+        {
+          type: 1,
+          name: 'shared-cancel',
+          description: 'Cancel a shared reminder.',
+          options: [
+            {
+              type: 3,
+              name: 'id',
+              description: 'The reminder ID.',
+              required: true,
+              max_length: 12,
+            },
+          ],
+        },
       ],
     },
     {
@@ -399,7 +555,14 @@ export const createCommandDefinitions = (
           name: 'matchup',
           description: 'Show read-only weekly matchup results.',
           options: [
-            { type: 4, name: 'week', description: 'League week number (1-30).', required: false, min_value: 1, max_value: 30 },
+            {
+              type: 4,
+              name: 'week',
+              description: 'League week number (1-30).',
+              required: false,
+              min_value: 1,
+              max_value: 30,
+            },
           ],
         },
         {
@@ -407,9 +570,29 @@ export const createCommandDefinitions = (
           name: 'player',
           description: 'Show read-only player statistics.',
           options: [
-            { type: 3, name: 'player_id', description: 'Sleeper player identifier.', required: true, max_length: 32 },
-            { type: 4, name: 'season', description: 'NFL season (for example, 2026).', required: true, min_value: 2020, max_value: 2100 },
-            { type: 4, name: 'week', description: 'Optional week number (1-18).', required: false, min_value: 1, max_value: 18 },
+            {
+              type: 3,
+              name: 'player_id',
+              description: 'Sleeper player identifier.',
+              required: true,
+              max_length: 32,
+            },
+            {
+              type: 4,
+              name: 'season',
+              description: 'NFL season (for example, 2026).',
+              required: true,
+              min_value: 2020,
+              max_value: 2100,
+            },
+            {
+              type: 4,
+              name: 'week',
+              description: 'Optional week number (1-18).',
+              required: false,
+              min_value: 1,
+              max_value: 18,
+            },
           ],
         },
       ],
@@ -629,11 +812,51 @@ export const createCommandDefinitions = (
     {
       type: 1,
       name: 'post',
-      description: 'Preview and send a MuthaShip transmission for an administrator.',
+      description:
+        'Preview and send a MuthaShip transmission for an administrator.',
       options: [
-        { type: 1, name: 'preview', description: 'Create a private transmission preview.', options: [{ type: 3, name: 'content', description: 'Message to post in the configured test channel.', required: true, max_length: 1500 }] },
-        { type: 1, name: 'confirm', description: 'Post a reviewed transmission.', options: [{ type: 3, name: 'draft_id', description: 'Private preview ID.', required: true, max_length: 128 }] },
-        { type: 1, name: 'cancel', description: 'Discard a private transmission preview.', options: [{ type: 3, name: 'draft_id', description: 'Private preview ID.', required: true, max_length: 128 }] },
+        {
+          type: 1,
+          name: 'preview',
+          description: 'Create a private transmission preview.',
+          options: [
+            {
+              type: 3,
+              name: 'content',
+              description: 'Message to post in the configured test channel.',
+              required: true,
+              max_length: 1500,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'confirm',
+          description: 'Post a reviewed transmission.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'cancel',
+          description: 'Discard a private transmission preview.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
       ],
     },
     {
@@ -641,9 +864,39 @@ export const createCommandDefinitions = (
       name: 'github',
       description: 'Read approved MuthaShip GitHub metadata.',
       options: [
-        { type: 1, name: 'repository', description: 'Show repository metadata.' },
-        { type: 1, name: 'issue', description: 'Show an issue.', options: [{ type: 4, name: 'number', description: 'Issue number.', required: true, min_value: 1 }] },
-        { type: 1, name: 'pull-request', description: 'Show a pull request.', options: [{ type: 4, name: 'number', description: 'Pull request number.', required: true, min_value: 1 }] },
+        {
+          type: 1,
+          name: 'repository',
+          description: 'Show repository metadata.',
+        },
+        {
+          type: 1,
+          name: 'issue',
+          description: 'Show an issue.',
+          options: [
+            {
+              type: 4,
+              name: 'number',
+              description: 'Issue number.',
+              required: true,
+              min_value: 1,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'pull-request',
+          description: 'Show a pull request.',
+          options: [
+            {
+              type: 4,
+              name: 'number',
+              description: 'Pull request number.',
+              required: true,
+              min_value: 1,
+            },
+          ],
+        },
       ],
     },
     {
@@ -701,7 +954,8 @@ export const createCommandDefinitions = (
             {
               type: 3,
               name: 'timezone',
-              description: 'Optional IANA timezone; defaults to America/New_York.',
+              description:
+                'Optional IANA timezone; defaults to America/New_York.',
               required: false,
               max_length: 100,
             },
@@ -757,13 +1011,48 @@ export const createCommandDefinitions = (
       name: 'game-night',
       description: 'Schedule a crew game night with RSVP buttons.',
       options: [
-        { type: 1, name: 'create', description: 'Schedule a game night as an administrator.', options: [
-          { type: 3, name: 'game', description: 'Game or activity name.', required: true, max_length: 120 },
-          { type: 3, name: 'start', description: 'Local start: YYYY-MM-DD HH:mm.', required: true, max_length: 16 },
-          { type: 3, name: 'details', description: 'Optional details for the crew.', required: false, max_length: 1000 },
-          { type: 3, name: 'timezone', description: 'Optional IANA timezone.', required: false, max_length: 100 },
-          { type: 3, name: 'capacity', description: 'Optional seat count; defaults to 20.', required: false, max_length: 4 },
-        ] },
+        {
+          type: 1,
+          name: 'create',
+          description: 'Schedule a game night as an administrator.',
+          options: [
+            {
+              type: 3,
+              name: 'game',
+              description: 'Game or activity name.',
+              required: true,
+              max_length: 120,
+            },
+            {
+              type: 3,
+              name: 'start',
+              description: 'Local start: YYYY-MM-DD HH:mm.',
+              required: true,
+              max_length: 16,
+            },
+            {
+              type: 3,
+              name: 'details',
+              description: 'Optional details for the crew.',
+              required: false,
+              max_length: 1000,
+            },
+            {
+              type: 3,
+              name: 'timezone',
+              description: 'Optional IANA timezone.',
+              required: false,
+              max_length: 100,
+            },
+            {
+              type: 3,
+              name: 'capacity',
+              description: 'Optional seat count; defaults to 20.',
+              required: false,
+              max_length: 4,
+            },
+          ],
+        },
         { type: 1, name: 'list', description: 'List upcoming game nights.' },
       ],
     },
@@ -772,9 +1061,27 @@ export const createCommandDefinitions = (
       name: 'lfg',
       description: 'Signal the crew that you are looking for a group.',
       options: [
-        { type: 3, name: 'game', description: 'Game or activity.', required: true, max_length: 120 },
-        { type: 3, name: 'when', description: 'Optional time or availability.', required: false, max_length: 120 },
-        { type: 3, name: 'details', description: 'Optional platform, mode, or seat details.', required: false, max_length: 500 },
+        {
+          type: 3,
+          name: 'game',
+          description: 'Game or activity.',
+          required: true,
+          max_length: 120,
+        },
+        {
+          type: 3,
+          name: 'when',
+          description: 'Optional time or availability.',
+          required: false,
+          max_length: 120,
+        },
+        {
+          type: 3,
+          name: 'details',
+          description: 'Optional platform, mode, or seat details.',
+          required: false,
+          max_length: 500,
+        },
       ],
     },
     {
@@ -832,31 +1139,141 @@ export const createCommandDefinitions = (
       name: 'engagement',
       description: 'View or control engagement scheduling as an administrator.',
       options: [
-        { type: 1, name: 'status', description: 'Show safe engagement health.' },
+        {
+          type: 1,
+          name: 'status',
+          description: 'Show safe engagement health.',
+        },
         { type: 1, name: 'pause', description: 'Pause engagement scheduling.' },
-        { type: 1, name: 'resume', description: 'Resume engagement scheduling.' },
-        { type: 1, name: 'proactive', description: 'Preview or control Jarvis engagement posts.', options: [
-          { type: 3, name: 'action', description: 'Choose a safe proactive action.', required: true, choices: [
-            { name: 'Preview', value: 'preview' }, { name: 'Enable', value: 'enable' }, { name: 'Pause', value: 'pause' }, { name: 'Status', value: 'status' },
-          ] },
-        ] },
+        {
+          type: 1,
+          name: 'resume',
+          description: 'Resume engagement scheduling.',
+        },
+        {
+          type: 1,
+          name: 'proactive',
+          description: 'Preview or control Jarvis engagement posts.',
+          options: [
+            {
+              type: 3,
+              name: 'action',
+              description: 'Choose a safe proactive action.',
+              required: true,
+              choices: [
+                { name: 'Preview', value: 'preview' },
+                { name: 'Enable', value: 'enable' },
+                { name: 'Pause', value: 'pause' },
+                { name: 'Status', value: 'status' },
+              ],
+            },
+          ],
+        },
         {
           type: 1,
           name: 'delete',
           description: 'Delete retained engagement records.',
           options: [
-            { type: 3, name: 'user_id', description: 'Optional member ID for administrators.', required: false, max_length: 20 },
+            {
+              type: 3,
+              name: 'user_id',
+              description: 'Optional member ID for administrators.',
+              required: false,
+              max_length: 20,
+            },
           ],
         },
       ],
     },
-    { type: 1, name: 'birthday', description: 'Opt in to a private MuthaShip birthday announcement.', options: [
-      { type: 1, name: 'set', description: 'Save your birthday as MM-DD (no year).', options: [{ type: 3, name: 'date', description: 'Month and day, for example 07-04.', required: true, max_length: 5 }, { type: 3, name: 'timezone', description: 'IANA timezone, for example America/New_York.', required: false, max_length: 64 }] },
-      { type: 1, name: 'show', description: 'Show your saved birthday privately.' },
-      { type: 1, name: 'delete', description: 'Delete your saved birthday.' },
-    ] },
-    { type: 1, name: 'roles', description: 'Choose your optional MuthaShip crew roles.' },
-    { type: 1, name: 'config', description: 'Show safe Jarvis configuration (administrators only).' },
+    {
+      type: 1,
+      name: 'birthday',
+      description: 'Opt in to a private MuthaShip birthday announcement.',
+      options: [
+        {
+          type: 1,
+          name: 'set',
+          description: 'Save your birthday as MM-DD (no year).',
+          options: [
+            {
+              type: 3,
+              name: 'date',
+              description: 'Month and day, for example 07-04.',
+              required: true,
+              max_length: 5,
+            },
+            {
+              type: 3,
+              name: 'timezone',
+              description: 'IANA timezone, for example America/New_York.',
+              required: false,
+              max_length: 64,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'show',
+          description: 'Show your saved birthday privately.',
+        },
+        { type: 1, name: 'delete', description: 'Delete your saved birthday.' },
+      ],
+    },
+    {
+      type: 1,
+      name: 'roles',
+      description: 'Choose your optional MuthaShip crew roles.',
+    },
+    {
+      type: 1,
+      name: 'rss',
+      description: 'Manage approved RSS feeds (administrators only).',
+      options: [
+        {
+          type: 1,
+          name: 'add',
+          description: 'Add an approved HTTPS RSS feed.',
+          options: [
+            {
+              type: 3,
+              name: 'url',
+              description: 'Approved HTTPS feed URL.',
+              required: true,
+              max_length: 500,
+            },
+            {
+              type: 3,
+              name: 'label',
+              description: 'Short feed label.',
+              required: true,
+              max_length: 80,
+            },
+          ],
+        },
+        { type: 1, name: 'list', description: 'List configured RSS feeds.' },
+        {
+          type: 1,
+          name: 'remove',
+          description: 'Remove a configured RSS feed.',
+          options: [
+            {
+              type: 3,
+              name: 'url',
+              description: 'Configured HTTPS feed URL.',
+              required: true,
+              max_length: 500,
+            },
+          ],
+        },
+        { type: 1, name: 'pause', description: 'Pause RSS monitoring.' },
+        { type: 1, name: 'resume', description: 'Resume RSS monitoring.' },
+      ],
+    },
+    {
+      type: 1,
+      name: 'config',
+      description: 'Show safe Jarvis configuration (administrators only).',
+    },
   );
 
   return definitions;
