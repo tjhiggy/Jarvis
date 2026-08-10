@@ -21,6 +21,7 @@ Jarvis is a single Node.js process. It receives Discord gateway events, applies 
 | GitHub integration      | Reads metadata, issues, and pull requests from one configured repository; authentication is optional and all repository mutations are out of scope. | `src/github/`, `src/commands/handlers.ts` |
 | Disabled extensions     | Declares disabled-by-default, operator-approved extension shapes; it does not implement or wire tools.                                                                                                                                                          | `src/extensions/contracts.ts`                                                                                             |
 | Command registration    | Bulk-registers this application's command definitions in the configured development guild.                                                                                                                                                                      | `scripts/register-commands.ts`                                                                                            |
+| Command analytics       | Planned shared instrumentation boundary for aggregate command usage, delivery outcomes, scheduler health, provider readiness, engagement adoption, and opt-in or opt-out metrics. It must exclude raw message content and secrets, enforce server and channel scope, and apply bounded retention before exposing data to the Admin Command Deck. | Planned platform contract |
 
 ## Request flow
 
@@ -52,6 +53,16 @@ flowchart TD
 ```
 
 For direct mentions, the Discord adapter first requires a bot mention, a guild context, an allowed channel, and the bot's channel permissions. Commands make their own guild, channel, allowlist, and input checks before calling the same conversation service. The service is the shared normalization boundary for both ingress paths: it replaces unverified Discord member IDs before persistence or provider use, and it owns event de-duplication and rate limiting for requests that reach it.
+
+The planned Admin Command Deck will consume aggregate analytics through a
+server-scoped API. Instrumentation events will use a common vocabulary such as
+`command_started`, `command_succeeded`, `command_failed`,
+`command_cancelled`, `delivery_succeeded`, `delivery_failed`,
+`user_opted_in`, and `user_opted_out`. Events will carry only bounded metadata
+such as feature, command, channel scope, result, duration, and Jarvis version.
+They will never include secrets or full user messages. Discord commands remain
+the fast operational surface; the Admin Command Deck is the visibility and
+configuration surface.
 
 Storage transitions for a guild plus conversation are coordinated and serialized. A clear operation advances that conversation's generation, so queued stale storage work is invalidated. The provider call runs outside those coordinated sections, so provider calls for the same conversation can overlap; the subsequent assistant-message append is checked against the generation before it persists.
 
