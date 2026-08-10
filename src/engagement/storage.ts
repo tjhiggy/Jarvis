@@ -15,6 +15,7 @@ import type {
   TriviaRound,
 } from './activity.js';
 import type { EngagementRecordCounts } from './health.js';
+import type { FeatureFlagName, FeatureFlagRecord } from './feature-flags.js';
 
 export type EngagementIdempotencyScope = 'interaction' | 'scheduled-job';
 
@@ -35,6 +36,8 @@ export interface EngagementCardDeletion {
 }
 
 export interface EngagementRepository {
+  getFeatureFlags?(guildId: string): Promise<readonly FeatureFlagRecord[]>;
+  setFeatureFlag?(guildId: string, name: FeatureFlagName, enabled: boolean, updatedAt?: Date): Promise<void>;
   getProactiveState?(guildId: string): Promise<{ state: import('./proactive.js').ProactiveState; lastPostedAt?: Date }>;
   setProactiveState?(guildId: string, state: import('./proactive.js').ProactiveState, updatedAt: Date): Promise<void>;
   recordProactivePosted?(guildId: string, postedAt: Date): Promise<void>;
