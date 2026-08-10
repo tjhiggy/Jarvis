@@ -7,6 +7,7 @@ type LogLevel =
   'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent';
 
 export interface AppConfig {
+  readonly adminConsole?: Readonly<{ enabled: boolean; port: number; host: string }>;
   readonly runtimeIdentity?: RuntimeIdentity;
   readonly ai: Readonly<{
     provider: 'openai' | 'ollama';
@@ -186,6 +187,9 @@ const engagementTimezone = z.preprocess(
 );
 
 const baseEnvironmentSchema = z.object({
+  ADMIN_CONSOLE_ENABLED: z.preprocess((value) => typeof value === 'string' && value.trim() === '' ? undefined : value, z.enum(['true', 'false']).default('false')),
+  ADMIN_CONSOLE_PORT: integer(8787, 0, 65535),
+  ADMIN_CONSOLE_HOST: z.string().trim().regex(/^(?:127\.0\.0\.1|localhost)$/).default('127.0.0.1'),
   DISCORD_TOKEN: requiredString,
   DISCORD_CLIENT_ID: requiredString,
   DISCORD_GUILD_ID: requiredString,
@@ -405,6 +409,7 @@ const readonlySet = (values: string[]): ReadonlySet<string> => {
 export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
   const parsed = parseEnvironment(environmentSchema, env);
   return Object.freeze({
+    adminConsole: Object.freeze({ enabled: parsed.ADMIN_CONSOLE_ENABLED === 'true', port: parsed.ADMIN_CONSOLE_PORT, host: parsed.ADMIN_CONSOLE_HOST }),
     // Build identity is configuration metadata only. It is never inferred
     // from the host, package manager, or Discord content.
     runtimeIdentity: loadRuntimeIdentity(env),
