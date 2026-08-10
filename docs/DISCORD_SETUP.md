@@ -82,6 +82,7 @@ Global registration is not implemented as a runtime toggle. It is a future, manu
 | `/faq`                 | Lists approved local FAQ questions publicly or returns the selected exact approved answer.                                              |
 | `/help`                | Lists the available commands and safety boundary in an ephemeral server-channel response.                                               |
 | `/status`              | Reports safe configuration, FAQ readiness, SQLite health, and safe reminder health ephemerally without a model request.                 |
+| `/config`              | Administrator-only ephemeral view of non-secret effective configuration. Destination IDs are masked; credentials and message content are omitted. |
 | `/reminder set`        | Privately creates a personal 1-minute to 30-day reminder with up to 500 characters; delivery returns to this allowed channel or thread. |
 | `/reminder list`       | Privately lists only the caller's retained reminders in this server.                                                                    |
 | `/reminder cancel`     | Privately cancels only the caller's active reminder by ID.                                                                              |
