@@ -58,6 +58,13 @@ data, and require explicit human authorization.
 **Planned, not implemented.** Add operational dashboards or metrics only with a
 reviewed data-minimization design that excludes message content and secrets.
 
+**Planned, not implemented.** Add a shared Command Analytics and Engagement
+Metrics layer for the Admin Command Deck. It will record aggregate command,
+delivery, scheduler, provider, adoption, participation, opt-in, opt-out, and
+failure metrics without retaining raw message content. The design must define
+server and channel scoping, retention, audit events, privacy controls, and
+export-safe summaries before implementation.
+
 **Shipped, bounded.** Sleeper integration supports one configured league's
 read-only standings, weekly matchup results, and bounded player statistics via
 `/fantasy player`. Transactions and additional fantasy features remain planned.
