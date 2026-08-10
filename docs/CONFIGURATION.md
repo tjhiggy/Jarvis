@@ -72,6 +72,11 @@ and user display names only. Restart Jarvis after changing it. The integration
 never changes lineups, waivers, trades, rosters, league settings, or Discord
 settings.
 
+The `/fantasy player` command uses the same public, read-only Sleeper boundary.
+It validates the player identifier locally, requires a season, optionally
+accepts a week, and returns only a bounded set of numeric statistics. It does
+not accept arbitrary URLs or provider credentials.
+
 ## Provider and web-search behavior
 
 `AI_PROVIDER=openai` makes `OPENAI_API_KEY` mandatory. The OpenAI model, timeout, and retry settings are then used by the Responses adapter. With `AI_PROVIDER=ollama`, an OpenAI key is not required; the process calls `OLLAMA_BASE_URL/api/chat` with the configured Ollama model. The loader accepts only HTTP or HTTPS base URLs and strips trailing slashes before use. Do not publish a local Ollama endpoint to the public internet.

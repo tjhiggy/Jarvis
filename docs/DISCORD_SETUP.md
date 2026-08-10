@@ -88,6 +88,7 @@ Global registration is not implemented as a runtime toggle. It is a future, manu
 | `/poll`                | Configured administrator IDs create a public anonymous two-to-five-option poll using a fixed duration preset.                           |
 | `/poll-close`          | Configured administrator IDs close an open poll early by poll ID.                                                                       |
 | `/fantasy standings`   | Reads the configured Sleeper league's standings and display names. Read-only; pre-draft unassigned rosters are shown safely.            |
+| `/fantasy player`      | Reads bounded, read-only statistics for one explicitly requested Sleeper player and season, optionally one week.                       |
 
 `/ask`, `/search`, `/forget`, `/faq`, `/reminder`, `/poll`, and `/poll-close` enforce the channel allowlist. Reminder commands do not need an administrator ID or extra Discord permissions; scheduled delivery may mention only its verified owner. Poll command creation and early closure additionally require an exact ID in `POLL_ADMIN_USER_IDS`; voting is open to members who can use the poll message. All commands are server-only; direct messages receive a safe unavailable response. Direct mentions require a non-empty prompt after the bot mention.
 
