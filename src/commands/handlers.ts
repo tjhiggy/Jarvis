@@ -16,7 +16,10 @@ import type { ReminderStore } from '../reminders/reminder-store.js';
 import type { ReminderView } from '../reminders/reminder-types.js';
 import type { RuntimeIdentity } from '../config/runtime-identity.js';
 import { formatRuntimeIdentity } from '../config/runtime-identity.js';
-import type { SleeperService, SleeperMatchup } from '../sleeper/sleeper-types.js';
+import type {
+  SleeperService,
+  SleeperMatchup,
+} from '../sleeper/sleeper-types.js';
 import { isAllowedChannel } from '../discord/access.js';
 import {
   allowedMentions,
@@ -52,14 +55,23 @@ import type { TriviaService } from '../engagement/activity.js';
 import { handleEngagementCommand } from './engagement.js';
 import type { EngagementSchedulerHealth } from '../engagement/health.js';
 import type { BirthdayService } from '../engagement/birthdays.js';
-import { buildEngagementCard, buildEngagementSelectMenu, toDiscordEngagementCard } from '../engagement/discord-ui.js';
+import {
+  buildEngagementCard,
+  buildEngagementSelectMenu,
+  toDiscordEngagementCard,
+} from '../engagement/discord-ui.js';
 import type { RoleMenuChoice } from '../engagement/role-menus.js';
 import { buildChannelSummary } from './channel-summary.js';
 import type { ProactiveEngagementService } from '../engagement/proactive.js';
 import type { DelegatedPostService } from '../engagement/delegated-posts.js';
 import { handleDelegatedPostCommand } from './delegated-post.js';
-import type { GitHubReadOnlyService, GitHubServiceError } from '../github/github-service.js';
+import type {
+  GitHubReadOnlyService,
+  GitHubServiceError,
+} from '../github/github-service.js';
 import { formatCommandPermissionRules } from './command-permissions.js';
+import { handleRssCommand } from './rss.js';
+import type { RssStorage } from '../notifications/rss-storage.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -116,7 +128,9 @@ export interface CommandDependencies {
         recapId: string;
         activityId: string;
         birthdayId: string;
+        rssId: string;
       }>;
+      rssAllowedHosts: readonly string[];
       recapSchedule: string;
       retentionDays: number;
       adminRoleIds: ReadonlySet<string>;
@@ -145,7 +159,8 @@ export interface CommandDependencies {
   }>;
   readonly store: Pick<ConversationStore, 'healthCheck'>;
   readonly conversationHistory?: Pick<ConversationStore, 'getRecent'>;
-  readonly reminderService: Pick<ReminderService, 'set' | 'list' | 'cancel'> & Partial<Pick<ReminderService, 'sharedSet' | 'sharedList' | 'sharedCancel'>>;
+  readonly reminderService: Pick<ReminderService, 'set' | 'list' | 'cancel'> &
+    Partial<Pick<ReminderService, 'sharedSet' | 'sharedList' | 'sharedCancel'>>;
   readonly reminderHealth: Readonly<{
     store: Pick<ReminderStore, 'healthCheck' | 'statusCounts'>;
     scheduler: Pick<ReminderScheduler, 'healthy'>;
@@ -155,6 +170,10 @@ export interface CommandDependencies {
   readonly knowledgeStore?: SQLiteKnowledgeApprovalStore;
   readonly sleeper?: Readonly<{ leagueId: string; service: SleeperService }>;
   readonly github?: Readonly<{ service: GitHubReadOnlyService }>;
+  readonly rssStorage?: Pick<
+    RssStorage,
+    'addFeed' | 'listFeeds' | 'removeFeed' | 'setPaused'
+  >;
   readonly pollController?: PollController;
   readonly pollHealth?: Readonly<{
     store: Pick<PollStore, 'healthCheck'>;
@@ -319,7 +338,16 @@ export const handleCommand = async (
       );
       return;
     case 'post':
-      await handleDelegatedPostCommand(interaction, { enabled: dependencies.config.engagement?.enabled ?? false, channelId: dependencies.config.engagement?.channels.activityId ?? interaction.channelId, adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(), ...(dependencies.delegatedPostService === undefined ? {} : { service: dependencies.delegatedPostService }) });
+      await handleDelegatedPostCommand(interaction, {
+        enabled: dependencies.config.engagement?.enabled ?? false,
+        channelId:
+          dependencies.config.engagement?.channels.activityId ??
+          interaction.channelId,
+        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        ...(dependencies.delegatedPostService === undefined
+          ? {}
+          : { service: dependencies.delegatedPostService }),
+      });
       return;
     case 'event':
       await handleEventCommand(interaction, {
@@ -360,7 +388,9 @@ export const handleCommand = async (
         enabled: dependencies.config.engagement?.enabled ?? false,
         channelId: dependencies.config.engagement?.channels.eventId ?? '',
         adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
-        ...(dependencies.eventService === undefined ? {} : { service: dependencies.eventService }),
+        ...(dependencies.eventService === undefined
+          ? {}
+          : { service: dependencies.eventService }),
       });
       return;
     case 'lfg':
@@ -370,24 +400,98 @@ export const handleCommand = async (
       });
       return;
     case 'birthday': {
-      if (!interaction.guildId || !dependencies.birthdayService) return replySafely(interaction, 'Birthday features are not configured on the MuthaShip.', true);
+      if (!interaction.guildId || !dependencies.birthdayService)
+        return replySafely(
+          interaction,
+          'Birthday features are not configured on the MuthaShip.',
+          true,
+        );
       const sub = interaction.options.getSubcommand();
-      if (sub === 'delete') { await dependencies.birthdayService.remove(interaction.guildId, interaction.user.id); return replySafely(interaction, 'Your MuthaShip birthday has been deleted.', true); }
-      if (sub === 'show') { const value = await dependencies.birthdayService.get(interaction.guildId, interaction.user.id); return replySafely(interaction, value ? `Your birthday is saved as ${String(value.month).padStart(2,'0')}-${String(value.day).padStart(2,'0')} (${value.timezone}).` : 'You have not opted in to birthday announcements.', true); }
+      if (sub === 'delete') {
+        await dependencies.birthdayService.remove(
+          interaction.guildId,
+          interaction.user.id,
+        );
+        return replySafely(
+          interaction,
+          'Your MuthaShip birthday has been deleted.',
+          true,
+        );
+      }
+      if (sub === 'show') {
+        const value = await dependencies.birthdayService.get(
+          interaction.guildId,
+          interaction.user.id,
+        );
+        return replySafely(
+          interaction,
+          value
+            ? `Your birthday is saved as ${String(value.month).padStart(2, '0')}-${String(value.day).padStart(2, '0')} (${value.timezone}).`
+            : 'You have not opted in to birthday announcements.',
+          true,
+        );
+      }
       const date = interaction.options.getString('date') ?? '';
-      const timezone = interaction.options.getString('timezone')?.trim() || 'UTC';
-      try { await dependencies.birthdayService.set({ guildId: interaction.guildId, userId: interaction.user.id, date, timezone }); return replySafely(interaction, 'Your birthday is saved privately. Jarvis will announce it on the MuthaShip without revealing the date.', true); } catch { return replySafely(interaction, 'Birthday must use valid MM-DD format. No year is stored.', true); }
+      const timezone =
+        interaction.options.getString('timezone')?.trim() || 'UTC';
+      try {
+        await dependencies.birthdayService.set({
+          guildId: interaction.guildId,
+          userId: interaction.user.id,
+          date,
+          timezone,
+        });
+        return replySafely(
+          interaction,
+          'Your birthday is saved privately. Jarvis will announce it on the MuthaShip without revealing the date.',
+          true,
+        );
+      } catch {
+        return replySafely(
+          interaction,
+          'Birthday must use valid MM-DD format. No year is stored.',
+          true,
+        );
+      }
     }
     case 'engagement':
       if (interaction.options.getSubcommand() === 'proactive') {
         const proactive = dependencies.proactiveService;
-        if (!proactive) return replySafely(interaction, 'Proactive engagement is not configured on the MuthaShip.', true);
+        if (!proactive)
+          return replySafely(
+            interaction,
+            'Proactive engagement is not configured on the MuthaShip.',
+            true,
+          );
         const action = interaction.options.getString('action') ?? 'status';
-        if (action === 'preview') return replySafely(interaction, `Preview only. Nothing was posted.\n\n${await proactive.preview()}`, true);
-        if (action === 'enable') { await proactive.setState('enabled'); return replySafely(interaction, 'Proactive MuthaShip posts enabled. Jarvis will post only to the configured channel, within quiet hours and rate limits.', true); }
-        if (action === 'pause') { await proactive.setState('paused'); return replySafely(interaction, 'Proactive MuthaShip posts paused.', true); }
+        if (action === 'preview')
+          return replySafely(
+            interaction,
+            `Preview only. Nothing was posted.\n\n${await proactive.preview()}`,
+            true,
+          );
+        if (action === 'enable') {
+          await proactive.setState('enabled');
+          return replySafely(
+            interaction,
+            'Proactive MuthaShip posts enabled. Jarvis will post only to the configured channel, within quiet hours and rate limits.',
+            true,
+          );
+        }
+        if (action === 'pause') {
+          await proactive.setState('paused');
+          return replySafely(
+            interaction,
+            'Proactive MuthaShip posts paused.',
+            true,
+          );
+        }
         const status = await proactive.status();
-        return replySafely(interaction, `Proactive engagement: ${status.state}${status.lastPostedAt ? `\nLast post: ${status.lastPostedAt.toISOString()}` : ''}`, true);
+        return replySafely(
+          interaction,
+          `Proactive engagement: ${status.state}${status.lastPostedAt ? `\nLast post: ${status.lastPostedAt.toISOString()}` : ''}`,
+          true,
+        );
       }
       await handleEngagementCommand(interaction, {
         enabled: dependencies.config.engagement?.enabled ?? false,
@@ -419,12 +523,40 @@ export const handleCommand = async (
       if (await rejectDirectMessage(interaction)) {
         return;
       }
-      await replySafely(interaction, helpMessage(pollsEnabled(dependencies)), true);
+      await replySafely(
+        interaction,
+        helpMessage(pollsEnabled(dependencies)),
+        true,
+      );
       return;
     case 'roles': {
       const choices = dependencies.config.engagement?.roleMenuChoices ?? [];
-      if (choices.length === 0) return replySafely(interaction, 'Self-service crew roles are not configured on the MuthaShip.', true);
-      const card = buildEngagementCard({ title: 'MuthaShip crew roles', description: 'Choose an optional role. Select the same role again to remove it.', components: [{ type: 'actionRow', components: [buildEngagementSelectMenu({ customId: 'roles:v1:select', placeholder: 'Choose a crew role', options: choices.map((choice) => ({ label: choice.label, value: choice.value })) })] }] });
+      if (choices.length === 0)
+        return replySafely(
+          interaction,
+          'Self-service crew roles are not configured on the MuthaShip.',
+          true,
+        );
+      const card = buildEngagementCard({
+        title: 'MuthaShip crew roles',
+        description:
+          'Choose an optional role. Select the same role again to remove it.',
+        components: [
+          {
+            type: 'actionRow',
+            components: [
+              buildEngagementSelectMenu({
+                customId: 'roles:v1:select',
+                placeholder: 'Choose a crew role',
+                options: choices.map((choice) => ({
+                  label: choice.label,
+                  value: choice.value,
+                })),
+              }),
+            ],
+          },
+        ],
+      });
       await interaction.reply(toDiscordEngagementCard(card));
       return;
     }
@@ -436,6 +568,21 @@ export const handleCommand = async (
       return;
     case 'config':
       await handleConfig(interaction, dependencies);
+      return;
+    case 'rss':
+      if (dependencies.rssStorage === undefined) {
+        await replySafely(
+          interaction,
+          'RSS monitoring is not configured on this MuthaShip.',
+          true,
+        );
+        return;
+      }
+      await handleRssCommand(interaction, {
+        storage: dependencies.rssStorage,
+        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        allowedHosts: dependencies.config.engagement?.rssAllowedHosts ?? [],
+      });
       return;
     default:
       await replySafely(interaction, unknownCommandMessage, true);
@@ -471,30 +618,59 @@ const handleFantasy = async (
     const season = interaction.options.getInteger?.('season') ?? null;
     const week = interaction.options.getInteger?.('week') ?? undefined;
     if (!playerId || season === null) {
-      await replySafely(interaction, 'Player ID and season are required.', true);
+      await replySafely(
+        interaction,
+        'Player ID and season are required.',
+        true,
+      );
       return;
     }
     if (dependencies.sleeper.service.getPlayerStats === undefined) {
-      await replySafely(interaction, 'Player statistics are not available on this MuthaShip.', true);
+      await replySafely(
+        interaction,
+        'Player statistics are not available on this MuthaShip.',
+        true,
+      );
       return;
     }
     try {
-      const result = await dependencies.sleeper.service.getPlayerStats(playerId, season, week);
-      const entries = Object.entries(result.stats).sort((a, b) => a[0].localeCompare(b[0])).slice(0, 12);
-      await replySafely(interaction, entries.length === 0
-        ? `No Sleeper statistics are available for player ${playerId} in ${season}${week === undefined ? '' : ` week ${week}`}.`
-        : `MuthaShip player statistics (read-only)\nPlayer: ${playerId}\nSeason: ${season}${week === undefined ? '' : ` • Week: ${week}`}\n${entries.map(([key, value]) => `${key}: ${value}`).join('\n')}`, true);
+      const result = await dependencies.sleeper.service.getPlayerStats(
+        playerId,
+        season,
+        week,
+      );
+      const entries = Object.entries(result.stats)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .slice(0, 12);
+      await replySafely(
+        interaction,
+        entries.length === 0
+          ? `No Sleeper statistics are available for player ${playerId} in ${season}${week === undefined ? '' : ` week ${week}`}.`
+          : `MuthaShip player statistics (read-only)\nPlayer: ${playerId}\nSeason: ${season}${week === undefined ? '' : ` • Week: ${week}`}\n${entries.map(([key, value]) => `${key}: ${value}`).join('\n')}`,
+        true,
+      );
     } catch {
-      await replySafely(interaction, 'Sleeper player statistics are temporarily unavailable. Jarvis will not guess.', true);
+      await replySafely(
+        interaction,
+        'Sleeper player statistics are temporarily unavailable. Jarvis will not guess.',
+        true,
+      );
     }
     return;
   }
   if (subcommand !== 'standings') {
     const week = interaction.options.getInteger?.('week') ?? 1;
     try {
-      const matchups = await dependencies.sleeper.service.getMatchups(dependencies.sleeper.leagueId, week);
+      const matchups = await dependencies.sleeper.service.getMatchups(
+        dependencies.sleeper.leagueId,
+        week,
+      );
       if (matchups.length === 0) {
-        await replySafely(interaction, `Sleeper has no matchup data for week ${week}. The season may not have started yet.`, true);
+        await replySafely(
+          interaction,
+          `Sleeper has no matchup data for week ${week}. The season may not have started yet.`,
+          true,
+        );
         return;
       }
       const groups = new Map<number, SleeperMatchup[]>();
@@ -505,14 +681,27 @@ const handleFantasy = async (
         groups.set(matchup.matchupId, group);
       }
       const lines = [...groups.entries()].map(([id, entries]) => {
-        const sides = entries.map((entry) => `${entry.ownerName ?? `Roster ${entry.rosterId}`} ${entry.points.toFixed(2)}`).join(' vs ');
+        const sides = entries
+          .map(
+            (entry) =>
+              `${entry.ownerName ?? `Roster ${entry.rosterId}`} ${entry.points.toFixed(2)}`,
+          )
+          .join(' vs ');
         return `Matchup ${id}: ${sides}`;
       });
-      await replySafely(interaction, lines.length === 0
-        ? `Sleeper has no completed matchups for week ${week}. Pre-draft or unassigned rosters are not guessed.`
-        : `MuthaShip week ${week} matchups (read-only)\n${lines.join('\n')}`, true);
+      await replySafely(
+        interaction,
+        lines.length === 0
+          ? `Sleeper has no completed matchups for week ${week}. Pre-draft or unassigned rosters are not guessed.`
+          : `MuthaShip week ${week} matchups (read-only)\n${lines.join('\n')}`,
+        true,
+      );
     } catch {
-      await replySafely(interaction, 'Sleeper matchup data is temporarily unavailable. Jarvis will not guess.', true);
+      await replySafely(
+        interaction,
+        'Sleeper matchup data is temporarily unavailable. Jarvis will not guess.',
+        true,
+      );
     }
     return;
   }
@@ -540,23 +729,57 @@ const handleFantasy = async (
   }
 };
 
-const handleGitHub = async (interaction: CommandInteraction, dependencies: CommandDependencies): Promise<void> => {
+const handleGitHub = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
   if (await rejectDirectMessage(interaction)) return;
-  if (!dependencies.github) { await replySafely(interaction, 'GitHub repository data is not configured on the MuthaShip.', true); return; }
+  if (!dependencies.github) {
+    await replySafely(
+      interaction,
+      'GitHub repository data is not configured on the MuthaShip.',
+      true,
+    );
+    return;
+  }
   try {
     const sub = interaction.options.getSubcommand();
     if (sub === 'repository') {
       const d = await dependencies.github.service.repository();
-      await replySafely(interaction, `MuthaShip repository (read-only)\n${d.fullName}\n${d.description ?? 'No description'}\n⭐ ${d.stars} • ${d.openIssues} open issues • default branch ${d.defaultBranch}\n${d.url}`, true);
+      await replySafely(
+        interaction,
+        `MuthaShip repository (read-only)\n${d.fullName}\n${d.description ?? 'No description'}\n⭐ ${d.stars} • ${d.openIssues} open issues • default branch ${d.defaultBranch}\n${d.url}`,
+        true,
+      );
       return;
     }
     const number = interaction.options.getInteger?.('number') ?? 0;
-    if (!Number.isSafeInteger(number) || number < 1) { await replySafely(interaction, 'Provide a valid GitHub issue or pull request number.', true); return; }
-    const d = sub === 'issue' ? await dependencies.github.service.issue(number) : await dependencies.github.service.pullRequest(number);
-    await replySafely(interaction, `GitHub ${d.kind} #${d.number} (read-only)\n${d.title}\nState: ${d.state} • Author: ${d.author}\nUpdated: ${d.updatedAt}\n${d.url}`, true);
+    if (!Number.isSafeInteger(number) || number < 1) {
+      await replySafely(
+        interaction,
+        'Provide a valid GitHub issue or pull request number.',
+        true,
+      );
+      return;
+    }
+    const d =
+      sub === 'issue'
+        ? await dependencies.github.service.issue(number)
+        : await dependencies.github.service.pullRequest(number);
+    await replySafely(
+      interaction,
+      `GitHub ${d.kind} #${d.number} (read-only)\n${d.title}\nState: ${d.state} • Author: ${d.author}\nUpdated: ${d.updatedAt}\n${d.url}`,
+      true,
+    );
   } catch (error) {
     const code = (error as GitHubServiceError).code;
-    await replySafely(interaction, code === 'not-found' ? 'That GitHub item was not found.' : 'GitHub data is temporarily unavailable. Jarvis will not guess.', true);
+    await replySafely(
+      interaction,
+      code === 'not-found'
+        ? 'That GitHub item was not found.'
+        : 'GitHub data is temporarily unavailable. Jarvis will not guess.',
+      true,
+    );
   }
 };
 
@@ -686,20 +909,73 @@ const handleReminder = async (
       case 'shared-set':
       case 'shared-list':
       case 'shared-cancel': {
-        const adminRoles = dependencies.config.engagement?.adminRoleIds ?? new Set<string>();
-        const isAdmin = [...adminRoles].some((role) => interaction.member?.roles?.cache?.has(role));
-        if (!isAdmin) { await editDeferredReplySafely(interaction, 'Shared reminders are restricted to configured MuthaShip administrators.'); return; }
-        if (subcommand === 'shared-set') {
-          if (!dependencies.reminderService.sharedSet) { await editDeferredReplySafely(interaction, operationalErrorMessage); return; }
-          const reminder = await dependencies.reminderService.sharedSet({ guildId: scope.guildId, channelId: scope.channelId, ownerUserId: interaction.user.id, duration: interaction.options.getString('in') ?? '', message: interaction.options.getString('message') ?? '' });
-          await editDeferredReplySafely(interaction, `Shared reminder \`${reminder.id}\` scheduled for ${discordTimestamp(reminder.dueAt)} in ${reminderDestination(reminder)}.`); return;
+        const adminRoles =
+          dependencies.config.engagement?.adminRoleIds ?? new Set<string>();
+        const isAdmin = [...adminRoles].some((role) =>
+          interaction.member?.roles?.cache?.has(role),
+        );
+        if (!isAdmin) {
+          await editDeferredReplySafely(
+            interaction,
+            'Shared reminders are restricted to configured MuthaShip administrators.',
+          );
+          return;
         }
-        if (subcommand === 'shared-list') { if (!dependencies.reminderService.sharedList) { await editDeferredReplySafely(interaction, operationalErrorMessage); return; } await editPrivateDeferredReplyInChunksSafely(interaction, renderReminderList(await dependencies.reminderService.sharedList({ guildId: scope.guildId, ownerUserId: interaction.user.id }))); return; }
+        if (subcommand === 'shared-set') {
+          if (!dependencies.reminderService.sharedSet) {
+            await editDeferredReplySafely(interaction, operationalErrorMessage);
+            return;
+          }
+          const reminder = await dependencies.reminderService.sharedSet({
+            guildId: scope.guildId,
+            channelId: scope.channelId,
+            ownerUserId: interaction.user.id,
+            duration: interaction.options.getString('in') ?? '',
+            message: interaction.options.getString('message') ?? '',
+          });
+          await editDeferredReplySafely(
+            interaction,
+            `Shared reminder \`${reminder.id}\` scheduled for ${discordTimestamp(reminder.dueAt)} in ${reminderDestination(reminder)}.`,
+          );
+          return;
+        }
+        if (subcommand === 'shared-list') {
+          if (!dependencies.reminderService.sharedList) {
+            await editDeferredReplySafely(interaction, operationalErrorMessage);
+            return;
+          }
+          await editPrivateDeferredReplyInChunksSafely(
+            interaction,
+            renderReminderList(
+              await dependencies.reminderService.sharedList({
+                guildId: scope.guildId,
+                ownerUserId: interaction.user.id,
+              }),
+            ),
+          );
+          return;
+        }
         const id = interaction.options.getString('id')?.trim();
-        if (id === undefined || !/^[a-z2-7]{12}$/.test(id)) { await editDeferredReplySafely(interaction, reminderIdMessage); return; }
-        if (!dependencies.reminderService.sharedCancel) { await editDeferredReplySafely(interaction, operationalErrorMessage); return; }
-        const cancelled = await dependencies.reminderService.sharedCancel({ guildId: scope.guildId, ownerUserId: interaction.user.id, reminderId: id });
-        await editDeferredReplySafely(interaction, cancelled ? `Shared reminder \`${id}\` cancelled.` : reminderNotFoundMessage); return;
+        if (id === undefined || !/^[a-z2-7]{12}$/.test(id)) {
+          await editDeferredReplySafely(interaction, reminderIdMessage);
+          return;
+        }
+        if (!dependencies.reminderService.sharedCancel) {
+          await editDeferredReplySafely(interaction, operationalErrorMessage);
+          return;
+        }
+        const cancelled = await dependencies.reminderService.sharedCancel({
+          guildId: scope.guildId,
+          ownerUserId: interaction.user.id,
+          reminderId: id,
+        });
+        await editDeferredReplySafely(
+          interaction,
+          cancelled
+            ? `Shared reminder \`${id}\` cancelled.`
+            : reminderNotFoundMessage,
+        );
+        return;
       }
       case 'set': {
         const reminder = await dependencies.reminderService.set({
@@ -1050,29 +1326,81 @@ const faqQuestions = (faq: FaqCatalog): string =>
 const faqLabels = (faq: FaqCatalog): string =>
   faq.entries.map((entry) => `- ${entry.label}`).join('\n');
 
-const handleKnowledge = async (interaction: CommandInteraction, dependencies: CommandDependencies): Promise<void> => {
+const handleKnowledge = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
   if (await rejectDirectMessage(interaction)) return;
   const catalog = dependencies.knowledge;
-  if (!catalog) return replySafely(interaction, 'Approved MuthaShip knowledge is not configured.', true);
+  if (!catalog)
+    return replySafely(
+      interaction,
+      'Approved MuthaShip knowledge is not configured.',
+      true,
+    );
   const subcommand = interaction.options.getSubcommand();
   const guildId = interaction.guildId?.trim() ?? '';
   const store = dependencies.knowledgeStore;
-  if (subcommand !== 'query' && (!store || !guildId)) return replySafely(interaction, 'Knowledge administration is not configured.', true);
+  if (subcommand !== 'query' && (!store || !guildId))
+    return replySafely(
+      interaction,
+      'Knowledge administration is not configured.',
+      true,
+    );
   if (subcommand !== 'query') {
-    const isAdmin = [...(dependencies.config.engagement?.adminRoleIds ?? new Set())].some((role) => interaction.member?.roles?.cache?.has(role));
-    if (!isAdmin) return replySafely(interaction, 'Only configured MuthaShip administrators can manage approved knowledge.', true);
+    const isAdmin = [
+      ...(dependencies.config.engagement?.adminRoleIds ?? new Set()),
+    ].some((role) => interaction.member?.roles?.cache?.has(role));
+    if (!isAdmin)
+      return replySafely(
+        interaction,
+        'Only configured MuthaShip administrators can manage approved knowledge.',
+        true,
+      );
     const id = interaction.options.getString('id')?.trim() ?? '';
     if (subcommand === 'list') {
       const entries = await store!.listForAdmin(guildId, catalog);
-      return replySafely(interaction, entries.length === 0 ? 'No MuthaShip knowledge sources are configured.' : `MuthaShip knowledge sources (administrator view):\n${entries.map((entry) => `- ${entry.id}: ${entry.title} [${entry.active ? 'active' : entry.approved ? 'expired' : 'pending'}]`).join('\n')}`, true);
+      return replySafely(
+        interaction,
+        entries.length === 0
+          ? 'No MuthaShip knowledge sources are configured.'
+          : `MuthaShip knowledge sources (administrator view):\n${entries.map((entry) => `- ${entry.id}: ${entry.title} [${entry.active ? 'active' : entry.approved ? 'expired' : 'pending'}]`).join('\n')}`,
+        true,
+      );
     }
-    const changed = subcommand === 'approve' ? await store!.approve(guildId, id, catalog) : await store!.revoke(guildId, id, catalog);
-    return replySafely(interaction, changed ? `Knowledge source \`${id}\` ${subcommand === 'approve' ? 'approved' : 'revoked'} for this MuthaShip.` : 'That catalog source is unavailable or expired.', true);
+    const changed =
+      subcommand === 'approve'
+        ? await store!.approve(guildId, id, catalog)
+        : await store!.revoke(guildId, id, catalog);
+    return replySafely(
+      interaction,
+      changed
+        ? `Knowledge source \`${id}\` ${subcommand === 'approve' ? 'approved' : 'revoked'} for this MuthaShip.`
+        : 'That catalog source is unavailable or expired.',
+      true,
+    );
   }
   const query = interaction.options.getString('query')?.trim() ?? '';
-  const results = store && guildId ? await store.search(guildId, query, catalog) : catalog.search(query);
-  if (results.length === 0) return replySafely(interaction, 'No approved knowledge matches that query. Jarvis will not guess.', true);
-  await replySafely(interaction, results.map((entry) => `**${entry.title}**\n${entry.content}\nSource: ${entry.source}`).join('\n\n'), true);
+  const results =
+    store && guildId
+      ? await store.search(guildId, query, catalog)
+      : catalog.search(query);
+  if (results.length === 0)
+    return replySafely(
+      interaction,
+      'No approved knowledge matches that query. Jarvis will not guess.',
+      true,
+    );
+  await replySafely(
+    interaction,
+    results
+      .map(
+        (entry) =>
+          `**${entry.title}**\n${entry.content}\nSource: ${entry.source}`,
+      )
+      .join('\n\n'),
+    true,
+  );
 };
 
 const handleCatchMeUp = async (
@@ -1083,19 +1411,35 @@ const handleCatchMeUp = async (
   const channelId = interaction.channelId.trim();
   const guildId = interaction.guildId?.trim() ?? '';
   const parentChannelId = threadParentId(interaction);
-  if (!guildId || !channelId || !isAllowedChannel(channelId, parentChannelId, dependencies.config.security.allowedChannelIds)) {
+  if (
+    !guildId ||
+    !channelId ||
+    !isAllowedChannel(
+      channelId,
+      parentChannelId,
+      dependencies.config.security.allowedChannelIds,
+    )
+  ) {
     await replySafely(interaction, disallowedMessage, true);
     return;
   }
   const historyStore = dependencies.conversationHistory;
   if (!historyStore) {
-    await replySafely(interaction, 'Recent MuthaShip context is unavailable right now.', true);
+    await replySafely(
+      interaction,
+      'Recent MuthaShip context is unavailable right now.',
+      true,
+    );
     return;
   }
   try {
     const messages = await historyStore.getRecent(guildId, channelId, 12);
     if (messages.length === 0) {
-      await replySafely(interaction, 'No recent Jarvis conversation is retained for this channel.', true);
+      await replySafely(
+        interaction,
+        'No recent Jarvis conversation is retained for this channel.',
+        true,
+      );
       return;
     }
     const lines = messages.slice(-12).map((message) => {
@@ -1103,9 +1447,17 @@ const handleCatchMeUp = async (
       const content = message.content.replace(/\s+/g, ' ').trim().slice(0, 280);
       return `• **${role}:** ${neutralizeDiscordMentions(content)}`;
     });
-    await replySafely(interaction, `**MuthaShip recent transmission log**\n${lines.join('\n')}`, true);
+    await replySafely(
+      interaction,
+      `**MuthaShip recent transmission log**\n${lines.join('\n')}`,
+      true,
+    );
   } catch {
-    await replySafely(interaction, 'Recent MuthaShip context is unavailable right now.', true);
+    await replySafely(
+      interaction,
+      'Recent MuthaShip context is unavailable right now.',
+      true,
+    );
   }
 };
 
@@ -1117,20 +1469,36 @@ const handleChannelSummary = async (
   const channelId = interaction.channelId.trim();
   const guildId = interaction.guildId?.trim() ?? '';
   const parentChannelId = threadParentId(interaction);
-  if (!guildId || !channelId || !isAllowedChannel(channelId, parentChannelId, dependencies.config.security.allowedChannelIds)) {
+  if (
+    !guildId ||
+    !channelId ||
+    !isAllowedChannel(
+      channelId,
+      parentChannelId,
+      dependencies.config.security.allowedChannelIds,
+    )
+  ) {
     await replySafely(interaction, disallowedMessage, true);
     return;
   }
   const historyStore = dependencies.conversationHistory;
   if (!historyStore) {
-    await replySafely(interaction, 'Recent MuthaShip context is unavailable right now.', true);
+    await replySafely(
+      interaction,
+      'Recent MuthaShip context is unavailable right now.',
+      true,
+    );
     return;
   }
   try {
     const messages = await historyStore.getRecent(guildId, channelId, 20);
     await replySafely(interaction, buildChannelSummary(messages), true);
   } catch {
-    await replySafely(interaction, 'Recent MuthaShip context is unavailable right now.', true);
+    await replySafely(
+      interaction,
+      'Recent MuthaShip context is unavailable right now.',
+      true,
+    );
   }
 };
 
@@ -1191,7 +1559,8 @@ const handleConfig = async (
   dependencies: CommandDependencies,
 ): Promise<void> => {
   if (await rejectDirectMessage(interaction)) return;
-  const adminRoleIds = dependencies.config.engagement?.adminRoleIds ?? new Set<string>();
+  const adminRoleIds =
+    dependencies.config.engagement?.adminRoleIds ?? new Set<string>();
   const authorized = [...adminRoleIds].some((role) =>
     interaction.member?.roles?.cache?.has(role),
   );
@@ -1224,9 +1593,11 @@ const handleConfig = async (
     config.sleeper?.leagueId ? 'Sleeper read-only' : undefined,
     dependencies.knowledge ? 'approved knowledge' : undefined,
   ].filter((value): value is string => value !== undefined);
-  const providerReady = config.ai.provider === 'openai'
-    ? config.openai.apiKey.trim() !== ''
-    : config.ollama.baseUrl.trim() !== '' && config.ollama.model.trim() !== '';
+  const providerReady =
+    config.ai.provider === 'openai'
+      ? config.openai.apiKey.trim() !== ''
+      : config.ollama.baseUrl.trim() !== '' &&
+        config.ollama.model.trim() !== '';
   await replySafely(
     interaction,
     [
