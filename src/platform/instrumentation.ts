@@ -50,6 +50,22 @@ export class Instrumentation {
     }
   }
 
+  async cancel(input: {
+    readonly context: InteractionContext;
+    readonly feature: string;
+    readonly command?: string;
+    readonly reason?: string;
+  }): Promise<void> {
+    await this.record({
+      name: 'command_cancelled',
+      context: input.context,
+      feature: input.feature,
+      ...(input.command === undefined ? {} : { command: input.command }),
+      result: 'cancelled',
+      ...(input.reason === undefined ? {} : { metadata: { reasonCode: 'provided' } }),
+    });
+  }
+
   private async record(input: Parameters<typeof createAnalyticsEvent>[0]): Promise<void> {
     await this.sink.record(createAnalyticsEvent(input));
   }
