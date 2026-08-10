@@ -63,7 +63,8 @@ The canonical public profile copy, visual assets, Developer Portal checklist,
 and capability boundaries are documented in [Discord profile package](docs/DISCORD_PROFILE.md).
 
 See [Architecture](docs/ARCHITECTURE.md) for the source-backed component and
-trust-boundary detail, and [Roadmap](docs/ROADMAP.md) for the sharp line between
+trust-boundary detail, the [Platform Architecture Roadmap](docs/PLATFORM_ARCHITECTURE_ROADMAP.md)
+for the core-platform release plan, and [Roadmap](docs/ROADMAP.md) for the sharp line between
 shipped and proposed work.
 
 ## Architecture at a glance
