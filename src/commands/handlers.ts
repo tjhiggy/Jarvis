@@ -499,6 +499,14 @@ const handleCommandInternal = async (
       await handleEngagementCommand(interaction, {
         enabled: dependencies.config.engagement?.enabled ?? false,
         adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        platform: {
+          version: dependencies.config.runtimeIdentity?.version ?? 'unknown',
+          deployment: dependencies.config.runtimeIdentity?.environment ?? 'unknown',
+          provider: dependencies.config.ai.provider,
+          openaiConfigured: dependencies.config.openai.apiKey.trim() !== '',
+          ollamaConfigured: dependencies.config.ollama.baseUrl.trim() !== '',
+          webSearchConfigured: dependencies.config.webSearch.apiKey.trim() !== '',
+        },
         features: [
           ...(dependencies.config.engagement?.channels.introductionId
             ? ['introductions']

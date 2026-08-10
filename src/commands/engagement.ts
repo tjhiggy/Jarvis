@@ -48,6 +48,14 @@ export const handleEngagementCommand = async (
       Record<string, EngagementSchedulerHealth | undefined>
     >;
     features?: readonly string[];
+    platform?: Readonly<{
+      version: string;
+      deployment: string;
+      provider: string;
+      openaiConfigured: boolean;
+      ollamaConfigured: boolean;
+      webSearchConfigured: boolean;
+    }>;
     now?: () => Date;
   }>,
 ): Promise<void> => {
@@ -169,6 +177,12 @@ export const handleEngagementCommand = async (
       `Enabled features: ${features || 'none'}`,
       counts,
       metricsLine,
+      ...(dependencies.platform === undefined
+        ? []
+        : [
+            `Platform: Jarvis ${dependencies.platform.version} (${dependencies.platform.deployment})`,
+            `Providers: ${dependencies.platform.provider}; OpenAI ${dependencies.platform.openaiConfigured ? 'configured' : 'not configured'}; Ollama ${dependencies.platform.ollamaConfigured ? 'configured' : 'not configured'}; web search ${dependencies.platform.webSearchConfigured ? 'configured' : 'not configured'}`,
+          ]),
       schedulers === ''
         ? 'Schedulers: unavailable'
         : `Schedulers: ${schedulers}`,
