@@ -55,6 +55,7 @@ export const handleEngagementCommand = async (
       openaiConfigured: boolean;
       ollamaConfigured: boolean;
       webSearchConfigured: boolean;
+      integrations: readonly string[];
     }>;
     now?: () => Date;
   }>,
@@ -182,6 +183,7 @@ export const handleEngagementCommand = async (
         : [
             `Platform: Jarvis ${dependencies.platform.version} (${dependencies.platform.deployment})`,
             `Providers: ${dependencies.platform.provider}; OpenAI ${dependencies.platform.openaiConfigured ? 'configured' : 'not configured'}; Ollama ${dependencies.platform.ollamaConfigured ? 'configured' : 'not configured'}; web search ${dependencies.platform.webSearchConfigured ? 'configured' : 'not configured'}`,
+            `Integrations: ${dependencies.platform.integrations.join(', ') || 'none'}`,
           ]),
       schedulers === ''
         ? 'Schedulers: unavailable'
