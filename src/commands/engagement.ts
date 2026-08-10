@@ -27,6 +27,7 @@ type OperationalRepository = Readonly<{
     userId: string,
   ): Promise<EngagementDeletionOutcome>;
   analyticsSummary?(guildId: string, since: Date): Promise<readonly MetricsSummaryRow[]>;
+  analyticsSummary?(guildId: string, since: Date): Promise<readonly MetricsSummaryRow[]>;
 }>;
 
 export const handleEngagementCommand = async (
