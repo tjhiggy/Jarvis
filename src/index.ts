@@ -14,7 +14,10 @@ import {
   type DiscordMessage,
 } from './discord/handlers.js';
 import { loadFaqCatalog, type FaqCatalog } from './faq/faq-catalog.js';
-import { loadKnowledgeCatalog, type ApprovedKnowledgeCatalog } from './knowledge/approved-knowledge.js';
+import {
+  loadKnowledgeCatalog,
+  type ApprovedKnowledgeCatalog,
+} from './knowledge/approved-knowledge.js';
 import {
   OpenAIResponsesService,
   type AIService,
@@ -85,9 +88,18 @@ import {
   TriviaExpiryScheduler,
   TriviaService,
 } from './engagement/activity.js';
-import { BirthdayScheduler, BirthdayService, birthdayStoreFromRepository, type BirthdayService as BirthdayServiceType } from './engagement/birthdays.js';
-import { DurableProactiveScheduler, ProactiveEngagementService } from './engagement/proactive.js';
+import {
+  BirthdayScheduler,
+  BirthdayService,
+  birthdayStoreFromRepository,
+  type BirthdayService as BirthdayServiceType,
+} from './engagement/birthdays.js';
+import {
+  DurableProactiveScheduler,
+  ProactiveEngagementService,
+} from './engagement/proactive.js';
 import { DelegatedPostService } from './engagement/delegated-posts.js';
+import { RssStorage } from './notifications/rss-storage.js';
 import { HttpGitHubReadOnlyService } from './github/github-service.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
@@ -221,7 +233,9 @@ export interface ApplicationDependencies {
   readonly loadConfig?: (env: NodeJS.ProcessEnv) => AppConfig;
   readonly loadPersona?: (path: string) => Promise<TrustedPersona>;
   readonly loadFaqCatalog?: (path: string) => Promise<FaqCatalog>;
-  readonly loadKnowledgeCatalog?: (path: string) => Promise<ApprovedKnowledgeCatalog>;
+  readonly loadKnowledgeCatalog?: (
+    path: string,
+  ) => Promise<ApprovedKnowledgeCatalog>;
   readonly createStore?: (
     databasePath: string,
     maxStoredMessages: number,
@@ -418,7 +432,8 @@ export const createApplication = async (
   const configLoader = dependencies.loadConfig ?? loadConfig;
   const personaLoader = dependencies.loadPersona ?? loadPersona;
   const faqCatalogLoader = dependencies.loadFaqCatalog ?? loadFaqCatalog;
-  const knowledgeCatalogLoader = dependencies.loadKnowledgeCatalog ?? loadKnowledgeCatalog;
+  const knowledgeCatalogLoader =
+    dependencies.loadKnowledgeCatalog ?? loadKnowledgeCatalog;
   const storeFactory =
     dependencies.createStore ??
     ((path, maxStoredMessages) =>
@@ -444,6 +459,7 @@ export const createApplication = async (
   let reminderStore: ReminderStore | undefined;
   let reminderScheduler: ReminderScheduler | undefined;
   let engagementRepository: EngagementRepository | undefined;
+  let rssStorage: RssStorage | undefined;
   let delegatedPostService: DelegatedPostService | undefined;
   let eventScheduler: EventScheduler | undefined;
   let recapScheduler: RecapScheduler | undefined;
@@ -529,7 +545,14 @@ export const createApplication = async (
         }
       }
       if (proactiveScheduler !== undefined) {
-        try { await proactiveScheduler.stop(); } catch (error) { logger?.warn(projectOperationalError(error, 'proactive_scheduler_shutdown'), 'Proactive scheduler stop failed during shutdown.'); }
+        try {
+          await proactiveScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'proactive_scheduler_shutdown'),
+            'Proactive scheduler stop failed during shutdown.',
+          );
+        }
       }
 
       if (pollScheduler !== undefined) {
@@ -563,6 +586,16 @@ export const createApplication = async (
           logger?.warn(
             projectOperationalError(error, 'engagement_storage_shutdown'),
             'Engagement storage close failed during shutdown.',
+          );
+        }
+      }
+      if (rssStorage !== undefined) {
+        try {
+          rssStorage.close();
+        } catch (error) {
+          logger?.warn(
+            { error: projectOperationalError(error, 'rss_storage_close') },
+            'RSS storage close failed during shutdown.',
           );
         }
       }
@@ -605,8 +638,13 @@ export const createApplication = async (
     const persona = await personaLoader(config.persona.promptPath);
     const faq = await faqCatalogLoader(config.faq.catalogPath);
     let knowledge: ApprovedKnowledgeCatalog | undefined;
-    const knowledgePath = process.env.KNOWLEDGE_CATALOG_PATH?.trim() || './config/knowledge.json';
-    try { knowledge = await knowledgeCatalogLoader(knowledgePath); } catch { knowledge = undefined; }
+    const knowledgePath =
+      process.env.KNOWLEDGE_CATALOG_PATH?.trim() || './config/knowledge.json';
+    try {
+      knowledge = await knowledgeCatalogLoader(knowledgePath);
+    } catch {
+      knowledge = undefined;
+    }
     store = storeFactory(
       config.storage.databasePath,
       config.storage.maxStoredMessages,
@@ -616,6 +654,12 @@ export const createApplication = async (
       dependencies.createReminderStore?.(config.storage.databasePath) ??
       new SQLiteReminderStore(config.storage.databasePath);
     const initializedReminderStore = reminderStore;
+    if (
+      config.engagement.channels.rssId !== '' &&
+      config.engagement.rssAllowedHosts.length > 0
+    ) {
+      rssStorage = new RssStorage(config.storage.databasePath);
+    }
     if (config.engagement.enabled) {
       engagementRepository =
         dependencies.createEngagementRepository?.(
@@ -676,21 +720,33 @@ export const createApplication = async (
     birthdayService =
       engagementRepository !== undefined &&
       typeof engagementRepository.getBirthday === 'function'
-        ? new BirthdayService(birthdayStoreFromRepository(engagementRepository as any))
+        ? new BirthdayService(
+            birthdayStoreFromRepository(engagementRepository as any),
+          )
         : undefined;
-    if (engagementRepository !== undefined && config.engagement.channels.activityId !== '') {
+    if (
+      engagementRepository !== undefined &&
+      config.engagement.channels.activityId !== ''
+    ) {
       proactiveService = new ProactiveEngagementService({
         store: {
           get: (guildId) => engagementRepository!.getProactiveState!(guildId),
-          set: (guildId, state, at) => engagementRepository!.setProactiveState!(guildId, state, at),
-          recordPosted: (guildId, at) => engagementRepository!.recordProactivePosted!(guildId, at),
-          claim: (guildId, key, at) => engagementRepository!.claimProactive!(guildId, key, at),
+          set: (guildId, state, at) =>
+            engagementRepository!.setProactiveState!(guildId, state, at),
+          recordPosted: (guildId, at) =>
+            engagementRepository!.recordProactivePosted!(guildId, at),
+          claim: (guildId, key, at) =>
+            engagementRepository!.claimProactive!(guildId, key, at),
         },
         gateway: {
           post: async (channelId, content) => {
             const channel = await client!.channels?.fetch(channelId);
-            if (!isEventChannel(channel)) throw new Error('Configured proactive channel is unavailable.');
-            await channel.send({ content, allowedMentions: { parse: [], repliedUser: false } });
+            if (!isEventChannel(channel))
+              throw new Error('Configured proactive channel is unavailable.');
+            await channel.send({
+              content,
+              allowedMentions: { parse: [], repliedUser: false },
+            });
           },
         },
         channelId: config.engagement.channels.activityId,
@@ -740,7 +796,14 @@ export const createApplication = async (
     delegatedPostService = new DelegatedPostService({
       createId: () => randomUUID(),
       adminRoleIds: config.engagement.adminRoleIds,
-      gateway: { post: async (channelId, card) => { const channel = await client!.channels?.fetch(channelId); if (!isEventChannel(channel)) throw new Error('Configured test channel is unavailable.'); return channel.send(toDiscordEngagementCard(card)); } },
+      gateway: {
+        post: async (channelId, card) => {
+          const channel = await client!.channels?.fetch(channelId);
+          if (!isEventChannel(channel))
+            throw new Error('Configured test channel is unavailable.');
+          return channel.send(toDiscordEngagementCard(card));
+        },
+      },
     });
     const eventService =
       engagementRepository === undefined
@@ -942,7 +1005,19 @@ export const createApplication = async (
       handleCommand: (interaction) =>
         handleCommand(interaction as CommandInteraction, {
           config,
-          ...(config.github ? { github: { service: new HttpGitHubReadOnlyService(config.github.owner, config.github.repo, config.github.token, config.github.timeoutMs) } } : {}),
+          ...(config.github
+            ? {
+                github: {
+                  service: new HttpGitHubReadOnlyService(
+                    config.github.owner,
+                    config.github.repo,
+                    config.github.token,
+                    config.github.timeoutMs,
+                  ),
+                },
+              }
+            : {}),
+          ...(rssStorage === undefined ? {} : { rssStorage }),
           conversationService,
           conversationHistory: initializedStore,
           store: initializedStore,
@@ -1041,10 +1116,12 @@ export const createApplication = async (
         ? {}
         : {
             triviaService,
-          activityChannelId: config.engagement.channels.activityId,
+            activityChannelId: config.engagement.channels.activityId,
           }),
       ...(birthdayService === undefined ? {} : { birthdayService }),
-      ...(config.engagement.roleMenuChoices === undefined ? {} : { roleMenuChoices: config.engagement.roleMenuChoices }),
+      ...(config.engagement.roleMenuChoices === undefined
+        ? {}
+        : { roleMenuChoices: config.engagement.roleMenuChoices }),
       onPreviewActionError: (event) =>
         logger?.warn(
           {
@@ -1164,7 +1241,10 @@ export const createApplication = async (
     recapScheduler?.start();
     triviaScheduler?.start();
     birthdayScheduler?.start();
-    if (proactiveService !== undefined) { proactiveScheduler = new DurableProactiveScheduler(proactiveService); proactiveScheduler.start(); }
+    if (proactiveService !== undefined) {
+      proactiveScheduler = new DurableProactiveScheduler(proactiveService);
+      proactiveScheduler.start();
+    }
 
     cleanupTimer = timers.setInterval(() => {
       void trackWork(cleanup());
