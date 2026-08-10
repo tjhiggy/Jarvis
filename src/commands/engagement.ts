@@ -149,6 +149,17 @@ export const handleEngagementCommand = async (
     )
     .join('\n');
   const features = dependencies.features?.join(', ') ?? 'none';
+  const metrics = dependencies.repository.analyticsSummary === undefined
+    ? 'Metrics: unavailable'
+    : (() => {
+        const since = new Date((dependencies.now ?? (() => new Date()))().getTime() - 7 * 24 * 60 * 60 * 1000);
+        return dependencies.repository.analyticsSummary(interaction.guildId!, since).then((rows) => {
+          const total = rows.reduce((sum, row) => sum + row.count, 0);
+          const failures = rows.filter((row) => row.eventName === 'command_failed').reduce((sum, row) => sum + row.count, 0);
+          return `Metrics, last 7 days: ${total} events, ${failures} command failures.`;
+        });
+      })();
+  const metricsLine = typeof metrics === 'string' ? metrics : await metrics;
   return replySafely(
     interaction,
     [
@@ -156,6 +167,7 @@ export const handleEngagementCommand = async (
       `Engagement database: ${health.database}`,
       `Enabled features: ${features || 'none'}`,
       counts,
+      metricsLine,
       schedulers === ''
         ? 'Schedulers: unavailable'
         : `Schedulers: ${schedulers}`,
