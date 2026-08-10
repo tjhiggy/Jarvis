@@ -7,6 +7,7 @@ export interface AdminConsoleSnapshot {
   readonly providers: { readonly ai: string; readonly openAiConfigured: boolean; readonly ollamaConfigured: boolean; readonly webSearchConfigured: boolean };
   readonly integrations: { readonly rss: boolean; readonly sleeper: boolean; readonly github: boolean };
   readonly metrics: { readonly events: number; readonly failures: number } | null;
+  readonly rss?: { readonly paused: boolean; readonly feeds: readonly { readonly label: string; readonly url: string }[] } | undefined;
 }
 
 export interface AdminConsole {
@@ -23,6 +24,7 @@ body{margin:0;background:#0d1020;color:#f5f2ff;font:16px system-ui,sans-serif}ma
 <article class="card"><h2>Community</h2><p>Engagement: <strong>${snapshot.engagement.enabled ? 'enabled' : 'disabled'}</strong></p><ul>${snapshot.engagement.features.map((feature) => `<li>${feature}</li>`).join('')}</ul></article>
 <article class="card"><h2>Providers</h2><p>AI: ${snapshot.providers.ai}</p><p>OpenAI: ${snapshot.providers.openAiConfigured ? 'configured' : 'not configured'}</p><p>Ollama: ${snapshot.providers.ollamaConfigured ? 'configured' : 'not configured'}</p><p>Web search: ${snapshot.providers.webSearchConfigured ? 'configured' : 'not configured'}</p></article>
 <article class="card"><h2>Integrations</h2><p>RSS: ${snapshot.integrations.rss ? 'ready' : 'not configured'}</p><p>Sleeper Fantasy Football: ${snapshot.integrations.sleeper ? 'ready' : 'not configured'}</p><p>GitHub read-only: ${snapshot.integrations.github ? 'ready' : 'not configured'}</p><p>Metrics: ${snapshot.metrics === null ? 'unavailable' : `${snapshot.metrics.events} events, ${snapshot.metrics.failures} failures`}</p></article>
+<article class="card"><h2>Shipboard Broadcasts</h2><p>RSS: ${snapshot.rss?.paused ? 'paused' : snapshot.rss ? 'active' : 'not configured'}</p>${snapshot.rss ? `<ul>${snapshot.rss.feeds.map((feed) => `<li>${feed.label} <small>${feed.url}</small></li>`).join('')}</ul>` : ''}</article>
 </section><p><small>Bound to localhost. Refresh for a current snapshot.</small></p></main></body></html>`;
 
 export const startAdminConsole = (options: {
