@@ -506,6 +506,12 @@ const handleCommandInternal = async (
           openaiConfigured: dependencies.config.openai.apiKey.trim() !== '',
           ollamaConfigured: dependencies.config.ollama.baseUrl.trim() !== '',
           webSearchConfigured: dependencies.config.webSearch.apiKey.trim() !== '',
+          integrations: [
+            ...(dependencies.config.engagement?.channels.rssId && dependencies.config.engagement.rssAllowedHosts.length > 0 ? ['RSS ready'] : []),
+            ...(dependencies.config.sleeper?.leagueId ? ['Sleeper Fantasy Football ready'] : []),
+            ...(dependencies.config.github?.owner && dependencies.config.github.repo ? ['GitHub read-only ready'] : []),
+            'SQLite database ready',
+          ],
         },
         features: [
           ...(dependencies.config.engagement?.channels.introductionId
