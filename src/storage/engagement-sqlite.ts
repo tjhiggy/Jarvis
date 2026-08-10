@@ -30,6 +30,7 @@ import {
 import type { EngagementRecordCounts } from '../engagement/health.js';
 import type { BirthdayRecord } from '../engagement/birthdays.js';
 import type { ProactiveState } from '../engagement/proactive.js';
+import type { FeatureFlagName, FeatureFlagRecord } from '../engagement/feature-flags.js';
 
 interface IntroductionRow {
   id: string;
@@ -104,6 +105,8 @@ interface TriviaRoundRow {
 }
 
 export class SQLiteEngagementRepository implements EngagementRepository {
+  async getFeatureFlags(guildId: string): Promise<readonly FeatureFlagRecord[]> { this.ensureOpen(); return (this.database.prepare('SELECT name, enabled FROM engagement_feature_flags WHERE guild_id = ? ORDER BY name').all(guildId) as Array<{name: FeatureFlagName; enabled: number}>).map((row) => ({ name: row.name, enabled: row.enabled === 1 })); }
+  async setFeatureFlag(guildId: string, name: FeatureFlagName, enabled: boolean, updatedAt = new Date()): Promise<void> { this.ensureOpen(); this.database.prepare('INSERT INTO engagement_feature_flags (guild_id, name, enabled, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(guild_id, name) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at').run(guildId, name, enabled ? 1 : 0, updatedAt.getTime()); }
   async getProactiveState(guildId: string): Promise<{ state: ProactiveState; lastPostedAt?: Date }> { this.ensureOpen(); const row = this.database.prepare('SELECT state,last_posted_at FROM engagement_proactive_preferences WHERE guild_id = ?').get(guildId) as { state: ProactiveState; last_posted_at: number | null } | undefined; return row ? { state: row.state, ...(row.last_posted_at === null ? {} : { lastPostedAt: new Date(row.last_posted_at) }) } : { state: 'disabled' }; }
   async setProactiveState(guildId: string, state: ProactiveState, updatedAt: Date): Promise<void> { this.ensureOpen(); this.database.prepare('INSERT INTO engagement_proactive_preferences (guild_id,state,last_posted_at,updated_at) VALUES (?,?,NULL,?) ON CONFLICT(guild_id) DO UPDATE SET state=excluded.state,updated_at=excluded.updated_at').run(guildId, state, updatedAt.getTime()); }
   async recordProactivePosted(guildId: string, postedAt: Date): Promise<void> { this.ensureOpen(); this.database.prepare("UPDATE engagement_proactive_preferences SET last_posted_at = ?, updated_at = ? WHERE guild_id = ? AND state = 'enabled'").run(postedAt.getTime(), postedAt.getTime(), guildId); }
@@ -1666,6 +1669,10 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           "CREATE TABLE IF NOT EXISTS engagement_proactive_preferences (guild_id TEXT PRIMARY KEY, state TEXT NOT NULL CHECK (state IN ('disabled','enabled','paused')), last_posted_at INTEGER, updated_at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS engagement_proactive_preferences_retention ON engagement_proactive_preferences (updated_at, guild_id);",
         );
         this.recordMigration(21);
+      }
+      if (!this.hasMigration(22)) {
+        this.database.exec("CREATE TABLE IF NOT EXISTS engagement_feature_flags (guild_id TEXT NOT NULL, name TEXT NOT NULL, enabled INTEGER NOT NULL CHECK (enabled IN (0,1)), updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, name)); CREATE INDEX IF NOT EXISTS engagement_feature_flags_retention ON engagement_feature_flags (updated_at, guild_id);");
+        this.recordMigration(22);
       }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
