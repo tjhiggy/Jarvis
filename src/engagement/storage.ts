@@ -16,6 +16,7 @@ import type {
 } from './activity.js';
 import type { EngagementRecordCounts } from './health.js';
 import type { FeatureFlagName, FeatureFlagRecord } from './feature-flags.js';
+import type { PlatformMetricsRepository } from '../platform/metrics.js';
 
 export type EngagementIdempotencyScope = 'interaction' | 'scheduled-job';
 
@@ -35,7 +36,7 @@ export interface EngagementCardDeletion {
   readonly createdAt: Date;
 }
 
-export interface EngagementRepository {
+export interface EngagementRepository extends Partial<PlatformMetricsRepository> {
   getFeatureFlags?(guildId: string): Promise<readonly FeatureFlagRecord[]>;
   setFeatureFlag?(guildId: string, name: FeatureFlagName, enabled: boolean, updatedAt?: Date): Promise<void>;
   getProactiveState?(guildId: string): Promise<{ state: import('./proactive.js').ProactiveState; lastPostedAt?: Date }>;
