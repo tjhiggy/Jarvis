@@ -100,6 +100,8 @@ import {
 } from './engagement/proactive.js';
 import { DelegatedPostService } from './engagement/delegated-posts.js';
 import { RssStorage } from './notifications/rss-storage.js';
+import { RssNotificationClient } from './notifications/rss-notifications.js';
+import { RssScheduler } from './notifications/rss-scheduler.js';
 import { HttpGitHubReadOnlyService } from './github/github-service.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
@@ -460,6 +462,7 @@ export const createApplication = async (
   let reminderScheduler: ReminderScheduler | undefined;
   let engagementRepository: EngagementRepository | undefined;
   let rssStorage: RssStorage | undefined;
+  let rssScheduler: RssScheduler | undefined;
   let delegatedPostService: DelegatedPostService | undefined;
   let eventScheduler: EventScheduler | undefined;
   let recapScheduler: RecapScheduler | undefined;
@@ -599,6 +602,7 @@ export const createApplication = async (
           );
         }
       }
+      rssScheduler?.stop();
 
       if (pollStore !== undefined) {
         try {
@@ -668,6 +672,25 @@ export const createApplication = async (
     }
     const ai = aiFactory(config);
     client = discordFactory();
+    if (rssStorage !== undefined && config.engagement.channels.rssId !== '') {
+      rssScheduler = new RssScheduler(
+        rssStorage,
+        new RssNotificationClient(fetch, 8_000, config.engagement.rssAllowedHosts),
+        {
+          publish: async (channelId, item) => {
+            const channels = client?.channels;
+            if (channels === undefined) throw new Error('Discord channels are unavailable.');
+            const channel = await channels.fetch(channelId);
+            const sendable = channel as unknown as { send(payload: unknown): Promise<unknown> };
+            if (channel === undefined || channel === null || typeof sendable.send !== 'function') throw new Error('Configured RSS channel is unavailable.');
+            await sendable.send({ content: `**${item.title}**\n${item.url}`, allowedMentions: { parse: [], repliedUser: false } });
+          },
+        },
+        config.discord.guildId,
+        config.engagement.channels.rssId,
+      );
+      rssScheduler.start();
+    }
 
     if (config.polls.enabled) {
       pollStore =
