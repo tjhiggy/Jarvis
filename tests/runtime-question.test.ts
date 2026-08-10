@@ -71,4 +71,9 @@ describe('runtime identity and self-question handling', () => {
       ),
     ).toBeUndefined();
   });
+
+  it('treats upgrade and recent-change questions as trusted runtime questions', () => {
+    expect(classifyRuntimeQuestion('Tell me about your recent upgrades.', identity)).toContain('Jarvis 1.2.3');
+    expect(classifyRuntimeQuestion('What changed in your latest release?', identity)).toContain('Jarvis 1.2.3');
+  });
 });

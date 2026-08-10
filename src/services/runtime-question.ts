@@ -1,7 +1,7 @@
 import type { RuntimeIdentity } from '../config/runtime-identity.js';
 
 const runtimeQuestion =
-  /\b(version|build|release|commit|deployment|running|operating system|os|host|machine|hardware|uptime|model)\b/i;
+  /\b(version|build|release|commit|deployment|running|operating system|os|host|machine|hardware|uptime|model|upgrade(?:s|d)?|changed|changes)\b/i;
 const selfReference =
   /\b(jarvis|mutha\s*ship|ship diagnostics|you|your|you're|are you)\b/i;
 
@@ -13,7 +13,7 @@ export const classifyRuntimeQuestion = (
     return undefined;
   }
 
-  if (/\b(version|build|release|commit|deployment)\b/i.test(prompt)) {
+  if (/\b(version|build|release|commit|deployment|upgrade(?:s|d)?|changed|changes)\b/i.test(prompt)) {
     return identity === undefined
       ? 'Jarvis runtime identity is not available in this deployment. I will not guess.'
       : `This MuthaShip is running Jarvis ${identity.version}, deployment ${identity.environment}, commit ${identity.commit}, built ${identity.builtAt}.`;
