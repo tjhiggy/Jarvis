@@ -78,6 +78,7 @@ describe('registerCommands', () => {
       'engagement',
       'birthday',
       'roles',
+      'rss',
       'config',
     ]);
     expect(JSON.stringify(calls[0]?.options.body)).not.toContain(
@@ -146,6 +147,7 @@ describe('registerCommands', () => {
       'engagement',
       'birthday',
       'roles',
+      'rss',
       'config',
     ]);
     const payload = JSON.stringify(calls[0]?.options.body);
