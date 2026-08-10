@@ -72,6 +72,7 @@ import type {
 import { formatCommandPermissionRules } from './command-permissions.js';
 import { handleRssCommand } from './rss.js';
 import type { RssStorage } from '../notifications/rss-storage.js';
+import type { Instrumentation } from '../platform/instrumentation.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -103,6 +104,7 @@ export interface CommandInteraction extends ReplyTarget, DeferredReplyTarget {
 }
 
 export interface CommandDependencies {
+  readonly instrumentation?: Instrumentation;
   readonly config: Readonly<{
     runtimeIdentity?: RuntimeIdentity;
     discord: Readonly<{ token: string; clientId: string; guildId: string }>;
@@ -265,7 +267,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     'Safety: Jarvis cannot administer or modify the server, cannot use tools or take external actions, and keeps history only for the current channel or thread.',
   ].join('\n');
 
-export const handleCommand = async (
+const handleCommandInternal = async (
   interaction: CommandInteraction,
   dependencies: CommandDependencies,
 ): Promise<void> => {
@@ -587,6 +589,29 @@ export const handleCommand = async (
     default:
       await replySafely(interaction, unknownCommandMessage, true);
   }
+};
+
+export const handleCommand = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (dependencies.instrumentation === undefined) {
+    await handleCommandInternal(interaction, dependencies);
+    return;
+  }
+  await dependencies.instrumentation.run({
+    context: {
+      serverId: interaction.guildId ?? 'direct-message',
+      channelId: interaction.channelId,
+      userId: interaction.user.id,
+      correlationId: interaction.id,
+      surface: 'discord',
+      isAdministrator: false,
+    },
+    feature: interaction.commandName,
+    command: interaction.commandName,
+    operation: () => handleCommandInternal(interaction, dependencies),
+  });
 };
 
 const rejectDirectMessage = async (
