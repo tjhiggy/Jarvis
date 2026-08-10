@@ -61,6 +61,7 @@ import { createLogger, projectOperationalError } from './utils/logger.js';
 import { loadRuntimeIdentity } from './config/runtime-identity.js';
 import { HttpSleeperService } from './sleeper/sleeper-service.js';
 import { randomUUID } from 'node:crypto';
+import { Instrumentation } from './platform/instrumentation.js';
 import {
   IntroductionService,
   type IntroductionGateway,
@@ -461,6 +462,7 @@ export const createApplication = async (
   let reminderStore: ReminderStore | undefined;
   let reminderScheduler: ReminderScheduler | undefined;
   let engagementRepository: EngagementRepository | undefined;
+  let instrumentation: Instrumentation | undefined;
   let rssStorage: RssStorage | undefined;
   let rssScheduler: RssScheduler | undefined;
   let delegatedPostService: DelegatedPostService | undefined;
@@ -669,6 +671,12 @@ export const createApplication = async (
         dependencies.createEngagementRepository?.(
           config.storage.databasePath,
         ) ?? new SQLiteEngagementRepository(config.storage.databasePath);
+      instrumentation = new Instrumentation({
+        record: async (event) => {
+          if (event.serverId === 'direct-message') return;
+          await engagementRepository?.recordAnalyticsEvent?.(event);
+        },
+      });
     }
     const ai = aiFactory(config);
     client = discordFactory();
@@ -1028,6 +1036,7 @@ export const createApplication = async (
       handleCommand: (interaction) =>
         handleCommand(interaction as CommandInteraction, {
           config,
+          ...(instrumentation === undefined ? {} : { instrumentation }),
           ...(config.github
             ? {
                 github: {
@@ -1088,6 +1097,10 @@ export const createApplication = async (
                     deleteOwnerData:
                       engagementDeletionService!.deleteOwnerData.bind(
                         engagementDeletionService,
+                      ),
+                    analyticsSummary:
+                      engagementRepository.analyticsSummary!.bind(
+                        engagementRepository,
                       ),
                   },
                   schedulers: {

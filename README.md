@@ -326,7 +326,7 @@ deletion, backup, outage, and rollback behavior, use the
 
 ## Engagement V1
 
-Configured administrators can use `/engagement status` for aggregate feature, scheduler, and record health, and `/engagement pause` or `/engagement resume` to control scheduled engagement delivery for their MuthaShip. Members may use `/engagement delete` to remove their retained engagement records on that MuthaShip; configured administrators may supply a member ID for an administrative deletion. These responses and audit records never include submitted content, RSVP reasons, or credentials.
+Configured administrators can use `/engagement status` for aggregate feature, scheduler, and record health, `/engagement metrics` for seven-day aggregate command usage, and `/engagement pause` or `/engagement resume` to control scheduled engagement delivery for their MuthaShip. Members may use `/engagement delete` to remove their retained engagement records on that MuthaShip; configured administrators may supply a member ID for an administrative deletion. These responses and audit records never include submitted content, RSVP reasons, or credentials.
 
 The implemented Muthaship engagement loop includes guided
 introductions, suggestions, events and RSVP, weekly recaps, and curated trivia.
