@@ -23,6 +23,20 @@ export class EngagementRecordConflictError extends Error {}
 export class EngagementOptOutError extends Error {}
 export class EngagementEventClosedError extends Error {}
 
+export type ConfigurationAuditOperation =
+  | 'feature_flag_set'
+  | 'proactive_state_set'
+  | 'engagement_pause'
+  | 'engagement_resume';
+export interface ConfigurationAuditEntry {
+  readonly guildId: string;
+  readonly actorUserId: string;
+  readonly operation: ConfigurationAuditOperation;
+  readonly target: string;
+  readonly enabled?: boolean;
+  readonly createdAt: Date;
+}
+
 export type EngagementCardDeletionKind =
   'introduction' | 'suggestion' | 'event';
 export interface EngagementCardDeletion {
@@ -38,6 +52,8 @@ export interface EngagementCardDeletion {
 export interface EngagementRepository {
   getFeatureFlags?(guildId: string): Promise<readonly FeatureFlagRecord[]>;
   setFeatureFlag?(guildId: string, name: FeatureFlagName, enabled: boolean, updatedAt?: Date): Promise<void>;
+  recordConfigurationAudit?(entry: ConfigurationAuditEntry): Promise<void>;
+  configurationAudit?(guildId: string, limit: number): Promise<readonly ConfigurationAuditEntry[]>;
   getProactiveState?(guildId: string): Promise<{ state: import('./proactive.js').ProactiveState; lastPostedAt?: Date }>;
   setProactiveState?(guildId: string, state: import('./proactive.js').ProactiveState, updatedAt: Date): Promise<void>;
   recordProactivePosted?(guildId: string, postedAt: Date): Promise<void>;
