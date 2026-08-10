@@ -947,6 +947,10 @@ export const createApplication = async (
                       engagementDeletionService!.deleteOwnerData.bind(
                         engagementDeletionService,
                       ),
+                    analyticsSummary:
+                      engagementRepository.analyticsSummary!.bind(
+                        engagementRepository,
+                      ),
                   },
                   schedulers: {
                     get events() {
