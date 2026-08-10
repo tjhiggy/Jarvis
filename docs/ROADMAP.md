@@ -59,8 +59,8 @@ data, and require explicit human authorization.
 reviewed data-minimization design that excludes message content and secrets.
 
 **Shipped, bounded.** Sleeper integration supports one configured league's
-read-only standings and weekly matchup results. Player lookup, transactions,
-and additional fantasy features remain planned.
+read-only standings, weekly matchup results, and bounded player statistics via
+`/fantasy player`. Transactions and additional fantasy features remain planned.
 
 ## Later
 
