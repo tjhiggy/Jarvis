@@ -23,6 +23,11 @@ incrementally. There is no risky platform rewrite.
 
 ## Release phases
 
+Phase 0 is currently in progress. The first shipped slice defines the shared
+interaction, authorization, module, health, analytics, and audit contracts,
+plus the module registry and instrumentation boundary. It does not change
+existing command behavior or persist metrics yet.
+
 | Release | Focus | Shippable outcome |
 | --- | --- | --- |
 | 0.3 | Platform Core | Module registry, interaction context, authorization, feature flags, storage and scheduler contracts, health, audit, and command analytics events. |

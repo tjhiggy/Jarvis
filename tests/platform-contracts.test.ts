@@ -3,9 +3,12 @@ import {
   createAnalyticsEvent,
   createAuditEvent,
   createAuthorizationPolicy,
+  type AnalyticsEvent,
   type InteractionContext,
   type PlatformModule,
 } from '../src/platform/contracts.js';
+import { Instrumentation } from '../src/platform/instrumentation.js';
+import { PlatformModuleRegistry } from '../src/platform/registry.js';
 
 describe('platform contracts', () => {
   const context: InteractionContext = {
@@ -81,5 +84,53 @@ describe('platform contracts', () => {
     const policy = createAuthorizationPolicy('administrator');
     expect(policy.authorize(context)).toBe(false);
     expect(policy.authorize({ ...context, isAdministrator: true })).toBe(true);
+  });
+
+  it('registers modules once and returns a stable module list', () => {
+    const registry = new PlatformModuleRegistry();
+    const module: PlatformModule = {
+      id: 'rss',
+      version: '1.0.0',
+      capabilities: ['command'],
+      register: () => undefined,
+      health: async () => ({ state: 'healthy', details: {} }),
+    };
+    registry.register(module);
+    expect(registry.get('rss')).toBe(module);
+    expect(registry.list()).toEqual([module]);
+    expect(() => registry.register(module)).toThrow(/already registered/i);
+  });
+
+  it('records safe start and success events while preserving the operation result', async () => {
+    const events: AnalyticsEvent[] = [];
+    const instrumentation = new Instrumentation({ record: (event) => { events.push(event); } });
+    await expect(instrumentation.run({
+      context,
+      feature: 'rss',
+      command: 'rss list',
+      operation: async () => 'ok',
+    })).resolves.toBe('ok');
+    expect(events.map((event) => event.name)).toEqual([
+      'command_started',
+      'command_succeeded',
+    ]);
+    expect(events[1]?.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('records a failure event and rethrows the original failure', async () => {
+    const events: AnalyticsEvent[] = [];
+    const instrumentation = new Instrumentation({ record: (event) => { events.push(event); } });
+    const failure = new Error('private provider detail');
+    await expect(instrumentation.run({
+      context,
+      feature: 'rss',
+      command: 'rss add',
+      operation: async () => { throw failure; },
+    })).rejects.toBe(failure);
+    expect(events.map((event) => event.name)).toEqual([
+      'command_started',
+      'command_failed',
+    ]);
+    expect(JSON.stringify(events)).not.toContain('private provider detail');
   });
 });
