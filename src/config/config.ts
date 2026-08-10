@@ -403,7 +403,7 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
   return Object.freeze({
     // Build identity is configuration metadata only. It is never inferred
     // from the host, package manager, or Discord content.
-    runtimeIdentity: loadRuntimeIdentity(env, '0.1.0'),
+    runtimeIdentity: loadRuntimeIdentity(env),
     ai: Object.freeze({ provider: parsed.AI_PROVIDER }),
     discord: Object.freeze({
       token: parsed.DISCORD_TOKEN,

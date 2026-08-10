@@ -68,16 +68,16 @@ interface ReminderStringOptionDefinition {
 
 interface ReminderSubcommandDefinition {
   readonly type: 1;
-  readonly name: 'set' | 'list' | 'cancel';
+  readonly name: 'set' | 'list' | 'cancel' | 'shared-set' | 'shared-list' | 'shared-cancel';
   readonly description: string;
   readonly options?: readonly ReminderStringOptionDefinition[];
 }
 
 interface FantasySubcommandDefinition {
   readonly type: 1;
-  readonly name: 'standings' | 'matchup';
+  readonly name: 'standings' | 'matchup' | 'player';
   readonly description: string;
-  readonly options?: readonly { readonly type: 4; readonly name: 'week'; readonly description: string; readonly required: false; readonly min_value: number; readonly max_value: number }[];
+  readonly options?: readonly ({ readonly type: 4; readonly name: 'week' | 'season'; readonly description: string; readonly required: boolean; readonly min_value: number; readonly max_value: number } | { readonly type: 3; readonly name: 'player_id'; readonly description: string; readonly required: true; readonly max_length: number })[];
 }
 
 interface IntroductionOptionDefinition {
@@ -376,6 +376,12 @@ export const createCommandDefinitions = (
             },
           ],
         },
+        { type: 1, name: 'shared-set', description: 'Create an administrator shared reminder.', options: [
+          { type: 3, name: 'in', description: 'Delay such as 10 minutes or 2 hours.', required: true, max_length: 64 },
+          { type: 3, name: 'message', description: 'Message to post.', required: true, max_length: 500 },
+        ] },
+        { type: 1, name: 'shared-list', description: 'List shared reminders in this server.' },
+        { type: 1, name: 'shared-cancel', description: 'Cancel a shared reminder.', options: [{ type: 3, name: 'id', description: 'The reminder ID.', required: true, max_length: 12 }] },
       ],
     },
     {
@@ -394,6 +400,16 @@ export const createCommandDefinitions = (
           description: 'Show read-only weekly matchup results.',
           options: [
             { type: 4, name: 'week', description: 'League week number (1-30).', required: false, min_value: 1, max_value: 30 },
+          ],
+        },
+        {
+          type: 1,
+          name: 'player',
+          description: 'Show read-only player statistics.',
+          options: [
+            { type: 3, name: 'player_id', description: 'Sleeper player identifier.', required: true, max_length: 32 },
+            { type: 4, name: 'season', description: 'NFL season (for example, 2026).', required: true, min_value: 2020, max_value: 2100 },
+            { type: 4, name: 'week', description: 'Optional week number (1-18).', required: false, min_value: 1, max_value: 18 },
           ],
         },
       ],

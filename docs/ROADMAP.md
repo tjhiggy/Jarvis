@@ -9,8 +9,9 @@ dates, promises, or claims that an interface declaration is a working feature.
   no inbound web port.
 - `/ask`, `/search`, `/forget`, `/faq`, `/help`, and `/status` commands plus
   direct mention handling in server channels.
-- Personal reminders with owner-scoped delivery, and read-only Sleeper
-  standings with resolved owner display names when available.
+- Personal reminders with owner-scoped delivery, read-only Sleeper standings
+  and weekly matchups with resolved owner display names when available, and
+  read-only GitHub repository, issue, and pull-request lookup.
 - Channel allowlists, parent-thread handling, minimum reply permissions,
   per-guild/user rate limiting, event de-duplication, input bounds, and safe
   response delivery with mass mentions disabled.
@@ -25,8 +26,13 @@ dates, promises, or claims that an interface declaration is a working feature.
 - Native Windows startup support and an optional hardened Docker Compose
   deployment with a persistent named SQLite volume.
 - Deliberately inert extension contracts and documented operating boundaries.
+- Privacy-aware engagement features including introductions, suggestions,
+  events and RSVP, game nights, LFG signals, birthdays, trivia, recaps,
+  allowlisted self-service roles, and bounded proactive post controls.
+- Approved knowledge lookup with administrator-controlled per-server source
+  approvals, `/catch-me-up`, and `/channel-summary` over retained Jarvis data.
 
-## Implemented, unreleased
+## Implemented, pending the next versioned release
 
 - Privacy-aware engagement V1: configured guided introductions and suggestions,
   administrator-created events with opt-in RSVP, aggregate weekly recaps,
@@ -52,9 +58,9 @@ data, and require explicit human authorization.
 **Planned, not implemented.** Add operational dashboards or metrics only with a
 reviewed data-minimization design that excludes message content and secrets.
 
-**Shipped, bounded.** Sleeper integration currently supports one configured
-league's read-only standings. Matchups, weekly recaps, player lookup, and
-additional fantasy features remain planned under [Issue #95](https://github.com/tjhiggy/Jarvis/issues/95).
+**Shipped, bounded.** Sleeper integration supports one configured league's
+read-only standings, weekly matchup results, and bounded player statistics via
+`/fantasy player`. Transactions and additional fantasy features remain planned.
 
 ## Later
 

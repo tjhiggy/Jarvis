@@ -145,7 +145,7 @@ export interface CommandDependencies {
   }>;
   readonly store: Pick<ConversationStore, 'healthCheck'>;
   readonly conversationHistory?: Pick<ConversationStore, 'getRecent'>;
-  readonly reminderService: Pick<ReminderService, 'set' | 'list' | 'cancel'>;
+  readonly reminderService: Pick<ReminderService, 'set' | 'list' | 'cancel'> & Partial<Pick<ReminderService, 'sharedSet' | 'sharedList' | 'sharedCancel'>>;
   readonly reminderHealth: Readonly<{
     store: Pick<ReminderStore, 'healthCheck' | 'statusCounts'>;
     scheduler: Pick<ReminderScheduler, 'healthy'>;
@@ -228,6 +228,9 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/reminder set in:<duration> message:<text> creates a private personal reminder request.',
     '/reminder list shows your retained reminders in this server.',
     '/reminder cancel id:<id> cancels one of your reminders.',
+    '/reminder shared-set in:<duration> message:<text> posts an administrator reminder.',
+    '/reminder shared-list lists shared reminders in this server.',
+    '/reminder shared-cancel id:<id> cancels a shared reminder.',
     'Reminder limits: 1 minute to 30 days, 500 characters, and 10 active reminders per server.',
     '/help lists the available commands.',
     '/status reports safe service configuration and database health.',
@@ -462,7 +465,31 @@ const handleFantasy = async (
     );
     return;
   }
-  if (interaction.options.getSubcommand() !== 'standings') {
+  const subcommand = interaction.options.getSubcommand();
+  if (subcommand === 'player') {
+    const playerId = interaction.options.getString('player_id')?.trim();
+    const season = interaction.options.getInteger?.('season') ?? null;
+    const week = interaction.options.getInteger?.('week') ?? undefined;
+    if (!playerId || season === null) {
+      await replySafely(interaction, 'Player ID and season are required.', true);
+      return;
+    }
+    if (dependencies.sleeper.service.getPlayerStats === undefined) {
+      await replySafely(interaction, 'Player statistics are not available on this MuthaShip.', true);
+      return;
+    }
+    try {
+      const result = await dependencies.sleeper.service.getPlayerStats(playerId, season, week);
+      const entries = Object.entries(result.stats).sort((a, b) => a[0].localeCompare(b[0])).slice(0, 12);
+      await replySafely(interaction, entries.length === 0
+        ? `No Sleeper statistics are available for player ${playerId} in ${season}${week === undefined ? '' : ` week ${week}`}.`
+        : `MuthaShip player statistics (read-only)\nPlayer: ${playerId}\nSeason: ${season}${week === undefined ? '' : ` • Week: ${week}`}\n${entries.map(([key, value]) => `${key}: ${value}`).join('\n')}`, true);
+    } catch {
+      await replySafely(interaction, 'Sleeper player statistics are temporarily unavailable. Jarvis will not guess.', true);
+    }
+    return;
+  }
+  if (subcommand !== 'standings') {
     const week = interaction.options.getInteger?.('week') ?? 1;
     try {
       const matchups = await dependencies.sleeper.service.getMatchups(dependencies.sleeper.leagueId, week);
@@ -656,6 +683,24 @@ const handleReminder = async (
   const subcommand = interaction.options.getSubcommand();
   try {
     switch (subcommand) {
+      case 'shared-set':
+      case 'shared-list':
+      case 'shared-cancel': {
+        const adminRoles = dependencies.config.engagement?.adminRoleIds ?? new Set<string>();
+        const isAdmin = [...adminRoles].some((role) => interaction.member?.roles?.cache?.has(role));
+        if (!isAdmin) { await editDeferredReplySafely(interaction, 'Shared reminders are restricted to configured MuthaShip administrators.'); return; }
+        if (subcommand === 'shared-set') {
+          if (!dependencies.reminderService.sharedSet) { await editDeferredReplySafely(interaction, operationalErrorMessage); return; }
+          const reminder = await dependencies.reminderService.sharedSet({ guildId: scope.guildId, channelId: scope.channelId, ownerUserId: interaction.user.id, duration: interaction.options.getString('in') ?? '', message: interaction.options.getString('message') ?? '' });
+          await editDeferredReplySafely(interaction, `Shared reminder \`${reminder.id}\` scheduled for ${discordTimestamp(reminder.dueAt)} in ${reminderDestination(reminder)}.`); return;
+        }
+        if (subcommand === 'shared-list') { if (!dependencies.reminderService.sharedList) { await editDeferredReplySafely(interaction, operationalErrorMessage); return; } await editPrivateDeferredReplyInChunksSafely(interaction, renderReminderList(await dependencies.reminderService.sharedList({ guildId: scope.guildId, ownerUserId: interaction.user.id }))); return; }
+        const id = interaction.options.getString('id')?.trim();
+        if (id === undefined || !/^[a-z2-7]{12}$/.test(id)) { await editDeferredReplySafely(interaction, reminderIdMessage); return; }
+        if (!dependencies.reminderService.sharedCancel) { await editDeferredReplySafely(interaction, operationalErrorMessage); return; }
+        const cancelled = await dependencies.reminderService.sharedCancel({ guildId: scope.guildId, ownerUserId: interaction.user.id, reminderId: id });
+        await editDeferredReplySafely(interaction, cancelled ? `Shared reminder \`${id}\` cancelled.` : reminderNotFoundMessage); return;
+      }
       case 'set': {
         const reminder = await dependencies.reminderService.set({
           guildId: scope.guildId,
@@ -814,9 +859,9 @@ const formatReminderFailure = (
 ): string => {
   switch (category) {
     case 'unknown-channel':
-      return 'destination unavailable';
+      return 'destination unavailable (choose an active allowed channel)';
     case 'permission':
-      return 'destination access denied';
+      return 'destination access denied (admin: verify View Channel, Send Messages, Embed Links, and thread access)';
     case 'rate-limit':
       return 'rate limited';
     case 'network':
