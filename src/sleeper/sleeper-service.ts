@@ -1,4 +1,4 @@
-import { SleeperServiceError, type SleeperService, type SleeperStanding, type SleeperMatchup } from './sleeper-types.js';
+import { SleeperServiceError, type SleeperService, type SleeperStanding, type SleeperMatchup, type SleeperPlayerStats } from './sleeper-types.js';
 
 const apiBaseUrl = 'https://api.sleeper.app/v1';
 
@@ -68,6 +68,35 @@ export class HttpSleeperService implements SleeperService {
         const ownerName = names.get(ownerId);
         return ownerName === undefined ? { ...matchup, ownerId } : { ...matchup, ownerId, ownerName };
       });
+    } catch (error) {
+      if (error instanceof SleeperServiceError) throw error;
+      throw new SleeperServiceError('unavailable', 'Sleeper is unavailable.');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async getPlayerStats(playerId: string, season: number, week?: number): Promise<SleeperPlayerStats> {
+    const normalizedPlayerId = playerId.trim();
+    if (!/^[A-Za-z0-9_-]{1,32}$/.test(normalizedPlayerId) || !Number.isInteger(season) || season < 2020 || season > 2100 || (week !== undefined && (!Number.isInteger(week) || week < 1 || week > 18))) {
+      throw new SleeperServiceError('invalid-data', 'Invalid Sleeper player, season, or week.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const path = week === undefined
+        ? `${apiBaseUrl}/stats/nfl/${season}?player_id=${encodeURIComponent(normalizedPlayerId)}`
+        : `${apiBaseUrl}/stats/nfl/${season}/${week}?player_id=${encodeURIComponent(normalizedPlayerId)}`;
+      const response = await this.http.fetch(path, { signal: controller.signal });
+      if (response.status === 429) throw new SleeperServiceError('rate-limited', 'Sleeper rate limit reached.');
+      if (!response.ok) throw new SleeperServiceError('unavailable', 'Sleeper is unavailable.');
+      const payload: unknown = await response.json();
+      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) throw new SleeperServiceError('invalid-data', 'Sleeper returned invalid player statistics.');
+      const stats: Record<string, number> = {};
+      for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+        if (typeof value === 'number' && Number.isFinite(value)) stats[key] = value;
+      }
+      return { playerId: normalizedPlayerId, season, ...(week === undefined ? {} : { week }), stats };
     } catch (error) {
       if (error instanceof SleeperServiceError) throw error;
       throw new SleeperServiceError('unavailable', 'Sleeper is unavailable.');

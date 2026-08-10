@@ -60,4 +60,19 @@ describe('HttpSleeperService', () => {
     await expect(new HttpSleeperService({ fetch }).getMatchups('123456789', 0)).rejects.toMatchObject({ kind: 'invalid-data' });
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it('retrieves bounded player statistics for a season and week', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ pass_yd: 245.5, pass_td: 2, ignored: 'text' }), { status: 200 }));
+    const result = await new HttpSleeperService({ fetch }).getPlayerStats('abc123', 2026, 3);
+    expect(result).toEqual({ playerId: 'abc123', season: 2026, week: 3, stats: { pass_yd: 245.5, pass_td: 2 } });
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/stats/nfl/2026/3?player_id=abc123'), expect.anything());
+  });
+
+  it('maps player-stat rate limits and rejects invalid identifiers locally', async () => {
+    const rateLimited = vi.fn().mockResolvedValue(new Response('', { status: 429 }));
+    await expect(new HttpSleeperService({ fetch: rateLimited }).getPlayerStats('abc123', 2026)).rejects.toMatchObject({ kind: 'rate-limited' });
+    const invalid = vi.fn();
+    await expect(new HttpSleeperService({ fetch: invalid }).getPlayerStats('not allowed', 2026)).rejects.toMatchObject({ kind: 'invalid-data' });
+    expect(invalid).not.toHaveBeenCalled();
+  });
 });
