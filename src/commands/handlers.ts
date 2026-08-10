@@ -458,7 +458,31 @@ const handleFantasy = async (
     );
     return;
   }
-  if (interaction.options.getSubcommand() !== 'standings') {
+  const subcommand = interaction.options.getSubcommand();
+  if (subcommand === 'player') {
+    const playerId = interaction.options.getString('player_id')?.trim();
+    const season = interaction.options.getInteger?.('season') ?? null;
+    const week = interaction.options.getInteger?.('week') ?? undefined;
+    if (!playerId || season === null) {
+      await replySafely(interaction, 'Player ID and season are required.', true);
+      return;
+    }
+    if (dependencies.sleeper.service.getPlayerStats === undefined) {
+      await replySafely(interaction, 'Player statistics are not available on this MuthaShip.', true);
+      return;
+    }
+    try {
+      const result = await dependencies.sleeper.service.getPlayerStats(playerId, season, week);
+      const entries = Object.entries(result.stats).sort((a, b) => a[0].localeCompare(b[0])).slice(0, 12);
+      await replySafely(interaction, entries.length === 0
+        ? `No Sleeper statistics are available for player ${playerId} in ${season}${week === undefined ? '' : ` week ${week}`}.`
+        : `MuthaShip player statistics (read-only)\nPlayer: ${playerId}\nSeason: ${season}${week === undefined ? '' : ` • Week: ${week}`}\n${entries.map(([key, value]) => `${key}: ${value}`).join('\n')}`, true);
+    } catch {
+      await replySafely(interaction, 'Sleeper player statistics are temporarily unavailable. Jarvis will not guess.', true);
+    }
+    return;
+  }
+  if (subcommand !== 'standings') {
     const week = interaction.options.getInteger?.('week') ?? 1;
     try {
       const matchups = await dependencies.sleeper.service.getMatchups(dependencies.sleeper.leagueId, week);
