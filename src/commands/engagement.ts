@@ -5,7 +5,6 @@ import {
 } from '../engagement/health.js';
 import type { EngagementDeletionOutcome } from '../engagement/deletion.js';
 import type { MetricsSummaryRow } from '../platform/metrics.js';
-import type { MetricsSummaryRow } from '../platform/metrics.js';
 
 type OperationalRepository = Readonly<{
   engagementPaused(guildId: string): Promise<boolean>;
