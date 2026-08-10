@@ -67,6 +67,10 @@ export class Instrumentation {
   }
 
   private async record(input: Parameters<typeof createAnalyticsEvent>[0]): Promise<void> {
-    await this.sink.record(createAnalyticsEvent(input));
+    try {
+      await this.sink.record(createAnalyticsEvent(input));
+    } catch {
+      // Analytics must never change command behavior or expose sink failures.
+    }
   }
 }
