@@ -133,4 +133,22 @@ describe('platform contracts', () => {
     ]);
     expect(JSON.stringify(events)).not.toContain('private provider detail');
   });
+
+  it('records cancellation without retaining a cancellation explanation', async () => {
+    const events: AnalyticsEvent[] = [];
+    const instrumentation = new Instrumentation({ record: (event) => { events.push(event); } });
+    await instrumentation.cancel({
+      context,
+      feature: 'suggestions',
+      command: 'suggest preview',
+      reason: 'user supplied private text',
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      name: 'command_cancelled',
+      result: 'cancelled',
+      metadata: { reasonCode: 'provided' },
+    });
+    expect(JSON.stringify(events)).not.toContain('private text');
+  });
 });
