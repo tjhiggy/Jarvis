@@ -735,6 +735,7 @@ export const createCommandDefinitions = (
       description: 'View or control engagement scheduling as an administrator.',
       options: [
         { type: 1, name: 'status', description: 'Show safe engagement health.' },
+        { type: 1, name: 'metrics', description: 'Show aggregate command and scheduler usage.' },
         { type: 1, name: 'pause', description: 'Pause engagement scheduling.' },
         { type: 1, name: 'resume', description: 'Resume engagement scheduling.' },
         {
