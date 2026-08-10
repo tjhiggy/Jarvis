@@ -4,6 +4,7 @@ import {
   type EngagementSchedulerHealth,
 } from '../engagement/health.js';
 import type { EngagementDeletionOutcome } from '../engagement/deletion.js';
+import type { MetricsSummaryRow } from '../platform/metrics.js';
 
 type OperationalRepository = Readonly<{
   engagementPaused(guildId: string): Promise<boolean>;
@@ -25,6 +26,7 @@ type OperationalRepository = Readonly<{
     guildId: string,
     userId: string,
   ): Promise<EngagementDeletionOutcome>;
+  analyticsSummary?(guildId: string, since: Date): Promise<readonly MetricsSummaryRow[]>;
 }>;
 
 export const handleEngagementCommand = async (
