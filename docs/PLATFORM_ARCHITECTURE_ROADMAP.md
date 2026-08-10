@@ -23,16 +23,17 @@ incrementally. There is no risky platform rewrite.
 
 ## Release phases
 
-Phase 0 is currently in progress. The first shipped slice defines the shared
+Phase 0 is currently in progress. The shipped slices define the shared
 interaction, authorization, module, health, analytics, and audit contracts,
-plus the module registry and instrumentation boundary. It does not change
-existing command behavior or persist metrics yet.
+the module registry and instrumentation boundary, durable aggregate metrics,
+provider and integration readiness, and a localhost-only read-only Command
+Deck. Existing Discord command behavior remains unchanged.
 
 | Release | Focus | Shippable outcome |
 | --- | --- | --- |
 | 0.3 | Platform Core | Module registry, interaction context, authorization, feature flags, storage and scheduler contracts, health, audit, and command analytics events. |
 | 0.3.x | Discord Interaction Shell | Consistent help, concise responses, private/public indicators, preview-confirm-cancel flows, buttons instead of UUID copy and paste, and standard error states. |
-| 0.4 | Command Deck | Sites-based read-only Admin Console showing health, version, features, channels, roles, schedulers, integrations, audit, and aggregate metrics. |
+| 0.4 | Command Deck | Local read-only Admin Console showing health, version, features, integrations, RSS state, and aggregate metrics. Sites presentation and authenticated safe writes remain follow-up slices. |
 | 0.4.x | Safe Configuration | RSS, approved hosts, destinations, feature flags, and engagement settings with validation, previews, confirmation, audit, and rollback. |
 | 0.5 | Crew Engagement | Shared UX and contracts across introductions, suggestions, events, RSVP, trivia, polls, reminders, birthdays, LFG, and game nights. |
 | 0.6 | Shipboard Broadcasts | RSS, proactive posts, recaps, reminders, quiet hours, cadence limits, preferences, previews, pause/resume, kill switches, and durable deduplication. |

@@ -54,7 +54,7 @@ flowchart TD
 
 For direct mentions, the Discord adapter first requires a bot mention, a guild context, an allowed channel, and the bot's channel permissions. Commands make their own guild, channel, allowlist, and input checks before calling the same conversation service. The service is the shared normalization boundary for both ingress paths: it replaces unverified Discord member IDs before persistence or provider use, and it owns event de-duplication and rate limiting for requests that reach it.
 
-The planned Admin Command Deck will consume aggregate analytics through a
+The local read-only Admin Command Deck consumes aggregate analytics through a
 server-scoped API. Instrumentation events will use a common vocabulary such as
 `command_started`, `command_succeeded`, `command_failed`,
 `command_cancelled`, `delivery_succeeded`, `delivery_failed`,
