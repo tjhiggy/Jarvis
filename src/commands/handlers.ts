@@ -166,6 +166,7 @@ export interface CommandDependencies {
         guildId: string,
         userId: string,
       ): Promise<EngagementDeletionOutcome>;
+      analyticsSummary?(guildId: string, since: Date): Promise<readonly import('../platform/metrics.js').MetricsSummaryRow[]>;
     };
     schedulers?: Readonly<
       Record<string, EngagementSchedulerHealth | undefined>

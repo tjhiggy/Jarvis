@@ -121,7 +121,7 @@ interface TriviaSubcommandDefinition {
 }
 interface EngagementSubcommandDefinition {
   readonly type: 1;
-  readonly name: 'status' | 'pause' | 'resume' | 'delete';
+  readonly name: 'status' | 'metrics' | 'pause' | 'resume' | 'delete';
   readonly description: string;
   readonly options?: readonly {
     readonly type: 3;
