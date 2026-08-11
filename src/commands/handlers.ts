@@ -56,6 +56,7 @@ import { handleEngagementCommand } from './engagement.js';
 import type { EngagementSchedulerHealth } from '../engagement/health.js';
 import type { BirthdayService } from '../engagement/birthdays.js';
 import type { DailyRewardService } from '../engagement/daily-rewards.js';
+import type { ParticipationStreakService } from '../engagement/participation-streaks.js';
 import {
   buildEngagementCard,
   buildEngagementSelectMenu,
@@ -223,6 +224,7 @@ export interface CommandDependencies {
   readonly triviaService?: TriviaService;
   readonly birthdayService?: BirthdayService;
   readonly dailyRewardService?: DailyRewardService;
+  readonly participationStreakService?: ParticipationStreakService;
   readonly proactiveService?: ProactiveEngagementService;
   readonly delegatedPostService?: DelegatedPostService;
   readonly featureFlags?: Pick<FeatureFlagService, 'isEnabled' | 'set'>;
@@ -481,6 +483,12 @@ const handleCommandInternal = async (
           : 'Your daily reward has already been claimed, or participation is opted out.',
         true,
       );
+    }
+    case 'streak': {
+      if (!interaction.guildId || !dependencies.participationStreakService)
+        return replySafely(interaction, 'Participation streaks are not configured on this MuthaShip.', true);
+      const result = await dependencies.participationStreakService.record(interaction.guildId, interaction.user.id);
+      return replySafely(interaction, `Participation streak: ${result.current} day${result.current === 1 ? '' : 's'} (best ${result.longest}).`, true);
     }
     case 'birthday': {
       if (!interaction.guildId || !dependencies.birthdayService)

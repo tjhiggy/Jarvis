@@ -79,7 +79,7 @@ ambassador cards. Each item requires tests, documentation, retention and
 opt-out behavior, a Discord smoke test, and a tagged release before it is
 called shipped.
 
-The first implementation slice is daily rewards. It is not released until
+The first implementation slice is daily rewards, followed by participation streaks. These are not released until
 the command, migration, opt-out behavior, smoke test, and release evidence are
 complete.
 
