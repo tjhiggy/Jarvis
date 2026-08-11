@@ -37,6 +37,7 @@ describe('admin console', () => {
     expect(page).toContain('Jarvis Command Deck');
     expect(page).toContain('controlRss');
     expect(page).toContain('Pause');
+    expect(page).toContain('saving establishes a baseline');
     expect(page).not.toContain('api-key');
     await console.close();
   });

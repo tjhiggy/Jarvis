@@ -46,4 +46,26 @@ describe('RSS notifications', () => {
     ]);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+
+  it('canonicalizes item URLs and applies the requested parsed-entry bound', async () => {
+    const entries = Array.from(
+      { length: 25 },
+      (_, index) =>
+        `<item><guid>item-${index}</guid><title>Item ${index}</title><link>https://news.example.com/post/${index}/../${index}</link><pubDate>2026-08-11</pubDate></item>`,
+    ).join('');
+    const client = new RssNotificationClient(
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(`<rss><channel>${entries}</channel></rss>`),
+        ),
+      2_000,
+      ['news.example.com'],
+    );
+
+    const items = await client.fetch('https://news.example.com/feed.xml', 5);
+
+    expect(items).toHaveLength(5);
+    expect(items[0]).toMatchObject({ url: 'https://news.example.com/post/0' });
+  });
 });

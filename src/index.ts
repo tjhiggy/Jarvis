@@ -106,7 +106,8 @@ import {
 } from './engagement/member-profiles.js';
 import { RssStorage } from './notifications/rss-storage.js';
 import { RssNotificationClient } from './notifications/rss-notifications.js';
-import { RssScheduler } from './notifications/rss-scheduler.js';
+import { RssScheduler, type RssDigest } from './notifications/rss-scheduler.js';
+import { BroadcastPolicyService } from './notifications/broadcast-policy.js';
 import type { BroadcastStore } from './notifications/broadcast-store.js';
 import { SqliteBroadcastStore } from './notifications/sqlite-broadcast-store.js';
 import { HttpGitHubReadOnlyService } from './github/github-service.js';
@@ -129,10 +130,7 @@ interface RuntimeDiscordClient {
   destroy(): void;
 }
 
-type BroadcastPreferenceStore = Pick<
-  BroadcastStore,
-  'getMemberPreference' | 'setMemberPreference'
-> & { close(): Promise<void> };
+type BroadcastPreferenceStore = BroadcastStore & { close(): Promise<void> };
 
 interface IntroductionChannel {
   send(
@@ -724,6 +722,23 @@ export const createApplication = async (
     const ai = aiFactory(config);
     client = discordFactory();
     if (rssStorage !== undefined && config.engagement.channels.rssId !== '') {
+      const rssBroadcastStore = initializedBroadcastStore;
+      const existingRssPolicy = await rssBroadcastStore.getPolicy(
+        config.discord.guildId,
+        'rss',
+      );
+      if (existingRssPolicy === undefined) {
+        await rssBroadcastStore.setPolicy({
+          serverId: config.discord.guildId,
+          category: 'rss',
+          state: 'enabled',
+          channelId: config.engagement.channels.rssId,
+          timezone: 'UTC',
+          minimumIntervalSeconds: 0,
+          digestMode: true,
+          updatedAt: new Date(),
+        });
+      }
       rssScheduler = new RssScheduler(
         rssStorage,
         new RssNotificationClient(
@@ -732,7 +747,7 @@ export const createApplication = async (
           config.engagement.rssAllowedHosts,
         ),
         {
-          publish: async (channelId, item) => {
+          publish: async (channelId, digest) => {
             const channels = client?.channels;
             if (channels === undefined)
               throw new Error('Discord channels are unavailable.');
@@ -747,13 +762,17 @@ export const createApplication = async (
             )
               throw new Error('Configured RSS channel is unavailable.');
             await sendable.send({
-              content: `**${item.title}**\n${item.url}`,
+              content: formatRssDigest(digest),
               allowedMentions: { parse: [], repliedUser: false },
             });
           },
         },
         config.discord.guildId,
         config.engagement.channels.rssId,
+        new BroadcastPolicyService(rssBroadcastStore, [
+          config.engagement.channels.rssId,
+        ]),
+        rssBroadcastStore,
       );
       rssScheduler.start();
     }
@@ -1057,7 +1076,7 @@ export const createApplication = async (
                     fetch,
                     8_000,
                     config.engagement.rssAllowedHosts,
-                  ).fetch(url),
+                  ).fetch(url, 5),
               },
         snapshot: async () => {
           const rows =
@@ -1471,6 +1490,19 @@ export const createApplication = async (
     throw error;
   }
 };
+
+const formatRssDigest = (digest: RssDigest): string => {
+  const summary = digest.entries
+    .map(
+      (entry) =>
+        `**${boundedRssText(entry.sourceLabel, 80)}** · ${boundedRssText(entry.title, 280)}\n${entry.url}\n${boundedRssText(entry.publishedAt, 100)}`,
+    )
+    .join('\n\n');
+  return `**RSS update**\n${summary}`.slice(0, 1_900);
+};
+
+const boundedRssText = (value: string, limit: number): string =>
+  value.replace(/\s+/g, ' ').trim().slice(0, limit);
 
 type MemberProfileCapableRepository = Required<
   Pick<

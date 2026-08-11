@@ -17,4 +17,22 @@ describe('RssStorage', () => {
     storage.setPaused('server-a', true);
     expect(storage.isPaused('server-a')).toBe(true);
   });
+
+  it('records a durable baseline before a new feed can publish entries', () => {
+    const storage = new RssStorage(':memory:');
+    const url = 'https://news.example.com/feed.xml';
+
+    storage.addFeed('server-a', url, 'News');
+    expect(storage.listFeeds('server-a')).toEqual([
+      expect.objectContaining({ baselined: false }),
+    ]);
+
+    storage.establishBaseline('server-a', url, ['item-a', 'item-b']);
+
+    expect(storage.listFeeds('server-a')).toEqual([
+      expect.objectContaining({ baselined: true }),
+    ]);
+    expect(storage.isBaselineItem('server-a', url, 'item-a')).toBe(true);
+    expect(storage.isBaselineItem('server-a', url, 'item-c')).toBe(false);
+  });
 });
