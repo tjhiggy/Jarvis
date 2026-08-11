@@ -44,6 +44,13 @@ export interface EngagementCardDeletion {
 }
 
 export interface EngagementRepository extends Partial<PlatformMetricsRepository> {
+  claimDailyReward?(
+    guildId: string,
+    userId: string,
+    day: string,
+    claimedAt: Date,
+  ): Promise<boolean>;
+  isEngagementOptedOut?(guildId: string, userId: string): Promise<boolean>;
   getMemberProfile?(
     serverId: string,
     userId: string,

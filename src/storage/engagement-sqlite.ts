@@ -1853,6 +1853,44 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     }
   }
 
+  async claimDailyReward(
+    guildId: string,
+    userId: string,
+    day: string,
+    claimedAt: Date,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    validateIdentifier('guildId', guildId);
+    validateIdentifier('userId', userId);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day))
+      throw new RangeError('Invalid reward day.');
+    try {
+      this.database
+        .prepare(
+          'INSERT INTO engagement_daily_rewards (guild_id,user_id,reward_day,amount,claimed_at) VALUES (?,?,?,?,?)',
+        )
+        .run(guildId, userId, day, 10, milliseconds(claimedAt));
+      return true;
+    } catch (error) {
+      if (isConstraint(error)) return false;
+      throw error;
+    }
+  }
+
+  async isEngagementOptedOut(
+    guildId: string,
+    userId: string,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          'SELECT 1 FROM engagement_opt_outs WHERE guild_id = ? AND user_id = ?',
+        )
+        .get(guildId, userId) !== undefined
+    );
+  }
+
   async cleanup(cutoff: Date, limit: number): Promise<number> {
     this.ensureOpen();
     if (!Number.isSafeInteger(limit) || limit < 0)
@@ -1871,6 +1909,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         `DELETE FROM engagement_idempotency_keys WHERE rowid IN (SELECT rowid FROM engagement_idempotency_keys WHERE created_at < ? ORDER BY created_at ASC, key ASC LIMIT ?)`,
         `DELETE FROM engagement_recap_runs WHERE rowid IN (SELECT rowid FROM engagement_recap_runs WHERE coalesce(completed_at, claimed_at) < ? ORDER BY coalesce(completed_at, claimed_at) ASC, guild_id ASC, run_key ASC LIMIT ?)`,
         `DELETE FROM engagement_operational_audit WHERE rowid IN (SELECT rowid FROM engagement_operational_audit WHERE created_at < ? ORDER BY created_at ASC, guild_id ASC, id ASC LIMIT ?)`,
+        `DELETE FROM engagement_daily_rewards WHERE rowid IN (SELECT rowid FROM engagement_daily_rewards WHERE claimed_at < ? ORDER BY claimed_at ASC, guild_id ASC, user_id ASC, reward_day ASC LIMIT ?)`,
       ]) {
         if (remaining === 0) break;
         const result = this.database
@@ -2138,6 +2177,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           "CREATE TABLE IF NOT EXISTS engagement_member_profiles (server_id TEXT NOT NULL, user_id TEXT NOT NULL, bio TEXT, interests TEXT, visibility TEXT NOT NULL CHECK (visibility IN ('visible','hidden')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (server_id, user_id)); CREATE INDEX IF NOT EXISTS engagement_member_profiles_visibility ON engagement_member_profiles (server_id, visibility, updated_at);",
         );
         this.recordMigration(25);
+      }
+      if (!this.hasMigration(26)) {
+        this.database.exec(
+          'CREATE TABLE IF NOT EXISTS engagement_daily_rewards (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, reward_day TEXT NOT NULL, amount INTEGER NOT NULL CHECK (amount > 0), claimed_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id, reward_day)); CREATE INDEX IF NOT EXISTS engagement_daily_rewards_retention ON engagement_daily_rewards (claimed_at, guild_id, user_id);',
+        );
+        this.recordMigration(26);
       }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",

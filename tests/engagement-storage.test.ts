@@ -40,6 +40,7 @@ describe('SQLiteEngagementRepository', () => {
       'engagement_birthday_announcements',
       'engagement_birthdays',
       'engagement_card_deletions',
+      'engagement_daily_rewards',
       'engagement_events',
       'engagement_feature_flags',
       'engagement_idempotency_keys',

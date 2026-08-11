@@ -20,7 +20,7 @@
 
 ## v0.9 Slice Order
 
-1. **Daily rewards foundation (#22)**: atomic once-per-day claim, bounded reward, opt-out, retention, `/daily`, and aggregate audit.
+1. **Daily rewards foundation (#22)**: atomic once-per-day claim, bounded reward, existing engagement opt-out, retention, `/daily`, and aggregate audit.
 2. **Participation streaks (#14)**: derive streaks from qualifying activity without message content, anti-spam caps, reset behavior, and `/streak`.
 3. **Member profile cards (#9)**: opt-in profile display, server identity resolution, private edit/delete, and Command Deck visibility.
 4. **Game roles (#45)**: allowlisted self-service role toggles with hierarchy checks and no role creation.
@@ -54,7 +54,7 @@
 - [ ] Write failing tests for `/daily` success, duplicate claim, opt-out, safe private response, and bounded reward output.
 - [ ] Run the focused test and confirm it fails for the missing service/command.
 - [ ] Implement `DailyRewardService.claim(serverId, memberId, now)` with deterministic UTC day keys and repository idempotency.
-- [ ] Register `/daily` plus `/daily opt-out` and `/daily opt-in`; keep responses concise and private where balance details appear.
+- [ ] Register `/daily`; reuse the existing engagement opt-out and deletion paths, and keep responses concise and private where reward details appear.
 - [ ] Rerun focused tests and confirm green.
 
 ### Task 3: Documentation, release evidence, and PR

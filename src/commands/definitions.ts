@@ -374,6 +374,7 @@ export interface CommandDefinition {
     | 'recap'
     | 'trivia'
     | 'engagement'
+    | 'daily'
     | 'birthday'
     | 'roles'
     | 'profile'
@@ -1406,6 +1407,11 @@ export const createCommandDefinitions = (
           ],
         },
       ],
+    },
+    {
+      type: 1,
+      name: 'daily',
+      description: "Claim today's bounded MuthaShip reward.",
     },
     {
       type: 1,
