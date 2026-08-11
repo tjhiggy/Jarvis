@@ -20,7 +20,7 @@ jobs:
       - name: Synchronize with Jarvis Delivery Board
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.JARVIS_PROJECT_TOKEN || github.token }}
+          github-token: ${{ secrets.JARVIS_PROJECT_TOKEN }}
           script: |
             const content = context.payload.issue ?? context.payload.pull_request;
             if (!content) return core.info('No issue or pull request payload.');
