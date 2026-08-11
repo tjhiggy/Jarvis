@@ -223,7 +223,7 @@ export const startAdminConsole = (options: {
   const server = createServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
     const broadcastMatch =
-      /^\/api\/broadcast\/(rss|proactive|recap|event_reminder|birthday)\/(confirmation|pause|resume)$/.exec(
+      /^\/api\/broadcast\/(rss|proactive|recap|event_reminder|birthday|trivia)\/(confirmation|pause|resume)$/.exec(
         path,
       );
     if (request.method === 'POST' && broadcastMatch !== null) {

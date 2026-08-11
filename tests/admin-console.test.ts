@@ -309,6 +309,18 @@ describe('admin console', () => {
     expect((await pause()).status).toBe(409);
     expect(writes).toEqual([{ category: 'rss', state: 'paused' }]);
 
+    const triviaConfirmation = await fetch(
+      `${base}/api/broadcast/trivia/confirmation`,
+      {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer local-token',
+          'x-broadcast-action': 'pause',
+        },
+      },
+    );
+    expect(triviaConfirmation.status).toBe(403);
+
     const expires = await fetch(`${base}/api/broadcast/rss/confirmation`, {
       method: 'POST',
       headers: {

@@ -13,8 +13,8 @@ inspection of user message content.
 Use `/notifications status` privately to view your own event-reminder and
 birthday preference. `/notifications enable category:<category>` and
 `disable` change only that crew member's durable preference. RSS, proactive,
-and recap are public channel broadcasts and correctly redirect members to an
-administrator rather than offering a cosmetic no-op.
+recap, and trivia result cards are public channel broadcasts and correctly
+redirect members to an administrator rather than offering a cosmetic no-op.
 
 Open the local Command Deck only from the host. The Shipboard Broadcasts card
 shows category state, friendly destination, quiet hours, cadence, next

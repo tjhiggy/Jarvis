@@ -131,6 +131,21 @@ describe('RssScheduler', () => {
     );
   });
 
+  it('does not start a new tick after stop', async () => {
+    const storage = readyStorage();
+    const client = { fetch: vi.fn().mockResolvedValue([item('after-stop')]) };
+    const scheduler = schedulerFor(
+      storage,
+      client,
+      { publish: vi.fn().mockResolvedValue(undefined) },
+      'server',
+    );
+
+    await scheduler.stop();
+    await expect(scheduler.tick()).resolves.toBe(0);
+    expect(client.fetch).not.toHaveBeenCalled();
+  });
+
   it('suppresses entries after twenty completed RSS items on a UTC day', async () => {
     const storage = readyStorage();
     const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
@@ -434,6 +449,48 @@ describe('RssScheduler', () => {
     expect(publisher.publish).not.toHaveBeenCalled();
     expect(delivery.completeDelivery).not.toHaveBeenCalled();
     expect(delivery.releaseDelivery).toHaveBeenCalledTimes(5);
+  });
+  it('safe-logs an interval tick failure instead of leaking a rejected callback', async () => {
+    let interval: (() => void) | undefined;
+    const warnings: Array<Record<string, string>> = [];
+    const setIntervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((
+      callback: () => void,
+    ) => {
+      interval = callback;
+      return 1 as unknown as ReturnType<typeof setInterval>;
+    }) as typeof setInterval);
+    const clearIntervalSpy = vi
+      .spyOn(global, 'clearInterval')
+      .mockImplementation(() => undefined);
+    try {
+      const scheduler = new RssScheduler(
+        readyStorage(),
+        { fetch: async () => [] },
+        { publish: async () => undefined },
+        'server',
+        'channel-1',
+        { evaluate: async () => Promise.reject(new Error('secret feed text')) },
+        deliveryStore(),
+        () => new Date(),
+        { warn: (fields) => warnings.push(fields) },
+      );
+
+      scheduler.start();
+      interval?.();
+      await new Promise(setImmediate);
+
+      expect(warnings).toEqual([
+        expect.objectContaining({
+          operation: 'rss_tick',
+          errorClass: 'Error',
+        }),
+      ]);
+      expect(JSON.stringify(warnings)).not.toContain('secret feed text');
+      await scheduler.stop();
+    } finally {
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    }
   });
 });
 

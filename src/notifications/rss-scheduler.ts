@@ -5,6 +5,7 @@ import type {
 import type { RssStorage, RssFeedRecord } from './rss-storage.js';
 import type { BroadcastPolicyService } from './broadcast-policy.js';
 import type { BroadcastStore } from './broadcast-store.js';
+import { projectOperationalError } from '../utils/logger.js';
 
 export interface RssDigestEntry extends RssNotification {
   readonly sourceLabel: string;
@@ -52,7 +53,8 @@ export const renderRssDigest = (digest: RssDigest): RssRenderedDigest => {
 
 export class RssScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
-  private active = false;
+  private activeTick: Promise<number> | undefined;
+  private acceptingTicks = true;
   constructor(
     private readonly storage: Pick<
       RssStorage,
@@ -76,12 +78,21 @@ export class RssScheduler {
       'getPolicy' | 'claimDelivery' | 'completeDelivery' | 'releaseDelivery'
     >,
     private readonly now: () => Date = () => new Date(),
+    private readonly logger?: {
+      warn(fields: Record<string, string>, message: string): void;
+    },
   ) {}
   async tick(): Promise<number> {
-    if (this.active || !this.channelId || this.storage.isPaused(this.serverId))
-      return 0;
-    this.active = true;
-    try {
+    if (this.activeTick !== undefined) return this.activeTick;
+    if (!this.acceptingTicks) return 0;
+    if (!this.channelId || this.storage.isPaused(this.serverId)) return 0;
+    this.activeTick = this.runTick().finally(() => {
+      this.activeTick = undefined;
+    });
+    return this.activeTick;
+  }
+  private runTick(): Promise<number> {
+    return (async () => {
       const startedAt = this.now();
       const decision = await this.policy.evaluate({
         serverId: this.serverId,
@@ -300,19 +311,29 @@ export class RssScheduler {
         }
       }
       return published;
-    } finally {
-      this.active = false;
-    }
+    })();
   }
   start(intervalMs = 300_000): void {
     if (this.timer !== undefined) return;
+    this.acceptingTicks = true;
     this.timer = setInterval(() => {
-      void this.tick();
+      if (this.timer === undefined) return;
+      void this.tick().catch((error: unknown) =>
+        this.logger?.warn(
+          {
+            operation: 'rss_tick',
+            ...projectOperationalError(error, 'rss_scheduler'),
+          },
+          'RSS scheduler tick failed.',
+        ),
+      );
     }, intervalMs);
   }
-  stop(): void {
+  async stop(): Promise<void> {
+    this.acceptingTicks = false;
     if (this.timer !== undefined) clearInterval(this.timer);
     this.timer = undefined;
+    await this.activeTick?.catch(() => undefined);
   }
 }
 

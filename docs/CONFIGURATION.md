@@ -79,8 +79,8 @@ explicit configured RSS channel. A persisted policy may name only a configured
 destination; it cannot add a new channel. Startup creates a missing policy for
 each configured category. RSS starts enabled in UTC with digest mode on and no
 minimum interval. Proactive starts enabled in UTC with quiet hours from 23:00
-through 08:00 and a six-hour minimum interval. Recap, event-reminder, and
-birthday policies start enabled using `ENGAGEMENT_RECAP_TIMEZONE`, with no
+through 08:00 and a six-hour minimum interval. Recap, event-reminder, birthday,
+and trivia policies start enabled using `ENGAGEMENT_RECAP_TIMEZONE`, with no
 quiet period or cadence interval. Existing policy rows survive restart.
 
 Quiet hours use the policy's IANA timezone. A start equal to the end means no

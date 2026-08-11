@@ -653,7 +653,16 @@ export const createApplication = async (
           );
         }
       }
-      rssScheduler?.stop();
+      if (rssScheduler !== undefined) {
+        try {
+          await rssScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'rss_scheduler_shutdown'),
+            'RSS scheduler stop failed during shutdown.',
+          );
+        }
+      }
       if (rssStorage !== undefined) {
         try {
           rssStorage.close();
@@ -888,6 +897,8 @@ export const createApplication = async (
           },
         ),
         rssBroadcastStore,
+        () => new Date(),
+        { warn: (fields, message) => logger?.warn(fields, message) },
       );
       rssScheduler.start();
     }
@@ -1310,6 +1321,7 @@ export const createApplication = async (
                   recap: recapScheduler?.healthy === true,
                   eventReminder: eventScheduler?.healthy === true,
                   birthday: birthdayScheduler?.healthy === true,
+                  trivia: triviaScheduler?.healthy === true,
                 },
               );
               return broadcastCard(
@@ -1684,9 +1696,18 @@ export const createApplication = async (
         },
       });
 
+    if (
+      triviaService !== undefined &&
+      config.engagement.channels.activityId !== ''
+    )
+      await ensureScheduledBroadcastPolicy(
+        'trivia',
+        config.engagement.channels.activityId,
+      );
     if (triviaService !== undefined)
       triviaScheduler = new TriviaExpiryScheduler({
         service: triviaService,
+        policy: scheduledBroadcastPolicy,
         isPaused: (guildId) =>
           engagementRepository?.engagementPaused?.(guildId) ??
           Promise.resolve(true),
@@ -1697,7 +1718,9 @@ export const createApplication = async (
             );
             if (!isEventChannel(channel))
               throw new Error('Configured activity channel is unavailable.');
-            await channel.send(buildTriviaResultsCard(results));
+            await runBroadcastDelivery('trivia', () =>
+              channel.send(buildTriviaResultsCard(results)),
+            );
           },
         },
         logger: {
@@ -1812,6 +1835,12 @@ const configuredBroadcasts = (config: AppConfig) =>
       label: 'Birthday watch',
       destination: '#crew-birthdays',
     },
+    {
+      category: 'trivia' as const,
+      channelId: config.engagement.channels.activityId,
+      label: 'Trivia results',
+      destination: '#crew-activity',
+    },
   ].filter(({ channelId }) => channelId !== '');
 
 const broadcastRuntimeAvailable = (
@@ -1822,6 +1851,7 @@ const broadcastRuntimeAvailable = (
     recap: boolean;
     eventReminder: boolean;
     birthday: boolean;
+    trivia: boolean;
   }>,
 ): boolean =>
   ({
@@ -1830,6 +1860,7 @@ const broadcastRuntimeAvailable = (
     recap: runtime.recap,
     event_reminder: runtime.eventReminder,
     birthday: runtime.birthday,
+    trivia: runtime.trivia,
   })[category];
 
 const broadcastCard = (

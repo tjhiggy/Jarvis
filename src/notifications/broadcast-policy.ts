@@ -1,7 +1,7 @@
 import type { BroadcastStore } from './broadcast-store.js';
 
 export type BroadcastCategory =
-  'rss' | 'proactive' | 'recap' | 'event_reminder' | 'birthday';
+  'rss' | 'proactive' | 'recap' | 'event_reminder' | 'birthday' | 'trivia';
 
 export type BroadcastDecision =
   | { readonly allowed: true }

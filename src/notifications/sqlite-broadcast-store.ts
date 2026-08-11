@@ -41,7 +41,14 @@ interface DeliveryRow {
 }
 
 const leaseDurationMilliseconds = 5 * 60 * 1000;
-const categories = ['rss', 'proactive', 'recap', 'event_reminder', 'birthday'];
+const categories = [
+  'rss',
+  'proactive',
+  'recap',
+  'event_reminder',
+  'birthday',
+  'trivia',
+];
 const states = ['enabled', 'paused', 'disabled'];
 const errorCategories = ['network', 'permission', 'rate_limit', 'service'];
 
@@ -387,11 +394,10 @@ export class SqliteBroadcastStore implements BroadcastStore {
           'SELECT version FROM broadcast_schema_migrations WHERE version = 1',
         )
         .get();
-      if (applied !== undefined) return;
-
-      this.database
-        .prepare(
-          `
+      if (applied === undefined) {
+        this.database
+          .prepare(
+            `
             CREATE TABLE broadcast_policies (
               server_id TEXT NOT NULL,
               category TEXT NOT NULL CHECK (category IN (
@@ -417,11 +423,11 @@ export class SqliteBroadcastStore implements BroadcastStore {
               CHECK (minimum_interval_seconds >= 0)
             )
           `,
-        )
-        .run();
-      this.database
-        .prepare(
-          `
+          )
+          .run();
+        this.database
+          .prepare(
+            `
             CREATE TABLE broadcast_delivery_runs (
               server_id TEXT NOT NULL,
               category TEXT NOT NULL CHECK (category IN (
@@ -438,11 +444,11 @@ export class SqliteBroadcastStore implements BroadcastStore {
               PRIMARY KEY (server_id, category, delivery_key)
             )
           `,
-        )
-        .run();
-      this.database
-        .prepare(
-          `
+          )
+          .run();
+        this.database
+          .prepare(
+            `
             CREATE TABLE member_notification_preferences (
               server_id TEXT NOT NULL,
               user_id TEXT NOT NULL,
@@ -454,11 +460,105 @@ export class SqliteBroadcastStore implements BroadcastStore {
               PRIMARY KEY (server_id, user_id, category)
             )
           `,
+          )
+          .run();
+        this.database
+          .prepare(
+            'INSERT INTO broadcast_schema_migrations (version, applied_at) VALUES (1, ?)',
+          )
+          .run(Date.now());
+      }
+
+      const triviaCategoryMigration = this.database
+        .prepare(
+          'SELECT version FROM broadcast_schema_migrations WHERE version = 2',
         )
-        .run();
+        .get();
+      if (triviaCategoryMigration !== undefined) return;
+
+      this.database.exec(`
+        ALTER TABLE broadcast_policies RENAME TO broadcast_policies_v1;
+        ALTER TABLE broadcast_delivery_runs RENAME TO broadcast_delivery_runs_v1;
+        ALTER TABLE member_notification_preferences RENAME TO member_notification_preferences_v1;
+        CREATE TABLE broadcast_policies (
+          server_id TEXT NOT NULL,
+          category TEXT NOT NULL CHECK (category IN (
+            'rss', 'proactive', 'recap', 'event_reminder', 'birthday', 'trivia'
+          )),
+          state TEXT NOT NULL CHECK (state IN ('enabled', 'paused', 'disabled')),
+          channel_id TEXT NOT NULL,
+          timezone TEXT NOT NULL,
+          quiet_start_minute INTEGER,
+          quiet_end_minute INTEGER,
+          minimum_interval_seconds INTEGER NOT NULL,
+          digest_mode INTEGER NOT NULL CHECK (digest_mode IN (0, 1)),
+          updated_at INTEGER NOT NULL,
+          updated_by_user_id TEXT,
+          PRIMARY KEY (server_id, category),
+          CHECK (
+            (quiet_start_minute IS NULL AND quiet_end_minute IS NULL)
+            OR (
+              quiet_start_minute BETWEEN 0 AND 1439
+              AND quiet_end_minute BETWEEN 0 AND 1439
+            )
+          ),
+          CHECK (minimum_interval_seconds >= 0)
+        );
+        INSERT INTO broadcast_policies (
+          server_id, category, state, channel_id, timezone,
+          quiet_start_minute, quiet_end_minute, minimum_interval_seconds,
+          digest_mode, updated_at, updated_by_user_id
+        ) SELECT
+          server_id, category, state, channel_id, timezone,
+          quiet_start_minute, quiet_end_minute, minimum_interval_seconds,
+          digest_mode, updated_at, updated_by_user_id
+        FROM broadcast_policies_v1;
+        DROP TABLE broadcast_policies_v1;
+
+        CREATE TABLE broadcast_delivery_runs (
+          server_id TEXT NOT NULL,
+          category TEXT NOT NULL CHECK (category IN (
+            'rss', 'proactive', 'recap', 'event_reminder', 'birthday', 'trivia'
+          )),
+          delivery_key TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'claimed', 'completed')),
+          lease_token TEXT,
+          claimed_at INTEGER,
+          completed_at INTEGER,
+          error_category TEXT CHECK (error_category IN (
+            'network', 'permission', 'rate_limit', 'service'
+          ) OR error_category IS NULL),
+          PRIMARY KEY (server_id, category, delivery_key)
+        );
+        INSERT INTO broadcast_delivery_runs (
+          server_id, category, delivery_key, status, lease_token, claimed_at,
+          completed_at, error_category
+        ) SELECT
+          server_id, category, delivery_key, status, lease_token, claimed_at,
+          completed_at, error_category
+        FROM broadcast_delivery_runs_v1;
+        DROP TABLE broadcast_delivery_runs_v1;
+
+        CREATE TABLE member_notification_preferences (
+          server_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          category TEXT NOT NULL CHECK (category IN (
+            'rss', 'proactive', 'recap', 'event_reminder', 'birthday', 'trivia'
+          )),
+          enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY (server_id, user_id, category)
+        );
+        INSERT INTO member_notification_preferences (
+          server_id, user_id, category, enabled, updated_at
+        ) SELECT
+          server_id, user_id, category, enabled, updated_at
+        FROM member_notification_preferences_v1;
+        DROP TABLE member_notification_preferences_v1;
+      `);
       this.database
         .prepare(
-          'INSERT INTO broadcast_schema_migrations (version, applied_at) VALUES (1, ?)',
+          'INSERT INTO broadcast_schema_migrations (version, applied_at) VALUES (2, ?)',
         )
         .run(Date.now());
     })();

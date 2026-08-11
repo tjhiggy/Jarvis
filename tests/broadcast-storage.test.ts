@@ -34,6 +34,33 @@ describe('SqliteBroadcastStore', () => {
     await reopened.close();
   });
 
+  it('migrates broadcast storage so trivia policy and delivery fencing are durable', async () => {
+    const path = await databasePath(directories);
+    const store = new SqliteBroadcastStore(path);
+    await store.setPolicy(
+      policy({ category: 'trivia', channelId: 'activity' }),
+    );
+    const lease = await store.claimDelivery(
+      'server',
+      'trivia',
+      'round-1',
+      date(0),
+    );
+    await store.close();
+
+    const reopened = new SqliteBroadcastStore(path);
+    await expect(reopened.getPolicy('server', 'trivia')).resolves.toMatchObject(
+      {
+        state: 'enabled',
+        channelId: 'activity',
+      },
+    );
+    await expect(
+      reopened.completeDelivery('server', 'trivia', 'round-1', lease!, date(1)),
+    ).resolves.toBe(true);
+    await reopened.close();
+  });
+
   it('persists member preferences and never removes them during delivery cleanup', async () => {
     const store = new SqliteBroadcastStore(await databasePath(directories));
     const now = date(0);
