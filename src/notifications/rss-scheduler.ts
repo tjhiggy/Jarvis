@@ -60,8 +60,10 @@ export class RssScheduler {
       | 'isPaused'
       | 'establishBaseline'
       | 'isBaselineItem'
-      | 'hasReachedDailyDeliveryLimit'
-      | 'recordCompletedItem'
+      | 'remainingDailyDeliveryCapacity'
+      | 'reserveDailyDelivery'
+      | 'completeDailyDelivery'
+      | 'releaseDailyDelivery'
     >,
     private readonly client: Pick<RssNotificationClient, 'fetch'>,
     private readonly publisher: RssSchedulerPublisher,
@@ -91,6 +93,11 @@ export class RssScheduler {
       const digestMode =
         (await this.deliveryStore.getPolicy(this.serverId, 'rss'))
           ?.digestMode ?? true;
+      const cycleCapacity = Math.min(
+        5,
+        this.storage.remainingDailyDeliveryCapacity(this.serverId, startedAt),
+      );
+      if (cycleCapacity === 0) return 0;
       const claimed: Array<{
         readonly key: string;
         readonly lease: string;
@@ -116,11 +123,7 @@ export class RssScheduler {
           continue;
         }
         for (const item of items) {
-          if (
-            claimed.length >= 5 ||
-            this.storage.hasReachedDailyDeliveryLimit(this.serverId, startedAt)
-          )
-            break;
+          if (claimed.length >= cycleCapacity) break;
           if (this.storage.isBaselineItem(this.serverId, feed.url, item.id))
             continue;
           const key = `${feed.url}:${item.id}`;
@@ -131,17 +134,30 @@ export class RssScheduler {
             startedAt,
           );
           if (lease === undefined) continue;
+          if (
+            !this.storage.reserveDailyDelivery(
+              this.serverId,
+              key,
+              lease,
+              startedAt,
+            )
+          ) {
+            await this.deliveryStore.releaseDelivery(
+              this.serverId,
+              'rss',
+              key,
+              lease,
+              this.now(),
+            );
+            continue;
+          }
           claimed.push({
             key,
             lease,
             entry: { ...item, sourceLabel: feed.label, deliveryKey: key },
           });
         }
-        if (
-          claimed.length >= 5 ||
-          this.storage.hasReachedDailyDeliveryLimit(this.serverId, startedAt)
-        )
-          break;
+        if (claimed.length >= cycleCapacity) break;
       }
       if (claimed.length === 0) return 0;
 
@@ -150,16 +166,17 @@ export class RssScheduler {
         errorCategory?: 'network',
       ): Promise<void> => {
         await Promise.all(
-          deliveries.map(({ key, lease }) =>
-            this.deliveryStore.releaseDelivery(
+          deliveries.map(async ({ key, lease }) => {
+            this.storage.releaseDailyDelivery(this.serverId, key, lease);
+            await this.deliveryStore.releaseDelivery(
               this.serverId,
               'rss',
               key,
               lease,
               this.now(),
               errorCategory,
-            ),
-          ),
+            );
+          }),
         );
       };
 
@@ -178,6 +195,12 @@ export class RssScheduler {
         delivery: (typeof claimed)[number],
       ): Promise<boolean> => {
         const completedAt = this.now();
+        this.storage.completeDailyDelivery(
+          this.serverId,
+          delivery.key,
+          delivery.lease,
+          completedAt,
+        );
         const completed = await this.deliveryStore.completeDelivery(
           this.serverId,
           'rss',
@@ -185,13 +208,6 @@ export class RssScheduler {
           delivery.lease,
           completedAt,
         );
-        if (completed) {
-          this.storage.recordCompletedItem(
-            this.serverId,
-            delivery.key,
-            completedAt,
-          );
-        }
         return completed;
       };
 

@@ -18,8 +18,10 @@ describe('RssScheduler', () => {
       isPaused: () => false,
       establishBaseline: vi.fn(),
       isBaselineItem: () => false,
-      hasReachedDailyDeliveryLimit: () => false,
-      recordCompletedItem: () => true,
+      remainingDailyDeliveryCapacity: () => 20,
+      reserveDailyDelivery: () => true,
+      completeDailyDelivery: () => true,
+      releaseDailyDelivery: () => true,
     };
     const client = {
       fetch: vi.fn().mockResolvedValue([
@@ -269,6 +271,43 @@ describe('RssScheduler', () => {
       'lease:https://news.example.com/feed.xml:too-large',
       expect.any(Date),
       undefined,
+    );
+  });
+
+  it('reserves only the two remaining daily RSS delivery slots before posting', async () => {
+    const storage = readyStorage();
+    const now = new Date('2026-08-11T12:00:00Z');
+    for (let index = 0; index < 18; index += 1) {
+      expect(
+        storage.recordCompletedItem('server', `completed-${index}`, now),
+      ).toBe(true);
+    }
+    const delivery = deliveryStore(true);
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([item('slot-1'), item('slot-2'), item('slot-3')]),
+      },
+      publisher,
+      'server',
+      undefined,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(2);
+
+    expect(delivery.claimDelivery).toHaveBeenCalledTimes(2);
+    expect(publisher.publish).toHaveBeenCalledWith(
+      'channel-1',
+      expect.objectContaining({
+        entries: [
+          expect.objectContaining({ id: 'slot-1' }),
+          expect.objectContaining({ id: 'slot-2' }),
+        ],
+      }),
     );
   });
 });
