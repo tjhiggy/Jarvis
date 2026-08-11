@@ -325,6 +325,25 @@ export class MemberProfileService {
   }
 }
 
+export const memberProfileRepositoryFromEngagement = (
+  repository: Required<
+    Pick<
+      import('./storage.js').EngagementRepository,
+      | 'getMemberProfile'
+      | 'createMemberProfile'
+      | 'updateMemberProfile'
+      | 'setMemberProfileVisibility'
+      | 'deleteMemberProfile'
+    >
+  >,
+): MemberProfileRepository => ({
+  get: repository.getMemberProfile.bind(repository),
+  create: repository.createMemberProfile.bind(repository),
+  update: repository.updateMemberProfile.bind(repository),
+  setVisibility: repository.setMemberProfileVisibility.bind(repository),
+  delete: repository.deleteMemberProfile.bind(repository),
+});
+
 const bounded = (value: string, maximum: number): string | null => {
   const trimmed = value.trim();
   if (trimmed === '') return null;
