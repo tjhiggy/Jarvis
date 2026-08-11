@@ -1,6 +1,9 @@
 # Local Admin Console
 
 Jarvis includes an optional localhost-only Command Deck at `http://127.0.0.1:8787`.
+The interface uses the MuthaShip visual language: dark space-console surfaces,
+purple navigation accents, and gold Jarvis identity cues. This is presentation
+only; it does not grant additional Discord permissions.
 Enable it with `ADMIN_CONSOLE_ENABLED=true`, then restart Jarvis. It is read-only:
 it reports platform health, providers, integrations, aggregate metrics, and the
 configured RSS feeds and pause state. It does not expose tokens, conversation
