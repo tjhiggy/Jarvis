@@ -48,6 +48,7 @@ describe('SQLiteEngagementRepository', () => {
       'engagement_member_profiles',
       'engagement_operational_audit',
       'engagement_opt_outs',
+      'engagement_participation_streaks',
       'engagement_preferences',
       'engagement_proactive_preferences',
       'engagement_recap_preferences',

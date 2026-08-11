@@ -1891,6 +1891,18 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     );
   }
 
+  async recordParticipationStreak(guildId: string, userId: string, day: string, at: Date): Promise<{ current: number; longest: number }> {
+    this.ensureOpen();
+    validateIdentifier('guildId', guildId); validateIdentifier('userId', userId);
+    const row = this.database.prepare('SELECT last_day,current_streak,longest_streak FROM engagement_participation_streaks WHERE guild_id=? AND user_id=?').get(guildId, userId) as {last_day:string; current_streak:number; longest_streak:number} | undefined;
+    if (row?.last_day === day) return { current: row.current_streak, longest: row.longest_streak };
+    const previous = new Date(`${day}T00:00:00.000Z`); previous.setUTCDate(previous.getUTCDate() - 1);
+    const current = row?.last_day === previous.toISOString().slice(0,10) ? row.current_streak + 1 : 1;
+    const longest = Math.max(row?.longest_streak ?? 0, current);
+    this.database.prepare('INSERT INTO engagement_participation_streaks (guild_id,user_id,last_day,current_streak,longest_streak,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(guild_id,user_id) DO UPDATE SET last_day=excluded.last_day,current_streak=excluded.current_streak,longest_streak=excluded.longest_streak,updated_at=excluded.updated_at').run(guildId,userId,day,current,longest,milliseconds(at));
+    return { current, longest };
+  }
+
   async cleanup(cutoff: Date, limit: number): Promise<number> {
     this.ensureOpen();
     if (!Number.isSafeInteger(limit) || limit < 0)
@@ -2183,6 +2195,10 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           'CREATE TABLE IF NOT EXISTS engagement_daily_rewards (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, reward_day TEXT NOT NULL, amount INTEGER NOT NULL CHECK (amount > 0), claimed_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id, reward_day)); CREATE INDEX IF NOT EXISTS engagement_daily_rewards_retention ON engagement_daily_rewards (claimed_at, guild_id, user_id);',
         );
         this.recordMigration(26);
+      }
+      if (!this.hasMigration(27)) {
+        this.database.exec('CREATE TABLE IF NOT EXISTS engagement_participation_streaks (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, last_day TEXT NOT NULL, current_streak INTEGER NOT NULL, longest_streak INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id,user_id)); CREATE INDEX IF NOT EXISTS engagement_participation_streaks_retention ON engagement_participation_streaks (updated_at,guild_id);');
+        this.recordMigration(27);
       }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",

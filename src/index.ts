@@ -111,6 +111,7 @@ import {
   DailyRewardService,
   dailyRewardStoreFromRepository,
 } from './engagement/daily-rewards.js';
+import { ParticipationStreakService, participationStreakStoreFromRepository } from './engagement/participation-streaks.js';
 import { FeatureFlagService } from './engagement/feature-flags.js';
 import {
   MemberProfileService,
@@ -537,6 +538,7 @@ export const createApplication = async (
   let proactiveService: ProactiveEngagementService | undefined;
   let memberProfileService: MemberProfileService | undefined;
   let dailyRewardService: DailyRewardService | undefined;
+  let participationStreakService: ParticipationStreakService | undefined;
   let triviaScheduler: TriviaExpiryScheduler | undefined;
   let engagementDeletionService: EngagementDeletionService | undefined;
   let client: RuntimeDiscordClient | undefined;
@@ -1040,6 +1042,10 @@ export const createApplication = async (
             birthdayStoreFromRepository(engagementRepository as any),
           )
         : undefined;
+    participationStreakService =
+      engagementRepository !== undefined && typeof engagementRepository.recordParticipationStreak === 'function' && typeof engagementRepository.isEngagementOptedOut === 'function'
+        ? new ParticipationStreakService(participationStreakStoreFromRepository(engagementRepository as Required<Pick<EngagementRepository, 'recordParticipationStreak' | 'isEngagementOptedOut'>>))
+        : undefined;
     dailyRewardService =
       engagementRepository !== undefined &&
       typeof engagementRepository.claimDailyReward === 'function' &&
@@ -1049,7 +1055,7 @@ export const createApplication = async (
               engagementRepository as Required<
                 Pick<
                   EngagementRepository,
-                  'claimDailyReward' | 'isEngagementOptedOut'
+                  'claimDailyReward' | 'isEngagementOptedOut' | 'recordParticipationStreak'
                 >
               >,
             ),
@@ -1792,6 +1798,7 @@ export const createApplication = async (
           }),
       ...(birthdayService === undefined ? {} : { birthdayService }),
       ...(dailyRewardService === undefined ? {} : { dailyRewardService }),
+      ...(participationStreakService === undefined ? {} : { participationStreakService }),
       ...(config.engagement.roleMenuChoices === undefined
         ? {}
         : { roleMenuChoices: config.engagement.roleMenuChoices }),
