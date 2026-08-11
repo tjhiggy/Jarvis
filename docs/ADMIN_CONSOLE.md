@@ -25,6 +25,9 @@ public MuthaShip card, and confirms or cancels. Confirmation is short-lived,
 single-use, and bound to the draft. Failed Discord delivery leaves the draft
 retryable. Audit logs retain operation, destination ID, time, and outcome only,
 never the message content. Discord `/post` remains the fallback workflow.
+If Discord cannot resolve a channel name during startup, the allowlisted
+destination remains selectable as `Approved channel N`; delivery still performs
+the normal live channel and permission checks before posting.
 
 The preview endpoint is `POST /api/rss/preview` with
 `{"url":"https://example.com/feed.xml"}` and a bearer token. Preview accepts

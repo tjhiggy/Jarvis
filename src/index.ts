@@ -132,6 +132,7 @@ import {
   type AdminConsole,
   type AdminConsoleBroadcastCategory,
 } from './admin/admin-console.js';
+import { resolveAdminPostChannels } from './admin/admin-post-channels.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -1222,25 +1223,19 @@ export const createApplication = async (
         },
       });
     if (config.adminConsole?.enabled) {
-      const adminPostChannels = (
-        await Promise.all(
-          [...config.security.allowedChannelIds].map(async (channelId) => {
-            const channel = await client?.channels?.fetch(channelId);
-            if (!isEventChannel(channel)) return undefined;
-            const label =
-              typeof channel === 'object' &&
-              channel !== null &&
-              'name' in channel &&
-              typeof channel.name === 'string' &&
-              channel.name.trim() !== ''
-                ? channel.name.trim()
-                : `approved-channel-${channelId.slice(-4)}`;
-            return { id: channelId, label };
-          }),
-        )
-      ).filter(
-        (channel): channel is { id: string; label: string } =>
-          channel !== undefined,
+      const adminPostChannels = await resolveAdminPostChannels(
+        [...config.security.allowedChannelIds],
+        async (channelId) => {
+          const channel = await client?.channels?.fetch(channelId);
+          if (!isEventChannel(channel)) return undefined;
+          return typeof channel === 'object' &&
+            channel !== null &&
+            'name' in channel &&
+            typeof channel.name === 'string' &&
+            channel.name.trim() !== ''
+            ? channel.name.trim()
+            : undefined;
+        },
       );
       adminConsole = await startAdminConsole({
         port: config.adminConsole.port,
