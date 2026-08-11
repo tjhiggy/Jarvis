@@ -24,13 +24,20 @@ jobs:
           script: |
             const content = context.payload.issue ?? context.payload.pull_request;
             if (!content) return core.info('No issue or pull request payload.');
-            const projectData = await github.graphql(`
+            let projectData;
+            try {
+              projectData = await github.graphql(`
               query($owner:String!, $number:Int!) {
                 user(login:$owner) { projectV2(number:$number) {
                   id fields(first:100) { nodes { ... on ProjectV2Field { id name } ... on ProjectV2SingleSelectField { id name options { id name } } } }
                   items(first:100) { nodes { id content { ... on Issue { id } ... on PullRequest { id } } } }
                 } }
               }`, { owner: 'tjhiggy', number: 1 });
+            } catch (error) {
+              core.warning('Project sync skipped: configure JARVIS_PROJECT_TOKEN with the project scope for the user-owned Delivery Board.');
+              core.debug(String(error));
+              return;
+            }
             const project = projectData.user.projectV2;
             if (!project) throw new Error('Jarvis Delivery Board was not found.');
             const fields = new Map(project.fields.nodes.map((field) => [field.name, field]));
