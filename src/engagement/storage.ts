@@ -317,6 +317,13 @@ export interface EngagementRepository extends Partial<PlatformMetricsRepository>
     leaseToken: string,
     now: Date,
   ): Promise<boolean>;
+  releaseEventReminder?(
+    eventId: string,
+    guildId: string,
+    userId: string,
+    leaseToken: string,
+    now: Date,
+  ): Promise<boolean>;
   getOptOut(
     guildId: string,
     userId: string,

@@ -165,6 +165,76 @@ describe('reportStartupFailure', () => {
 });
 
 describe('createApplication', () => {
+  it('provisions shared policy for recap, event reminders, and birthdays before starting their schedulers', async () => {
+    const policies: BroadcastPolicy[] = [];
+    const application = await createTestApplication({
+      loadConfig: () => ({
+        ...config,
+        security: {
+          ...config.security,
+          allowedChannelIds: new Set(['recaps', 'events', 'birthdays']),
+        },
+        engagement: {
+          ...config.engagement,
+          enabled: true,
+          channels: {
+            ...config.engagement.channels,
+            recapId: 'recaps',
+            eventId: 'events',
+            birthdayId: 'birthdays',
+          },
+          recapSchedule: 'MONDAY 12:00',
+        },
+      }),
+      loadPersona: async () => ({}) as TrustedPersona,
+      createEngagementRepository: () =>
+        ({
+          getFeatureFlags: async () => [],
+          setFeatureFlag: async () => undefined,
+          getBirthday: async () => undefined,
+          saveBirthday: async (record: any) => record,
+          deleteBirthday: async () => false,
+          listDueBirthdays: async () => [],
+          claimBirthdayAnnouncement: async () => false,
+          engagementPaused: async () => false,
+          cleanup: async () => 0,
+          closeConnection: async () => undefined,
+        }) as any,
+      createBroadcastStore: () =>
+        broadcastStore({
+          getPolicy: async (_serverId, category) =>
+            policies.find((policy) => policy.category === category),
+          setPolicy: async (policy) => {
+            policies.push(policy);
+          },
+        }),
+      createStore: () => conversationStore(),
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: () => undefined,
+        login: async () => undefined,
+        destroy: () => undefined,
+      }),
+      timers: inertTimers(),
+    });
+
+    expect(policies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: 'recap', channelId: 'recaps' }),
+        expect.objectContaining({
+          category: 'event_reminder',
+          channelId: 'events',
+        }),
+        expect.objectContaining({
+          category: 'birthday',
+          channelId: 'birthdays',
+        }),
+      ]),
+    );
+    await application.shutdown();
+  });
+
   it('rechecks the persisted engagement pause before proactive channel delivery', async () => {
     let paused = false;
     let posted = 0;

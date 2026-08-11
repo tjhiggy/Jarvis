@@ -51,13 +51,14 @@ describe('birthdays', () => {
       guildId: 'g',
       channelId: 'c',
       timezone: 'UTC',
+      policy: { evaluate: async () => ({ allowed: true as const }) },
       now: () => new Date('2026-07-04T12:00:00Z'),
     });
     await scheduler.tick();
     expect(announce).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.not.stringMatching(/07-04|2026/),
-        allowedMentions: { parse: [], repliedUser: false },
+        allowedMentions: { parse: [], users: ['u'], repliedUser: false },
       }),
     );
   });

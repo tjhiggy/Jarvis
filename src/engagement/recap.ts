@@ -1,4 +1,5 @@
 import type { EngagementRepository } from './storage.js';
+import type { BroadcastPolicyService } from '../notifications/broadcast-policy.js';
 import { projectOperationalError } from '../utils/logger.js';
 
 const minimumGroupSize = 3;
@@ -97,6 +98,7 @@ export class RecapScheduler {
         Pick<EngagementRepository, 'engagementPaused'>;
       service: RecapService;
       gateway: RecapGateway;
+      policy: Pick<BroadcastPolicyService, 'evaluate'>;
       now?: () => Date;
       logger?: {
         warn(fields: Record<string, string | number>, message: string): void;
@@ -151,6 +153,7 @@ export class RecapScheduler {
         )
       )
         return;
+      if (!(await this.allowsDelivery(now))) return;
       if (
         !(await this.dependencies.repository.recapEnabled(
           this.dependencies.guildId,
@@ -179,6 +182,12 @@ export class RecapScheduler {
           await this.dependencies.repository.engagementPaused?.(
             this.dependencies.guildId,
           )
+        )
+          return;
+        if (
+          !(await this.allowsDelivery(
+            (this.dependencies.now ?? (() => new Date()))(),
+          ))
         )
           return;
         await this.dependencies.gateway.post(
@@ -210,6 +219,22 @@ export class RecapScheduler {
         'Recap tick failed.',
       );
     }
+  }
+
+  private async allowsDelivery(now: Date): Promise<boolean> {
+    const globallyPaused =
+      await this.dependencies.repository.engagementPaused?.(
+        this.dependencies.guildId,
+      );
+    return (
+      await this.dependencies.policy.evaluate({
+        serverId: this.dependencies.guildId,
+        category: 'recap',
+        channelId: this.dependencies.channelId,
+        now,
+        ...(globallyPaused === undefined ? {} : { globallyPaused }),
+      })
+    ).allowed;
   }
 }
 

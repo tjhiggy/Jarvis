@@ -1447,6 +1447,23 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       now,
     );
   }
+  async releaseEventReminder(
+    eventId: string,
+    guildId: string,
+    userId: string,
+    leaseToken: string,
+    now: Date,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          "UPDATE engagement_rsvps SET reminder_claimed_at = NULL, reminder_lease_token = NULL, updated_at = ? WHERE event_id = ? AND guild_id = ? AND user_id = ? AND reminder_state = 'pending' AND reminder_lease_token = ?",
+        )
+        .run(milliseconds(now), eventId, guildId, userId, leaseToken)
+        .changes === 1
+    );
+  }
   private async markReminder(
     eventId: string,
     guildId: string,

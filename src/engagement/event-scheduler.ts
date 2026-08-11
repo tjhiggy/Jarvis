@@ -1,4 +1,5 @@
 import type { EngagementRepository } from './storage.js';
+import type { BroadcastPolicyService } from '../notifications/broadcast-policy.js';
 import { projectOperationalError } from '../utils/logger.js';
 export interface EventReminderGateway {
   deliver(input: {
@@ -28,9 +29,13 @@ export class EventScheduler {
       > &
         Pick<
           EngagementRepository,
-          'cleanup' | 'engagementPaused' | 'closeDueEvents'
+          | 'cleanup'
+          | 'engagementPaused'
+          | 'closeDueEvents'
+          | 'releaseEventReminder'
         >;
       gateway: EventReminderGateway;
+      policy: Pick<BroadcastPolicyService, 'evaluate'>;
       now?: () => Date;
       intervalMs?: number;
       logger?: {
@@ -87,8 +92,26 @@ export class EventScheduler {
             await this.dependencies.repository.engagementPaused?.(
               reminder.guildId,
             )
-          )
+          ) {
+            await this.releaseClaim(reminder, now);
             continue;
+          }
+          if (!(await this.allowsDelivery(reminder, now))) {
+            await this.releaseClaim(reminder, now);
+            continue;
+          }
+          if (
+            !(await this.allowsDelivery(
+              reminder,
+              (this.dependencies.now ?? (() => new Date()))(),
+            ))
+          ) {
+            await this.releaseClaim(
+              reminder,
+              (this.dependencies.now ?? (() => new Date()))(),
+            );
+            continue;
+          }
           await this.dependencies.gateway.deliver({
             ...reminder,
             allowedMentions: { parse: [], repliedUser: false },
@@ -125,5 +148,45 @@ export class EventScheduler {
       this.lastRunValue = { status: 'error', at: now };
       throw error;
     }
+  }
+
+  private async allowsDelivery(
+    reminder: {
+      readonly guildId: string;
+      readonly channelId: string;
+      readonly userId: string;
+    },
+    now: Date,
+  ): Promise<boolean> {
+    const globallyPaused =
+      await this.dependencies.repository.engagementPaused?.(reminder.guildId);
+    return (
+      await this.dependencies.policy.evaluate({
+        serverId: reminder.guildId,
+        category: 'event_reminder',
+        channelId: reminder.channelId,
+        userId: reminder.userId,
+        now,
+        ...(globallyPaused === undefined ? {} : { globallyPaused }),
+      })
+    ).allowed;
+  }
+
+  private async releaseClaim(
+    reminder: {
+      readonly eventId: string;
+      readonly guildId: string;
+      readonly userId: string;
+      readonly leaseToken: string;
+    },
+    now: Date,
+  ): Promise<void> {
+    await this.dependencies.repository.releaseEventReminder?.(
+      reminder.eventId,
+      reminder.guildId,
+      reminder.userId,
+      reminder.leaseToken,
+      now,
+    );
   }
 }

@@ -30,6 +30,7 @@ describe('event scheduler', () => {
           throw new Error('Secret RSVP reason');
         },
       },
+      policy: allowPolicy(),
       logger: { warn: (fields) => warnings.push(fields) },
     }).tick();
     expect(warnings).toEqual([
@@ -63,6 +64,7 @@ describe('event scheduler', () => {
         cleanup: async () => 0,
       } as any,
       gateway: { deliver },
+      policy: allowPolicy(),
     }).tick();
     expect(deliver).not.toHaveBeenCalled();
   });
@@ -85,6 +87,7 @@ describe('event scheduler', () => {
         cleanup: async () => 0,
       } as any,
       gateway: { deliver },
+      policy: allowPolicy(),
       now: () => new Date('2026-08-08T12:00:00Z'),
     });
     await scheduler.tick();
@@ -135,6 +138,7 @@ describe('event scheduler', () => {
             deliveries += 1;
           },
         },
+        policy: allowPolicy(),
         now: () => now,
       };
       await Promise.all([
@@ -224,8 +228,13 @@ describe('event scheduler', () => {
         markEventReminderFailed: async () => true,
       } as any,
       gateway: { deliver: async () => undefined },
+      policy: allowPolicy(),
       now: () => new Date('2026-08-08T12:00:00.000Z'),
     }).tick();
     expect(calls).toEqual(['close']);
   });
+});
+
+const allowPolicy = () => ({
+  evaluate: async () => ({ allowed: true as const }),
 });

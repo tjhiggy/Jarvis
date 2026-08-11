@@ -116,7 +116,10 @@ import {
   RssScheduler,
   type RssDigest,
 } from './notifications/rss-scheduler.js';
-import { BroadcastPolicyService } from './notifications/broadcast-policy.js';
+import {
+  BroadcastPolicyService,
+  type BroadcastCategory,
+} from './notifications/broadcast-policy.js';
 import type { BroadcastStore } from './notifications/broadcast-store.js';
 import { SqliteBroadcastStore } from './notifications/sqlite-broadcast-store.js';
 import { HttpGitHubReadOnlyService } from './github/github-service.js';
@@ -717,6 +720,33 @@ export const createApplication = async (
       dependencies.createBroadcastStore?.(config.storage.databasePath) ??
       new SqliteBroadcastStore(config.storage.databasePath);
     const initializedBroadcastStore = broadcastStore;
+    const scheduledBroadcastPolicy = new BroadcastPolicyService(
+      initializedBroadcastStore,
+      [...config.security.allowedChannelIds],
+    );
+    const ensureScheduledBroadcastPolicy = async (
+      category: BroadcastCategory,
+      channelId: string,
+    ): Promise<void> => {
+      if (channelId === '') return;
+      if (
+        (await initializedBroadcastStore.getPolicy(
+          config.discord.guildId,
+          category,
+        )) !== undefined
+      )
+        return;
+      await initializedBroadcastStore.setPolicy({
+        serverId: config.discord.guildId,
+        category,
+        state: 'enabled',
+        channelId,
+        timezone: config.engagement.recapTimezone,
+        minimumIntervalSeconds: 0,
+        digestMode: false,
+        updatedAt: new Date(),
+      });
+    };
     if (
       config.engagement.channels.rssId !== '' &&
       config.engagement.rssAllowedHosts.length > 0
@@ -1405,8 +1435,14 @@ export const createApplication = async (
     if (schedulerClient === undefined)
       throw new Error('Discord client is unavailable for event scheduling.');
     if (eventService !== undefined)
+      await ensureScheduledBroadcastPolicy(
+        'event_reminder',
+        config.engagement.channels.eventId,
+      );
+    if (eventService !== undefined)
       eventScheduler = new EventScheduler({
         repository: engagementRepository as any,
+        policy: scheduledBroadcastPolicy,
         logger: { warn: (fields, message) => logger?.warn(fields, message) },
         gateway: {
           deliver: async (reminder) => {
@@ -1419,13 +1455,21 @@ export const createApplication = async (
               content: `<@${reminder.userId}> reminder: ${reminder.title} is due now.`,
               allowedMentions: {
                 parse: [],
-                users: [reminder.userId],
                 repliedUser: false,
               },
             });
           },
         },
       });
+    if (
+      recapService !== undefined &&
+      config.engagement.channels.recapId !== '' &&
+      config.engagement.recapSchedule !== ''
+    )
+      await ensureScheduledBroadcastPolicy(
+        'recap',
+        config.engagement.channels.recapId,
+      );
     if (
       recapService !== undefined &&
       config.engagement.channels.recapId !== '' &&
@@ -1446,6 +1490,7 @@ export const createApplication = async (
           >
         >,
         logger: { warn: (fields, message) => logger?.warn(fields, message) },
+        policy: scheduledBroadcastPolicy,
         service: recapService,
         gateway: {
           post: async (channelId, content) => {
@@ -1485,11 +1530,18 @@ export const createApplication = async (
       birthdayService !== undefined &&
       config.engagement.channels.birthdayId !== ''
     ) {
+      await ensureScheduledBroadcastPolicy(
+        'birthday',
+        config.engagement.channels.birthdayId,
+      );
       birthdayScheduler = new BirthdayScheduler({
         store: birthdayStoreFromRepository(engagementRepository as any),
         guildId: config.discord.guildId,
         channelId: config.engagement.channels.birthdayId,
         timezone: config.engagement.recapTimezone,
+        policy: scheduledBroadcastPolicy,
+        isGloballyPaused: (guildId) =>
+          engagementRepository!.engagementPaused!(guildId),
         gateway: {
           announce: async ({ channelId, content, allowedMentions }) => {
             const channel = await schedulerClient.channels?.fetch(channelId);
