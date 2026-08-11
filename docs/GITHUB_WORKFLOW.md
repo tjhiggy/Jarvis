@@ -72,6 +72,24 @@ deployment is intentionally not automatic. `CODEOWNERS` identifies the
 maintainer for future review policies. Dependabot security updates, secret
 scanning, and secret push protection are enabled.
 
+### Discussion-to-backlog workflow
+
+GitHub Discussions are the low-friction intake path for administrator feedback.
+The native `.github/workflows/discussion-triage.yml` workflow labels new
+Discussions and posts a plain-language triage note. It creates an Issue only
+when a maintainer applies `discussion:accepted`; it never approves ideas,
+assigns a sprint, creates a release, or marks work Released.
+
+The resulting Issue links back to its source Discussion, receives `backlog`,
+`source:discussion`, and a category label, and is picked up by the Project
+automation workflow. Use `discussion:needs-info`, `discussion:declined`, or
+`discussion:duplicate` when no backlog item should be created.
+
+Discussion forms live in `.github/DISCUSSION_TEMPLATE/` and are written for
+administrators without software-development experience. GitHub currently
+exposes Discussion workflow events as public preview, so the admin approval
+label remains mandatory.
+
 ### Project automation
 
 `.github/workflows/project-automation.yml` synchronizes the custom Project V2

@@ -1,0 +1,24 @@
+name: Admin Operations
+description: Discuss configuration, permissions, deployment, or server operations.
+title: "[Operations] "
+labels:
+  - discussion:new
+  - area:administration
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Operational goal
+      description: What should be configured, clarified, or improved?
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety and impact
+      description: Explain who is affected and whether this changes permissions, data, or scheduled messages.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Attach sanitized screenshots or logs. Never include tokens, passwords, or private member data.

@@ -431,6 +431,7 @@ instead of guessing.
 | [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md) | Implemented V1 scope, consent, retention, deletion, and non-goals               |
 | [Change management](docs/CHANGE_MANAGEMENT.md)                      | Standard request, validation, merge, deployment, and closeout process                       |
 | [GitHub workflow](docs/GITHUB_WORKFLOW.md)                          | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
+| [Discussion workflow](docs/DISCUSSIONS.md)                          | Plain-language admin feedback, triage, and Discussion-to-Issue flow |
 | [Extension guide](docs/extensions/README.md)                        | Disabled contracts and requirements for any future integration                              |
 | [Roadmap](docs/ROADMAP.md)                                          | Released, implemented-pending-release, planned, later, and explicitly out-of-scope work          |
 | [Releases](docs/RELEASES.md)                                        | Versioning, validation gates, publication authority, and rollback                           |

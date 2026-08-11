@@ -1,0 +1,60 @@
+name: Discussion triage
+
+on:
+  discussion:
+    types: [created, labeled]
+
+permissions:
+  contents: read
+  discussions: write
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Triage discussion and create approved backlog issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const discussion = context.payload.discussion;
+            const number = discussion.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const labelName = context.payload.label?.name;
+            const data = await github.graphql(`
+              query($owner:String!, $repo:String!, $number:Int!) {
+                repository(owner:$owner, name:$repo) {
+                  discussion(number:$number) {
+                    id url title body category { name slug }
+                    comments(first:100) { nodes { body } }
+                  }
+                  labels(first:100) { nodes { id name } }
+                }
+              }`, { owner, repo, number });
+            const current = data.repository.discussion;
+            const labels = data.repository.labels.nodes;
+            const labelId = (name) => labels.find((label) => label.name === name)?.id;
+            const addLabel = async (name) => {
+              const id = labelId(name);
+              if (!id) return core.warning(`Label ${name} is not configured.`);
+              await github.graphql(`mutation($labelable:ID!, $labels:[ID!]!) { addLabelsToLabelable(input:{labelableId:$labelable,labelIds:$labels}) { clientMutationId } }`, { labelable: current.id, labels: [id] });
+            };
+            const comment = async (body) => github.graphql(`mutation($discussion:ID!, $body:String!) { addDiscussionComment(input:{discussionId:$discussion,body:$body}) { comment { id } } }`, { discussion: current.id, body });
+
+            if (context.payload.action === 'created') {
+              await addLabel('discussion:triaged');
+              await comment(`### Jarvis triage\n\nThis Discussion is now in the review queue. An admin will decide whether it needs more information, should become backlog work, or should remain a conversation.\n\nUse the **discussion:accepted** label only after an admin approves creating an Issue.\n\n<!-- jarvis-discussion-triage -->`);
+              return;
+            }
+            if (labelName !== 'discussion:accepted') return;
+            const marker = '<!-- jarvis-source-discussion:' + number + ' -->';
+            if (current.comments.nodes.some((entry) => entry.body.includes(marker))) return core.info('An Issue already exists for this Discussion.');
+            const category = current.category?.slug ?? '';
+            const issueLabel = category.includes('question') ? 'question' : 'enhancement';
+            const body = `## Source Discussion\n${current.url}\n\n## Proposal\n${current.body ?? '_No body provided._'}\n\n## Triage boundary\nThis Issue was created only after an admin applied \\`discussion:accepted\\`. Confirm scope, acceptance criteria, priority, phase, and release before scheduling it.\n\n${marker}`;
+            const issue = await github.rest.issues.create({ owner, repo, title: current.title.replace(/^\\[(Idea|Question|Operations)\\]\\s*/i, ''), body, labels: [issueLabel, 'backlog', 'source:discussion'] });
+            await addLabel('discussion:triaged');
+            await comment(`### Backlog item created\n\nThis approved Discussion is now tracked as [Issue #${issue.data.number}](${issue.data.html_url}). The Issue is the authoritative work item; continue design conversation here.\n\n${marker}`);
+            core.info(`Created ${issue.data.html_url}.`);
