@@ -131,11 +131,11 @@
 - Produces: deterministic prompt catalog, content-free aggregate result schema, and documented primary/fallback/cloud routing decision.
 - Consumes: explicit model names supplied to a local evaluation command; never Discord data.
 
-- [ ] Write failing catalog validation, scoring, redaction, and aggregate-only report tests.
-- [ ] Implement the evaluation library and explicit `npm run evaluate:models` script.
-- [ ] Run baseline and candidate sequentially on the deployment workstation with unload between models.
-- [ ] Record aggregate results only and write ADR-0004 with rollback guidance.
-- [ ] Commit `feat: add Jarvis model evaluation framework`.
+- [x] Write failing catalog validation, scoring, redaction, and aggregate-only report tests.
+- [x] Implement the evaluation library and explicit local evaluation script.
+- [x] Run baseline and candidate sequentially on the deployment workstation with unload between models.
+- [x] Record aggregate results only and write an ADR with rollback guidance.
+- [x] Commit `docs: record Jarvis model routing decision`.
 
 ### Task 6: Command Deck community intelligence view
 

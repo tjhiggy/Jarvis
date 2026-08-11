@@ -90,6 +90,11 @@ credits. OpenAI is an optional hosted provider, and Tavily is an optional web
 grounding service. Provider choice changes where prompts are processed, not
 what authority Jarvis has.
 
+For v0.7, the measured local recommendation remains `gemma3:4b`. It scored
+higher and responded substantially faster than `qwen3:4b` on the current
+16 GB host. The evidence and routing decision are in
+[`docs/adr/001-community-intelligence-model-strategy.md`](docs/adr/001-community-intelligence-model-strategy.md).
+
 ## First local run
 
 ### Prerequisites
