@@ -3,11 +3,34 @@ import { createServer, type Server } from 'node:http';
 export interface AdminConsoleSnapshot {
   readonly platform: { readonly version: string; readonly environment: string };
   readonly database: 'healthy' | 'unavailable';
-  readonly engagement: { readonly enabled: boolean; readonly features: readonly string[] };
-  readonly providers: { readonly ai: string; readonly openAiConfigured: boolean; readonly ollamaConfigured: boolean; readonly webSearchConfigured: boolean };
-  readonly integrations: { readonly rss: boolean; readonly sleeper: boolean; readonly github: boolean };
-  readonly metrics: { readonly events: number; readonly failures: number } | null;
-  readonly rss?: { readonly paused: boolean; readonly feeds: readonly { readonly label: string; readonly url: string }[] } | undefined;
+  readonly engagement: {
+    readonly enabled: boolean;
+    readonly features: readonly string[];
+  };
+  readonly providers: {
+    readonly ai: string;
+    readonly openAiConfigured: boolean;
+    readonly ollamaConfigured: boolean;
+    readonly webSearchConfigured: boolean;
+  };
+  readonly integrations: {
+    readonly rss: boolean;
+    readonly sleeper: boolean;
+    readonly github: boolean;
+  };
+  readonly metrics: {
+    readonly events: number;
+    readonly failures: number;
+  } | null;
+  readonly rss?:
+    | {
+        readonly paused: boolean;
+        readonly feeds: readonly {
+          readonly label: string;
+          readonly url: string;
+        }[];
+      }
+    | undefined;
 }
 
 export interface AdminConsole {
@@ -18,7 +41,13 @@ export interface AdminConsole {
 export interface AdminConsoleRssControl {
   readonly token: string;
   readonly setPaused: (paused: boolean) => Promise<void>;
-  readonly preview?: (url: string) => Promise<readonly { readonly title: string; readonly url: string; readonly publishedAt: string }[]>;
+  readonly preview?: (url: string) => Promise<
+    readonly {
+      readonly title: string;
+      readonly url: string;
+      readonly publishedAt: string;
+    }[]
+  >;
 }
 
 const html = (snapshot: AdminConsoleSnapshot): string => `<!doctype html>
@@ -45,37 +74,119 @@ export const startAdminConsole = (options: {
   const host = options.host ?? '127.0.0.1';
   const server = createServer(async (request, response) => {
     if (request.method === 'POST' && request.url === '/api/rss/preview') {
-      if (options.rssControl?.preview === undefined || request.headers.authorization !== `Bearer ${options.rssControl.token}`) { response.writeHead(401, { 'content-type': 'application/json; charset=utf-8' }); response.end(JSON.stringify({ error: 'Unauthorized' })); return; }
-      let body = ''; for await (const chunk of request) { body += chunk.toString(); if (body.length > 2048) break; }
-      try { const url = String((JSON.parse(body) as { url?: unknown }).url ?? '').trim(); const items = await options.rssControl.preview(url); response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify({ url, items: items.slice(0, 5) })); } catch { response.writeHead(400, { 'content-type': 'application/json; charset=utf-8' }); response.end(JSON.stringify({ error: 'RSS preview unavailable. Check the allowlist and feed URL.' })); }
+      if (
+        options.rssControl?.preview === undefined ||
+        request.headers.authorization !== `Bearer ${options.rssControl.token}`
+      ) {
+        response.writeHead(401, {
+          'content-type': 'application/json; charset=utf-8',
+        });
+        response.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+      let body = '';
+      for await (const chunk of request) {
+        body += chunk.toString();
+        if (body.length > 2048) break;
+      }
+      try {
+        const url = String(
+          (JSON.parse(body) as { url?: unknown }).url ?? '',
+        ).trim();
+        const items = await options.rssControl.preview(url);
+        response.writeHead(200, {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+        });
+        response.end(JSON.stringify({ url, items: items.slice(0, 5) }));
+      } catch {
+        response.writeHead(400, {
+          'content-type': 'application/json; charset=utf-8',
+        });
+        response.end(
+          JSON.stringify({
+            error: 'RSS preview unavailable. Check the allowlist and feed URL.',
+          }),
+        );
+      }
       return;
     }
-    if (request.method === 'POST' && (request.url === '/api/rss/pause' || request.url === '/api/rss/resume')) {
-      if (options.rssControl === undefined || request.headers.authorization !== `Bearer ${options.rssControl.token}`) {
-        response.writeHead(401, { 'content-type': 'application/json; charset=utf-8' }); response.end(JSON.stringify({ error: 'Unauthorized' })); return;
+    if (
+      request.method === 'POST' &&
+      (request.url === '/api/rss/pause' || request.url === '/api/rss/resume')
+    ) {
+      if (
+        options.rssControl === undefined ||
+        request.headers.authorization !== `Bearer ${options.rssControl.token}`
+      ) {
+        response.writeHead(401, {
+          'content-type': 'application/json; charset=utf-8',
+        });
+        response.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
       }
       try {
         await options.rssControl.setPaused(request.url.endsWith('/pause'));
-        response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify({ ok: true, paused: request.url.endsWith('/pause') }));
-      } catch { response.writeHead(503, { 'content-type': 'application/json; charset=utf-8' }); response.end(JSON.stringify({ error: 'RSS control unavailable' })); }
+        response.writeHead(200, {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+        });
+        response.end(
+          JSON.stringify({ ok: true, paused: request.url.endsWith('/pause') }),
+        );
+      } catch {
+        response.writeHead(503, {
+          'content-type': 'application/json; charset=utf-8',
+        });
+        response.end(JSON.stringify({ error: 'RSS control unavailable' }));
+      }
       return;
     }
-    if (request.method !== 'GET' || (request.url !== '/' && request.url !== '/api/status')) {
-      response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); response.end('Not found'); return;
+    if (
+      request.method !== 'GET' ||
+      (request.url !== '/' && request.url !== '/api/status')
+    ) {
+      response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end('Not found');
+      return;
     }
     try {
       const snapshot = await options.snapshot();
       if (request.url === '/api/status') {
-        response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(snapshot)); return;
+        response.writeHead(200, {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+        });
+        response.end(JSON.stringify(snapshot));
+        return;
       }
-      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); response.end(html(snapshot));
+      response.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+      });
+      response.end(html(snapshot));
     } catch {
-      response.writeHead(503, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify({ error: 'Command Deck unavailable' }));
+      response.writeHead(503, {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+      });
+      response.end(JSON.stringify({ error: 'Command Deck unavailable' }));
     }
   });
   return new Promise((resolve, reject) => {
-    const onError = (error: Error) => { server.off('listening', onListening); reject(error); };
-    const onListening = () => { server.off('error', onError); resolve({ server, close: () => new Promise<void>((done) => server.close(() => done())) }); };
-    server.once('error', onError); server.once('listening', onListening); server.listen(options.port, host);
+    const onError = (error: Error) => {
+      server.off('listening', onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off('error', onError);
+      resolve({
+        server,
+        close: () => new Promise<void>((done) => server.close(() => done())),
+      });
+    };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(options.port, host);
   });
 };

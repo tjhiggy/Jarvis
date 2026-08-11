@@ -6,6 +6,41 @@ import { EngagementDeletionService } from '../src/engagement/deletion.js';
 import { SQLiteEngagementRepository } from '../src/storage/engagement-sqlite.js';
 
 describe('engagement owner data deletion', () => {
+  it('deletes member profiles truthfully through the operational owner path', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jarvis-profile-delete-'));
+    const repository = new SQLiteEngagementRepository(
+      join(directory, 'engagement.db'),
+    );
+    try {
+      await repository.createMemberProfile({
+        serverId: 'guild-1',
+        userId: 'member-1',
+        bio: 'Builder',
+        interests: 'Games',
+        visibility: 'visible',
+        createdAt: new Date('2026-08-01T12:00:00Z'),
+        updatedAt: new Date('2026-08-01T12:00:00Z'),
+      });
+      const service = new EngagementDeletionService({
+        repository,
+        gateway: { delete: async () => undefined },
+      });
+
+      await expect(
+        service.deleteOwnerData('guild-1', 'member-1'),
+      ).resolves.toEqual({ completed: 1, pending: 0 });
+      await expect(
+        repository.getMemberProfile('guild-1', 'member-1'),
+      ).resolves.toBeUndefined();
+      await expect(
+        service.deleteOwnerData('guild-1', 'member-1'),
+      ).resolves.toEqual({ completed: 0, pending: 0 });
+    } finally {
+      await repository.closeConnection();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('durably queues bot cards and deletes content rows only after card deletion', async () => {
     const directory = await mkdtemp(
       join(tmpdir(), 'jarvis-engagement-delete-'),

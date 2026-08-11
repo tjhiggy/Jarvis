@@ -11,5 +11,8 @@ export interface MetricsSummaryRow {
 
 export interface PlatformMetricsRepository {
   recordAnalyticsEvent(event: AnalyticsEvent): Promise<void>;
-  analyticsSummary(serverId: string, since: Date): Promise<readonly MetricsSummaryRow[]>;
+  analyticsSummary(
+    serverId: string,
+    since: Date,
+  ): Promise<readonly MetricsSummaryRow[]>;
 }

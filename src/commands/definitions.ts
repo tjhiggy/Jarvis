@@ -118,6 +118,27 @@ interface IntroductionSubcommandDefinition {
   readonly options?: readonly IntroductionOptionDefinition[];
 }
 
+interface MemberProfileSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'create' | 'view' | 'edit' | 'hide' | 'show' | 'delete';
+  readonly description: string;
+  readonly options?: readonly (
+    | {
+        readonly type: 3;
+        readonly name: 'bio' | 'interests';
+        readonly description: string;
+        readonly required: false;
+        readonly max_length: number;
+      }
+    | {
+        readonly type: 6;
+        readonly name: 'member';
+        readonly description: string;
+        readonly required: false;
+      }
+  )[];
+}
+
 interface SuggestionOptionDefinition {
   readonly type: 3;
   readonly name: 'title' | 'description' | 'content' | 'id' | 'draft_id';
@@ -158,11 +179,18 @@ interface TriviaSubcommandDefinition {
 }
 interface EngagementSubcommandDefinition {
   readonly type: 1;
-  readonly name: 'status' | 'metrics' | 'pause' | 'resume' | 'delete' | 'proactive';
+  readonly name:
+    | 'status'
+    | 'metrics'
+    | 'pause'
+    | 'resume'
+    | 'delete'
+    | 'proactive'
+    | 'feature';
   readonly description: string;
   readonly options?: readonly {
     readonly type: 3;
-    readonly name: 'user_id' | 'action';
+    readonly name: 'user_id' | 'action' | 'name';
     readonly description: string;
     readonly required: boolean;
     readonly max_length: 20;
@@ -257,6 +285,7 @@ export type CommandOptionDefinition =
   | FantasySubcommandDefinition
   | IntroductionOptionDefinition
   | IntroductionSubcommandDefinition
+  | MemberProfileSubcommandDefinition
   | SuggestionOptionDefinition
   | SuggestionSubcommandDefinition
   | EventOptionDefinition
@@ -302,6 +331,7 @@ export interface CommandDefinition {
     | 'engagement'
     | 'birthday'
     | 'roles'
+    | 'profile'
     | 'github'
     | 'rss';
   readonly description: string;
@@ -1141,6 +1171,33 @@ export const createCommandDefinitions = (
       options: [
         {
           type: 1,
+          name: 'feature',
+          description: 'View or control a reviewed MuthaShip feature.',
+          options: [
+            {
+              type: 3,
+              name: 'action',
+              description: 'Choose a safe feature action.',
+              required: true,
+              max_length: 20,
+              choices: [
+                { name: 'Status', value: 'status' },
+                { name: 'Enable', value: 'enable' },
+                { name: 'Disable', value: 'disable' },
+              ],
+            },
+            {
+              type: 3,
+              name: 'name',
+              description: 'Reviewed feature name.',
+              required: true,
+              max_length: 20,
+              choices: [{ name: 'Member profiles', value: 'profiles' }],
+            },
+          ],
+        },
+        {
+          type: 1,
           name: 'status',
           description: 'Show safe engagement health.',
         },
@@ -1222,6 +1279,83 @@ export const createCommandDefinitions = (
           description: 'Show your saved birthday privately.',
         },
         { type: 1, name: 'delete', description: 'Delete your saved birthday.' },
+      ],
+    },
+    {
+      type: 1,
+      name: 'profile',
+      description: 'Manage or view opt-in MuthaShip crew profiles.',
+      options: [
+        {
+          type: 1,
+          name: 'create',
+          description: 'Create a private profile preview.',
+          options: [
+            {
+              type: 3,
+              name: 'bio',
+              description: 'Optional crew bio.',
+              required: false,
+              max_length: 500,
+            },
+            {
+              type: 3,
+              name: 'interests',
+              description: 'Optional crew interests.',
+              required: false,
+              max_length: 300,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'view',
+          description: 'View your profile or another visible crew profile.',
+          options: [
+            {
+              type: 6,
+              name: 'member',
+              description: 'Optional crew member.',
+              required: false,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'edit',
+          description: 'Preview complete profile changes.',
+          options: [
+            {
+              type: 3,
+              name: 'bio',
+              description: 'Optional crew bio.',
+              required: false,
+              max_length: 500,
+            },
+            {
+              type: 3,
+              name: 'interests',
+              description: 'Optional crew interests.',
+              required: false,
+              max_length: 300,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'hide',
+          description: 'Hide your profile from other crew.',
+        },
+        {
+          type: 1,
+          name: 'show',
+          description: 'Make your profile visible to other crew.',
+        },
+        {
+          type: 1,
+          name: 'delete',
+          description: 'Preview permanent profile deletion.',
+        },
       ],
     },
     {

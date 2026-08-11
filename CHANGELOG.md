@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Opt-in, server-scoped `/profile` create, view, edit, hide, show, and delete
+  workflows with private confirmation, current Discord identity rendering,
+  SQLite persistence, feature controls, and privacy-preserving lookup behavior.
+
 ## [0.3.0] - 2026-08-10
 
 ### Added

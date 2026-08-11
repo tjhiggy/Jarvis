@@ -1,6 +1,6 @@
 name: Questions & Help
 description: Ask how Jarvis works or how an admin should use it.
-title: "[Question] "
+title: '[Question] '
 labels:
   - discussion:new
   - question

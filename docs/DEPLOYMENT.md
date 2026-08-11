@@ -55,7 +55,7 @@ only in the ignored `.env` file or an approved secret manager.
 
 6. Verify the running identity after startup. Run `/status` and compare the
    reported **Build identity** commit with the reviewed revision (`git rev-parse
-   HEAD` in the deployment checkout, or the image tag/label used for Docker).
+HEAD` in the deployment checkout, or the image tag/label used for Docker).
    If they differ, stop the process, rebuild or recreate it from the reviewed
    revision, and check again. A stale commit value is a deployment warning, not
    evidence that the running code is current. A value of `development` or

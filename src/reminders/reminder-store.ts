@@ -27,7 +27,11 @@ export interface ReminderStore {
     ownerUserId: string,
   ): Promise<readonly ReminderView[]>;
   listByGuild?(guildId: string): Promise<readonly ReminderView[]>;
-  cancelAny?(guildId: string, reminderId: string, now: Date): Promise<ReminderView | undefined>;
+  cancelAny?(
+    guildId: string,
+    reminderId: string,
+    now: Date,
+  ): Promise<ReminderView | undefined>;
   cancelOwned(
     guildId: string,
     ownerUserId: string,

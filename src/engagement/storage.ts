@@ -37,17 +37,65 @@ export interface EngagementCardDeletion {
 }
 
 export interface EngagementRepository extends Partial<PlatformMetricsRepository> {
+  getMemberProfile?(
+    serverId: string,
+    userId: string,
+  ): Promise<import('./member-profiles.js').MemberProfile | undefined>;
+  createMemberProfile?(
+    profile: import('./member-profiles.js').MemberProfile,
+  ): Promise<'created' | 'duplicate'>;
+  updateMemberProfile?(
+    serverId: string,
+    userId: string,
+    values: Pick<
+      import('./member-profiles.js').MemberProfile,
+      'bio' | 'interests' | 'updatedAt'
+    >,
+  ): Promise<boolean>;
+  setMemberProfileVisibility?(
+    serverId: string,
+    userId: string,
+    visibility: import('./member-profiles.js').MemberProfile['visibility'],
+    updatedAt: Date,
+  ): Promise<boolean>;
+  deleteMemberProfile?(serverId: string, userId: string): Promise<boolean>;
   getFeatureFlags?(guildId: string): Promise<readonly FeatureFlagRecord[]>;
-  setFeatureFlag?(guildId: string, name: FeatureFlagName, enabled: boolean, updatedAt?: Date): Promise<void>;
-  getProactiveState?(guildId: string): Promise<{ state: import('./proactive.js').ProactiveState; lastPostedAt?: Date }>;
-  setProactiveState?(guildId: string, state: import('./proactive.js').ProactiveState, updatedAt: Date): Promise<void>;
+  setFeatureFlag?(
+    guildId: string,
+    name: FeatureFlagName,
+    enabled: boolean,
+    updatedAt?: Date,
+  ): Promise<void>;
+  getProactiveState?(guildId: string): Promise<{
+    state: import('./proactive.js').ProactiveState;
+    lastPostedAt?: Date;
+  }>;
+  setProactiveState?(
+    guildId: string,
+    state: import('./proactive.js').ProactiveState,
+    updatedAt: Date,
+  ): Promise<void>;
   recordProactivePosted?(guildId: string, postedAt: Date): Promise<void>;
   claimProactive?(guildId: string, key: string, now: Date): Promise<boolean>;
-  getBirthday?(guildId: string, userId: string): Promise<import('./birthdays.js').BirthdayRecord | undefined>;
-  saveBirthday?(record: import('./birthdays.js').BirthdayRecord): Promise<import('./birthdays.js').BirthdayRecord>;
+  getBirthday?(
+    guildId: string,
+    userId: string,
+  ): Promise<import('./birthdays.js').BirthdayRecord | undefined>;
+  saveBirthday?(
+    record: import('./birthdays.js').BirthdayRecord,
+  ): Promise<import('./birthdays.js').BirthdayRecord>;
   deleteBirthday?(guildId: string, userId: string): Promise<boolean>;
-  listDueBirthdays?(guildId: string, month: number, day: number): Promise<readonly import('./birthdays.js').BirthdayRecord[]>;
-  claimBirthdayAnnouncement?(guildId: string, month: number, day: number, userId: string): Promise<boolean>;
+  listDueBirthdays?(
+    guildId: string,
+    month: number,
+    day: number,
+  ): Promise<readonly import('./birthdays.js').BirthdayRecord[]>;
+  claimBirthdayAnnouncement?(
+    guildId: string,
+    month: number,
+    day: number,
+    userId: string,
+  ): Promise<boolean>;
   engagementPaused?(guildId: string): Promise<boolean>;
   setEngagementPaused?(
     guildId: string,

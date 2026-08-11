@@ -73,6 +73,9 @@ import { formatCommandPermissionRules } from './command-permissions.js';
 import { handleRssCommand } from './rss.js';
 import type { RssStorage } from '../notifications/rss-storage.js';
 import type { Instrumentation } from '../platform/instrumentation.js';
+import type { FeatureFlagService } from '../engagement/feature-flags.js';
+import { handleMemberProfileCommand } from './member-profile.js';
+import type { MemberProfileService } from '../engagement/member-profiles.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -87,17 +90,27 @@ export interface CommandInteraction extends ReplyTarget, DeferredReplyTarget {
   }> | null;
   readonly user: Readonly<{
     id: string;
+    bot?: boolean;
     globalName?: string | null;
     username?: string;
+    displayAvatarURL?(): string;
   }>;
   readonly member?: Readonly<{
     displayName?: string | null;
+    joinedAt?: Date | null;
     roles?: Readonly<{ cache?: Readonly<{ has(id: string): boolean }> }>;
   }> | null;
   readonly options: Readonly<{
     getSubcommand(): string;
     getString(name: string): string | null;
     getInteger?(name: string): number | null;
+    getUser?(name: string): Readonly<{
+      id: string;
+      bot?: boolean;
+      globalName?: string | null;
+      username?: string;
+      displayAvatarURL?(): string;
+    }> | null;
   }>;
   deferReply(payload: ReplyPayload): Promise<unknown>;
   fetchReply(): Promise<Readonly<{ id: string }>>;
@@ -192,6 +205,8 @@ export interface CommandDependencies {
   readonly birthdayService?: BirthdayService;
   readonly proactiveService?: ProactiveEngagementService;
   readonly delegatedPostService?: DelegatedPostService;
+  readonly featureFlags?: Pick<FeatureFlagService, 'isEnabled' | 'set'>;
+  readonly memberProfileService?: MemberProfileService;
   readonly engagementHealth?: Readonly<{
     repository: Required<
       Pick<
@@ -206,7 +221,10 @@ export interface CommandDependencies {
         guildId: string,
         userId: string,
       ): Promise<EngagementDeletionOutcome>;
-      analyticsSummary?(guildId: string, since: Date): Promise<readonly import('../platform/metrics.js').MetricsSummaryRow[]>;
+      analyticsSummary?(
+        guildId: string,
+        since: Date,
+      ): Promise<readonly import('../platform/metrics.js').MetricsSummaryRow[]>;
     };
     schedulers?: Readonly<
       Record<string, EngagementSchedulerHealth | undefined>
@@ -258,6 +276,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/status reports safe service configuration and database health.',
     '/config shows administrators safe, non-secret Jarvis configuration.',
     '/engagement status, pause, resume, or delete provides scoped engagement operations.',
+    '/profile create, view, edit, hide, show, or delete manages your optional crew profile.',
     ...(pollsEnabled
       ? [
           '/poll creates an anonymous 2-to-5-option poll for configured administrators.',
@@ -499,17 +518,30 @@ const handleCommandInternal = async (
       await handleEngagementCommand(interaction, {
         enabled: dependencies.config.engagement?.enabled ?? false,
         adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        ...(dependencies.featureFlags === undefined
+          ? {}
+          : { featureFlags: dependencies.featureFlags }),
         platform: {
           version: dependencies.config.runtimeIdentity?.version ?? 'unknown',
-          deployment: dependencies.config.runtimeIdentity?.environment ?? 'unknown',
+          deployment:
+            dependencies.config.runtimeIdentity?.environment ?? 'unknown',
           provider: dependencies.config.ai.provider,
           openaiConfigured: dependencies.config.openai.apiKey.trim() !== '',
           ollamaConfigured: dependencies.config.ollama.baseUrl.trim() !== '',
-          webSearchConfigured: dependencies.config.webSearch.apiKey.trim() !== '',
+          webSearchConfigured:
+            dependencies.config.webSearch.apiKey.trim() !== '',
           integrations: [
-            ...(dependencies.config.engagement?.channels.rssId && dependencies.config.engagement.rssAllowedHosts.length > 0 ? ['RSS ready'] : []),
-            ...(dependencies.config.sleeper?.leagueId ? ['Sleeper Fantasy Football ready'] : []),
-            ...(dependencies.config.github?.owner && dependencies.config.github.repo ? ['GitHub read-only ready'] : []),
+            ...(dependencies.config.engagement?.channels.rssId &&
+            dependencies.config.engagement.rssAllowedHosts.length > 0
+              ? ['RSS ready']
+              : []),
+            ...(dependencies.config.sleeper?.leagueId
+              ? ['Sleeper Fantasy Football ready']
+              : []),
+            ...(dependencies.config.github?.owner &&
+            dependencies.config.github.repo
+              ? ['GitHub read-only ready']
+              : []),
             'SQLite database ready',
           ],
         },
@@ -536,6 +568,22 @@ const handleCommandInternal = async (
           : dependencies.engagementHealth),
       });
       return;
+    case 'profile': {
+      const enabled =
+        dependencies.featureFlags !== undefined &&
+        interaction.guildId !== null &&
+        (await dependencies.featureFlags.isEnabled(
+          interaction.guildId,
+          'profiles',
+        ));
+      await handleMemberProfileCommand(interaction, {
+        enabled,
+        ...(dependencies.memberProfileService === undefined
+          ? {}
+          : { service: dependencies.memberProfileService }),
+      });
+      return;
+    }
     case 'help':
       if (await rejectDirectMessage(interaction)) {
         return;

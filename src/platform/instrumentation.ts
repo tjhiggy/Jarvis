@@ -44,7 +44,9 @@ export class Instrumentation {
         ...(input.command === undefined ? {} : { command: input.command }),
         result: 'failure',
         durationMs: Date.now() - startedAt,
-        metadata: { errorType: error instanceof Error ? error.name : 'unknown' },
+        metadata: {
+          errorType: error instanceof Error ? error.name : 'unknown',
+        },
       });
       throw error;
     }
@@ -62,11 +64,15 @@ export class Instrumentation {
       feature: input.feature,
       ...(input.command === undefined ? {} : { command: input.command }),
       result: 'cancelled',
-      ...(input.reason === undefined ? {} : { metadata: { reasonCode: 'provided' } }),
+      ...(input.reason === undefined
+        ? {}
+        : { metadata: { reasonCode: 'provided' } }),
     });
   }
 
-  private async record(input: Parameters<typeof createAnalyticsEvent>[0]): Promise<void> {
+  private async record(
+    input: Parameters<typeof createAnalyticsEvent>[0],
+  ): Promise<void> {
     try {
       await this.sink.record(createAnalyticsEvent(input));
     } catch {

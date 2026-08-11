@@ -13,7 +13,11 @@ export const classifyRuntimeQuestion = (
     return undefined;
   }
 
-  if (/\b(version|build|release|commit|deployment|upgrade(?:s|d)?|changed|changes)\b/i.test(prompt)) {
+  if (
+    /\b(version|build|release|commit|deployment|upgrade(?:s|d)?|changed|changes)\b/i.test(
+      prompt,
+    )
+  ) {
     return identity === undefined
       ? 'Jarvis runtime identity is not available in this deployment. I will not guess.'
       : `This MuthaShip is running Jarvis ${identity.version}, deployment ${identity.environment}, commit ${identity.commit}, built ${identity.builtAt}.`;

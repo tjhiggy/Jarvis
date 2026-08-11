@@ -6,9 +6,33 @@ describe('channel summary', () => {
     const now = new Date('2026-08-09T12:00:00.000Z');
     const result = buildChannelSummary(
       [
-        { id: 1, guildId: 'g', conversationId: 'c', userId: 'u', role: 'user', content: 'old', timestamp: new Date('2026-08-08T00:00:00.000Z') },
-        { id: 2, guildId: 'g', conversationId: 'c', userId: 'u', role: 'user', content: 'Crew asks <@&123>', timestamp: new Date('2026-08-09T11:00:00.000Z') },
-        { id: 3, guildId: 'g', conversationId: 'c', userId: 'u', role: 'assistant', content: 'Jarvis replies @everyone', timestamp: new Date('2026-08-09T11:01:00.000Z') },
+        {
+          id: 1,
+          guildId: 'g',
+          conversationId: 'c',
+          userId: 'u',
+          role: 'user',
+          content: 'old',
+          timestamp: new Date('2026-08-08T00:00:00.000Z'),
+        },
+        {
+          id: 2,
+          guildId: 'g',
+          conversationId: 'c',
+          userId: 'u',
+          role: 'user',
+          content: 'Crew asks <@&123>',
+          timestamp: new Date('2026-08-09T11:00:00.000Z'),
+        },
+        {
+          id: 3,
+          guildId: 'g',
+          conversationId: 'c',
+          userId: 'u',
+          role: 'assistant',
+          content: 'Jarvis replies @everyone',
+          timestamp: new Date('2026-08-09T11:01:00.000Z'),
+        },
       ],
       now,
     );
@@ -20,6 +44,8 @@ describe('channel summary', () => {
   });
 
   it('returns an unavailable message for empty or stale history', () => {
-    expect(buildChannelSummary([], new Date('2026-08-09T12:00:00.000Z'))).toMatch(/no recent/i);
+    expect(
+      buildChannelSummary([], new Date('2026-08-09T12:00:00.000Z')),
+    ).toMatch(/no recent/i);
   });
 });

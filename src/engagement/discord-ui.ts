@@ -23,6 +23,7 @@ export interface EngagementEmbed {
   readonly title: string;
   readonly description?: string;
   readonly fields?: readonly EngagementEmbedField[];
+  readonly thumbnail?: Readonly<{ url: string }>;
 }
 
 export interface EngagementButton {
@@ -168,6 +169,7 @@ export const buildEngagementCard = (input: {
   readonly fields?: readonly EngagementEmbedField[];
   readonly content?: string;
   readonly components?: readonly EngagementActionRow[];
+  readonly thumbnailUrl?: string;
 }): EngagementCard => {
   const title = requireBounded(input.title, EMBED_TITLE_LIMIT, 'Embed title');
   const description =
@@ -216,6 +218,10 @@ export const buildEngagementCard = (input: {
     input.components === undefined
       ? undefined
       : buildEngagementComponents(input.components);
+  const thumbnail =
+    input.thumbnailUrl === undefined
+      ? undefined
+      : { url: requireBounded(input.thumbnailUrl, 2_048, 'Thumbnail URL') };
   return {
     ...(content === undefined ? {} : { content }),
     embeds: [
@@ -223,6 +229,7 @@ export const buildEngagementCard = (input: {
         title,
         ...(description === undefined ? {} : { description }),
         ...(fields === undefined ? {} : { fields }),
+        ...(thumbnail === undefined ? {} : { thumbnail }),
       },
     ],
     ...(components === undefined ? {} : { components }),

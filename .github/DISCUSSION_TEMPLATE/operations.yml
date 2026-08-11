@@ -1,6 +1,6 @@
 name: Admin Operations
 description: Discuss configuration, permissions, deployment, or server operations.
-title: "[Operations] "
+title: '[Operations] '
 labels:
   - discussion:new
   - area:administration

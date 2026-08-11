@@ -5,6 +5,7 @@ import {
 } from '../engagement/health.js';
 import type { EngagementDeletionOutcome } from '../engagement/deletion.js';
 import type { MetricsSummaryRow } from '../platform/metrics.js';
+import type { FeatureFlagService } from '../engagement/feature-flags.js';
 
 type OperationalRepository = Readonly<{
   engagementPaused(guildId: string): Promise<boolean>;
@@ -26,8 +27,14 @@ type OperationalRepository = Readonly<{
     guildId: string,
     userId: string,
   ): Promise<EngagementDeletionOutcome>;
-  analyticsSummary?(guildId: string, since: Date): Promise<readonly MetricsSummaryRow[]>;
-  analyticsSummary?(guildId: string, since: Date): Promise<readonly MetricsSummaryRow[]>;
+  analyticsSummary?(
+    guildId: string,
+    since: Date,
+  ): Promise<readonly MetricsSummaryRow[]>;
+  analyticsSummary?(
+    guildId: string,
+    since: Date,
+  ): Promise<readonly MetricsSummaryRow[]>;
 }>;
 
 export const handleEngagementCommand = async (
@@ -58,6 +65,7 @@ export const handleEngagementCommand = async (
       integrations: readonly string[];
     }>;
     now?: () => Date;
+    featureFlags?: Pick<FeatureFlagService, 'isEnabled' | 'set'>;
   }>,
 ): Promise<void> => {
   if (!interaction.guildId?.trim())
@@ -85,10 +93,19 @@ export const handleEngagementCommand = async (
         "Deleting another member's engagement records is restricted to configured MuthaShip administrators.",
         true,
       );
-    const deletion = await dependencies.repository.deleteOwnerData(
-      interaction.guildId,
-      target,
-    );
+    let deletion: EngagementDeletionOutcome;
+    try {
+      deletion = await dependencies.repository.deleteOwnerData(
+        interaction.guildId,
+        target,
+      );
+    } catch {
+      return replySafely(
+        interaction,
+        'The retained-data deletion could not be completed. Please retry later.',
+        true,
+      );
+    }
     const content =
       deletion.completed === 0 && deletion.pending === 0
         ? 'No retained engagement records were found for that member on this MuthaShip.'
@@ -103,6 +120,41 @@ export const handleEngagementCommand = async (
       'Engagement controls are restricted to configured MuthaShip administrators.',
       true,
     );
+
+  if (subcommand === 'feature') {
+    if (dependencies.featureFlags === undefined)
+      return replySafely(
+        interaction,
+        'Feature controls are not configured on this MuthaShip.',
+        true,
+      );
+    const name = interaction.options.getString?.('name');
+    const action = interaction.options.getString?.('action');
+    if (
+      name !== 'profiles' ||
+      !['status', 'enable', 'disable'].includes(action ?? '')
+    )
+      return replySafely(
+        interaction,
+        'Please select a supported feature action.',
+        true,
+      );
+    if (action === 'enable' || action === 'disable')
+      await dependencies.featureFlags.set(
+        interaction.guildId,
+        name,
+        action === 'enable',
+      );
+    const enabled = await dependencies.featureFlags.isEnabled(
+      interaction.guildId,
+      name,
+    );
+    return replySafely(
+      interaction,
+      `Member profiles are ${enabled ? 'enabled' : 'disabled'} on this MuthaShip.`,
+      true,
+    );
+  }
 
   if (subcommand === 'pause' || subcommand === 'resume') {
     const paused = subcommand === 'pause';
@@ -123,16 +175,41 @@ export const handleEngagementCommand = async (
 
   if (subcommand === 'metrics') {
     if (dependencies.repository.analyticsSummary === undefined)
-      return replySafely(interaction, 'Aggregate metrics are not available on this MuthaShip.', true);
-    const since = new Date((dependencies.now ?? (() => new Date()))().getTime() - 7 * 24 * 60 * 60 * 1000);
-    const rows = await dependencies.repository.analyticsSummary(interaction.guildId, since);
+      return replySafely(
+        interaction,
+        'Aggregate metrics are not available on this MuthaShip.',
+        true,
+      );
+    const since = new Date(
+      (dependencies.now ?? (() => new Date()))().getTime() -
+        7 * 24 * 60 * 60 * 1000,
+    );
+    const rows = await dependencies.repository.analyticsSummary(
+      interaction.guildId,
+      since,
+    );
     const total = rows.reduce((sum, row) => sum + row.count, 0);
-    const failures = rows.filter((row) => row.eventName === 'command_failed').reduce((sum, row) => sum + row.count, 0);
+    const failures = rows
+      .filter((row) => row.eventName === 'command_failed')
+      .reduce((sum, row) => sum + row.count, 0);
     const top = [...rows].sort((a, b) => b.count - a.count).slice(0, 10);
-    const breakdown = top.length === 0
-      ? 'No command activity recorded in the last 7 days.'
-      : top.map((row) => `${row.command || row.feature}: ${row.eventName} ${row.count}`).join('\n');
-    return replySafely(interaction, [`Metrics, last 7 days: ${total} events, ${failures} command failures.`, breakdown].join('\n'), true);
+    const breakdown =
+      top.length === 0
+        ? 'No command activity recorded in the last 7 days.'
+        : top
+            .map(
+              (row) =>
+                `${row.command || row.feature}: ${row.eventName} ${row.count}`,
+            )
+            .join('\n');
+    return replySafely(
+      interaction,
+      [
+        `Metrics, last 7 days: ${total} events, ${failures} command failures.`,
+        breakdown,
+      ].join('\n'),
+      true,
+    );
   }
 
   const health = await collectEngagementHealth({
@@ -159,16 +236,24 @@ export const handleEngagementCommand = async (
     )
     .join('\n');
   const features = dependencies.features?.join(', ') ?? 'none';
-  const metrics = dependencies.repository.analyticsSummary === undefined
-    ? 'Metrics: unavailable'
-    : (() => {
-        const since = new Date((dependencies.now ?? (() => new Date()))().getTime() - 7 * 24 * 60 * 60 * 1000);
-        return dependencies.repository.analyticsSummary(interaction.guildId!, since).then((rows) => {
-          const total = rows.reduce((sum, row) => sum + row.count, 0);
-          const failures = rows.filter((row) => row.eventName === 'command_failed').reduce((sum, row) => sum + row.count, 0);
-          return `Metrics, last 7 days: ${total} events, ${failures} command failures.`;
-        });
-      })();
+  const metrics =
+    dependencies.repository.analyticsSummary === undefined
+      ? 'Metrics: unavailable'
+      : (() => {
+          const since = new Date(
+            (dependencies.now ?? (() => new Date()))().getTime() -
+              7 * 24 * 60 * 60 * 1000,
+          );
+          return dependencies.repository
+            .analyticsSummary(interaction.guildId!, since)
+            .then((rows) => {
+              const total = rows.reduce((sum, row) => sum + row.count, 0);
+              const failures = rows
+                .filter((row) => row.eventName === 'command_failed')
+                .reduce((sum, row) => sum + row.count, 0);
+              return `Metrics, last 7 days: ${total} events, ${failures} command failures.`;
+            });
+        })();
   const metricsLine = typeof metrics === 'string' ? metrics : await metrics;
   return replySafely(
     interaction,

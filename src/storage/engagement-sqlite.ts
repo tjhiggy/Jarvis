@@ -30,9 +30,13 @@ import {
 import type { EngagementRecordCounts } from '../engagement/health.js';
 import type { BirthdayRecord } from '../engagement/birthdays.js';
 import type { ProactiveState } from '../engagement/proactive.js';
-import type { FeatureFlagName, FeatureFlagRecord } from '../engagement/feature-flags.js';
+import type {
+  FeatureFlagName,
+  FeatureFlagRecord,
+} from '../engagement/feature-flags.js';
 import type { AnalyticsEvent } from '../platform/contracts.js';
 import type { MetricsSummaryRow } from '../platform/metrics.js';
+import type { MemberProfile } from '../engagement/member-profiles.js';
 
 interface IntroductionRow {
   id: string;
@@ -107,46 +111,240 @@ interface TriviaRoundRow {
 }
 
 export class SQLiteEngagementRepository implements EngagementRepository {
-  async getFeatureFlags(guildId: string): Promise<readonly FeatureFlagRecord[]> { this.ensureOpen(); return (this.database.prepare('SELECT name, enabled FROM engagement_feature_flags WHERE guild_id = ? ORDER BY name').all(guildId) as Array<{name: FeatureFlagName; enabled: number}>).map((row) => ({ name: row.name, enabled: row.enabled === 1 })); }
-  async setFeatureFlag(guildId: string, name: FeatureFlagName, enabled: boolean, updatedAt = new Date()): Promise<void> { this.ensureOpen(); this.database.prepare('INSERT INTO engagement_feature_flags (guild_id, name, enabled, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(guild_id, name) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at').run(guildId, name, enabled ? 1 : 0, updatedAt.getTime()); }
-  async getProactiveState(guildId: string): Promise<{ state: ProactiveState; lastPostedAt?: Date }> { this.ensureOpen(); const row = this.database.prepare('SELECT state,last_posted_at FROM engagement_proactive_preferences WHERE guild_id = ?').get(guildId) as { state: ProactiveState; last_posted_at: number | null } | undefined; return row ? { state: row.state, ...(row.last_posted_at === null ? {} : { lastPostedAt: new Date(row.last_posted_at) }) } : { state: 'disabled' }; }
-  async setProactiveState(guildId: string, state: ProactiveState, updatedAt: Date): Promise<void> { this.ensureOpen(); this.database.prepare('INSERT INTO engagement_proactive_preferences (guild_id,state,last_posted_at,updated_at) VALUES (?,?,NULL,?) ON CONFLICT(guild_id) DO UPDATE SET state=excluded.state,updated_at=excluded.updated_at').run(guildId, state, updatedAt.getTime()); }
-  async recordProactivePosted(guildId: string, postedAt: Date): Promise<void> { this.ensureOpen(); this.database.prepare("UPDATE engagement_proactive_preferences SET last_posted_at = ?, updated_at = ? WHERE guild_id = ? AND state = 'enabled'").run(postedAt.getTime(), postedAt.getTime(), guildId); }
-  async claimProactive(guildId: string, key: string, now: Date): Promise<boolean> { this.ensureOpen(); const result = this.database.prepare('INSERT OR IGNORE INTO engagement_idempotency_keys (guild_id,scope,key,created_at) VALUES (?,?,?,?)').run(guildId, 'scheduled-job', `proactive:${key}`, now.getTime()); return result.changes > 0; }
+  async getMemberProfile(
+    serverId: string,
+    userId: string,
+  ): Promise<MemberProfile | undefined> {
+    this.ensureOpen();
+    validateIdentifiers({ guildId: serverId, userId });
+    const row = this.database
+      .prepare(
+        'SELECT server_id,user_id,bio,interests,visibility,created_at,updated_at FROM engagement_member_profiles WHERE server_id = ? AND user_id = ?',
+      )
+      .get(serverId, userId) as
+      | {
+          server_id: string;
+          user_id: string;
+          bio: string | null;
+          interests: string | null;
+          visibility: MemberProfile['visibility'];
+          created_at: number;
+          updated_at: number;
+        }
+      | undefined;
+    return row === undefined
+      ? undefined
+      : {
+          serverId: row.server_id,
+          userId: row.user_id,
+          bio: row.bio,
+          interests: row.interests,
+          visibility: row.visibility,
+          createdAt: new Date(row.created_at),
+          updatedAt: new Date(row.updated_at),
+        };
+  }
+  async createMemberProfile(
+    profile: MemberProfile,
+  ): Promise<'created' | 'duplicate'> {
+    this.ensureOpen();
+    validateIdentifiers({ guildId: profile.serverId, userId: profile.userId });
+    const result = this.database
+      .prepare(
+        'INSERT OR IGNORE INTO engagement_member_profiles (server_id,user_id,bio,interests,visibility,created_at,updated_at) VALUES (?,?,?,?,?,?,?)',
+      )
+      .run(
+        profile.serverId,
+        profile.userId,
+        profile.bio,
+        profile.interests,
+        profile.visibility,
+        profile.createdAt.getTime(),
+        profile.updatedAt.getTime(),
+      );
+    return result.changes > 0 ? 'created' : 'duplicate';
+  }
+  async updateMemberProfile(
+    serverId: string,
+    userId: string,
+    values: Pick<MemberProfile, 'bio' | 'interests' | 'updatedAt'>,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    validateIdentifiers({ guildId: serverId, userId });
+    return (
+      this.database
+        .prepare(
+          'UPDATE engagement_member_profiles SET bio = ?, interests = ?, updated_at = ? WHERE server_id = ? AND user_id = ?',
+        )
+        .run(
+          values.bio,
+          values.interests,
+          values.updatedAt.getTime(),
+          serverId,
+          userId,
+        ).changes > 0
+    );
+  }
+  async setMemberProfileVisibility(
+    serverId: string,
+    userId: string,
+    visibility: MemberProfile['visibility'],
+    updatedAt: Date,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    validateIdentifiers({ guildId: serverId, userId });
+    if (visibility !== 'visible' && visibility !== 'hidden')
+      throw new RangeError('Invalid profile visibility.');
+    return (
+      this.database
+        .prepare(
+          'UPDATE engagement_member_profiles SET visibility = ?, updated_at = ? WHERE server_id = ? AND user_id = ?',
+        )
+        .run(visibility, updatedAt.getTime(), serverId, userId).changes > 0
+    );
+  }
+  async deleteMemberProfile(
+    serverId: string,
+    userId: string,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    validateIdentifiers({ guildId: serverId, userId });
+    return (
+      this.database
+        .prepare(
+          'DELETE FROM engagement_member_profiles WHERE server_id = ? AND user_id = ?',
+        )
+        .run(serverId, userId).changes > 0
+    );
+  }
+  async getFeatureFlags(
+    guildId: string,
+  ): Promise<readonly FeatureFlagRecord[]> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          'SELECT name, enabled FROM engagement_feature_flags WHERE guild_id = ? ORDER BY name',
+        )
+        .all(guildId) as Array<{ name: FeatureFlagName; enabled: number }>
+    ).map((row) => ({ name: row.name, enabled: row.enabled === 1 }));
+  }
+  async setFeatureFlag(
+    guildId: string,
+    name: FeatureFlagName,
+    enabled: boolean,
+    updatedAt = new Date(),
+  ): Promise<void> {
+    this.ensureOpen();
+    this.database
+      .prepare(
+        'INSERT INTO engagement_feature_flags (guild_id, name, enabled, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(guild_id, name) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at',
+      )
+      .run(guildId, name, enabled ? 1 : 0, updatedAt.getTime());
+  }
+  async getProactiveState(
+    guildId: string,
+  ): Promise<{ state: ProactiveState; lastPostedAt?: Date }> {
+    this.ensureOpen();
+    const row = this.database
+      .prepare(
+        'SELECT state,last_posted_at FROM engagement_proactive_preferences WHERE guild_id = ?',
+      )
+      .get(guildId) as
+      { state: ProactiveState; last_posted_at: number | null } | undefined;
+    return row
+      ? {
+          state: row.state,
+          ...(row.last_posted_at === null
+            ? {}
+            : { lastPostedAt: new Date(row.last_posted_at) }),
+        }
+      : { state: 'disabled' };
+  }
+  async setProactiveState(
+    guildId: string,
+    state: ProactiveState,
+    updatedAt: Date,
+  ): Promise<void> {
+    this.ensureOpen();
+    this.database
+      .prepare(
+        'INSERT INTO engagement_proactive_preferences (guild_id,state,last_posted_at,updated_at) VALUES (?,?,NULL,?) ON CONFLICT(guild_id) DO UPDATE SET state=excluded.state,updated_at=excluded.updated_at',
+      )
+      .run(guildId, state, updatedAt.getTime());
+  }
+  async recordProactivePosted(guildId: string, postedAt: Date): Promise<void> {
+    this.ensureOpen();
+    this.database
+      .prepare(
+        "UPDATE engagement_proactive_preferences SET last_posted_at = ?, updated_at = ? WHERE guild_id = ? AND state = 'enabled'",
+      )
+      .run(postedAt.getTime(), postedAt.getTime(), guildId);
+  }
+  async claimProactive(
+    guildId: string,
+    key: string,
+    now: Date,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    const result = this.database
+      .prepare(
+        'INSERT OR IGNORE INTO engagement_idempotency_keys (guild_id,scope,key,created_at) VALUES (?,?,?,?)',
+      )
+      .run(guildId, 'scheduled-job', `proactive:${key}`, now.getTime());
+    return result.changes > 0;
+  }
   async recordAnalyticsEvent(event: AnalyticsEvent): Promise<void> {
     this.ensureOpen();
     const occurredAt = new Date(event.occurredAt);
     const day = occurredAt.toISOString().slice(0, 10);
-    this.database.prepare(`
+    this.database
+      .prepare(
+        `
       INSERT INTO platform_metrics_daily
         (server_id, metric_day, feature, command, event_name, event_count, duration_ms)
       VALUES (?, ?, ?, ?, ?, 1, ?)
       ON CONFLICT(server_id, metric_day, feature, command, event_name)
       DO UPDATE SET event_count = event_count + 1,
         duration_ms = duration_ms + excluded.duration_ms
-    `).run(
-      event.serverId,
-      day,
-      event.feature,
-      event.command ?? '',
-      event.name,
-      event.durationMs ?? 0,
-    );
+    `,
+      )
+      .run(
+        event.serverId,
+        day,
+        event.feature,
+        event.command ?? '',
+        event.name,
+        event.durationMs ?? 0,
+      );
   }
 
-  async analyticsSummary(serverId: string, since: Date): Promise<readonly MetricsSummaryRow[]> {
+  async analyticsSummary(
+    serverId: string,
+    since: Date,
+  ): Promise<readonly MetricsSummaryRow[]> {
     this.ensureOpen();
-    return (this.database.prepare(`
+    return (
+      this.database
+        .prepare(
+          `
       SELECT server_id, feature, command, event_name, SUM(event_count) AS event_count,
         SUM(duration_ms) AS duration_ms
       FROM platform_metrics_daily
       WHERE server_id = ? AND metric_day >= ?
       GROUP BY server_id, feature, command, event_name
       ORDER BY feature, command, event_name
-    `).all(serverId, since.toISOString().slice(0, 10)) as Array<{
-      server_id: string; feature: string; command: string; event_name: AnalyticsEvent['name'];
-      event_count: number; duration_ms: number;
-    }>).map((row) => ({
+    `,
+        )
+        .all(serverId, since.toISOString().slice(0, 10)) as Array<{
+        server_id: string;
+        feature: string;
+        command: string;
+        event_name: AnalyticsEvent['name'];
+        event_count: number;
+        duration_ms: number;
+      }>
+    ).map((row) => ({
       serverId: row.server_id,
       feature: row.feature,
       command: row.command,
@@ -156,11 +354,92 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     }));
   }
 
-  async getBirthday(guildId: string, userId: string): Promise<BirthdayRecord | undefined> { this.ensureOpen(); const row = this.database.prepare('SELECT guild_id,user_id,month,day,timezone,enabled,updated_at FROM engagement_birthdays WHERE guild_id = ? AND user_id = ?').get(guildId,userId) as any; return row ? { guildId: row.guild_id, userId: row.user_id, month: row.month, day: row.day, timezone: row.timezone, enabled: Boolean(row.enabled), updatedAt: new Date(row.updated_at) } : undefined; }
-  async saveBirthday(record: BirthdayRecord): Promise<BirthdayRecord> { this.ensureOpen(); this.database.prepare('INSERT INTO engagement_birthdays (guild_id,user_id,month,day,timezone,enabled,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(guild_id,user_id) DO UPDATE SET month=excluded.month,day=excluded.day,timezone=excluded.timezone,enabled=excluded.enabled,updated_at=excluded.updated_at').run(record.guildId,record.userId,record.month,record.day,record.timezone,record.enabled?1:0,record.updatedAt.getTime()); return record; }
-  async deleteBirthday(guildId: string, userId: string): Promise<boolean> { this.ensureOpen(); return this.database.prepare('DELETE FROM engagement_birthdays WHERE guild_id = ? AND user_id = ?').run(guildId,userId).changes > 0; }
-  async listDueBirthdays(guildId: string, month: number, day: number): Promise<readonly BirthdayRecord[]> { this.ensureOpen(); return (this.database.prepare('SELECT guild_id,user_id,month,day,timezone,enabled,updated_at FROM engagement_birthdays WHERE guild_id = ? AND month = ? AND day = ? AND enabled = 1').all(guildId,month,day) as any[]).map(row=>({guildId:row.guild_id,userId:row.user_id,month:row.month,day:row.day,timezone:row.timezone,enabled:true,updatedAt:new Date(row.updated_at)})); }
-  async claimBirthdayAnnouncement(guildId: string, month: number, day: number, userId: string): Promise<boolean> { this.ensureOpen(); const year = new Date().getUTCFullYear(); const result = this.database.prepare('INSERT OR IGNORE INTO engagement_birthday_announcements (guild_id,year,month,day,user_id,announced_at) VALUES (?,?,?,?,?,?)').run(guildId,year,month,day,userId,Date.now()); return result.changes > 0; }
+  async getBirthday(
+    guildId: string,
+    userId: string,
+  ): Promise<BirthdayRecord | undefined> {
+    this.ensureOpen();
+    const row = this.database
+      .prepare(
+        'SELECT guild_id,user_id,month,day,timezone,enabled,updated_at FROM engagement_birthdays WHERE guild_id = ? AND user_id = ?',
+      )
+      .get(guildId, userId) as any;
+    return row
+      ? {
+          guildId: row.guild_id,
+          userId: row.user_id,
+          month: row.month,
+          day: row.day,
+          timezone: row.timezone,
+          enabled: Boolean(row.enabled),
+          updatedAt: new Date(row.updated_at),
+        }
+      : undefined;
+  }
+  async saveBirthday(record: BirthdayRecord): Promise<BirthdayRecord> {
+    this.ensureOpen();
+    this.database
+      .prepare(
+        'INSERT INTO engagement_birthdays (guild_id,user_id,month,day,timezone,enabled,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(guild_id,user_id) DO UPDATE SET month=excluded.month,day=excluded.day,timezone=excluded.timezone,enabled=excluded.enabled,updated_at=excluded.updated_at',
+      )
+      .run(
+        record.guildId,
+        record.userId,
+        record.month,
+        record.day,
+        record.timezone,
+        record.enabled ? 1 : 0,
+        record.updatedAt.getTime(),
+      );
+    return record;
+  }
+  async deleteBirthday(guildId: string, userId: string): Promise<boolean> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          'DELETE FROM engagement_birthdays WHERE guild_id = ? AND user_id = ?',
+        )
+        .run(guildId, userId).changes > 0
+    );
+  }
+  async listDueBirthdays(
+    guildId: string,
+    month: number,
+    day: number,
+  ): Promise<readonly BirthdayRecord[]> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          'SELECT guild_id,user_id,month,day,timezone,enabled,updated_at FROM engagement_birthdays WHERE guild_id = ? AND month = ? AND day = ? AND enabled = 1',
+        )
+        .all(guildId, month, day) as any[]
+    ).map((row) => ({
+      guildId: row.guild_id,
+      userId: row.user_id,
+      month: row.month,
+      day: row.day,
+      timezone: row.timezone,
+      enabled: true,
+      updatedAt: new Date(row.updated_at),
+    }));
+  }
+  async claimBirthdayAnnouncement(
+    guildId: string,
+    month: number,
+    day: number,
+    userId: string,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    const year = new Date().getUTCFullYear();
+    const result = this.database
+      .prepare(
+        'INSERT OR IGNORE INTO engagement_birthday_announcements (guild_id,year,month,day,user_id,announced_at) VALUES (?,?,?,?,?,?)',
+      )
+      .run(guildId, year, month, day, userId, Date.now());
+    return result.changes > 0;
+  }
   private readonly database: Database.Database;
   private closed = false;
 
@@ -557,6 +836,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     leaseToken: string,
     _now: Date,
   ): Promise<boolean> {
+    void _now;
     this.ensureOpen();
     return (
       this.database
@@ -1341,6 +1621,11 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           'DELETE FROM engagement_opt_outs WHERE guild_id = ? AND user_id = ?',
         )
         .run(guildId, userId).changes;
+      const memberProfiles = this.database
+        .prepare(
+          'DELETE FROM engagement_member_profiles WHERE server_id = ? AND user_id = ?',
+        )
+        .run(guildId, userId).changes;
       return (
         introductions +
         suggestions +
@@ -1349,6 +1634,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         triviaRounds +
         events +
         optOut +
+        memberProfiles +
         queued
       );
     })();
@@ -1706,7 +1992,9 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         this.recordMigration(19);
       }
       if (!this.hasMigration(20)) {
-        this.database.exec("CREATE TABLE IF NOT EXISTS engagement_birthdays (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12), day INTEGER NOT NULL CHECK (day BETWEEN 1 AND 31), timezone TEXT NOT NULL, enabled INTEGER NOT NULL CHECK (enabled IN (0,1)), updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id)); CREATE TABLE IF NOT EXISTS engagement_birthday_announcements (guild_id TEXT NOT NULL, year INTEGER NOT NULL, month INTEGER NOT NULL, day INTEGER NOT NULL, user_id TEXT NOT NULL, announced_at INTEGER NOT NULL, PRIMARY KEY (guild_id, year, month, day, user_id)); CREATE INDEX IF NOT EXISTS engagement_birthdays_due ON engagement_birthdays (guild_id, month, day, enabled);");
+        this.database.exec(
+          'CREATE TABLE IF NOT EXISTS engagement_birthdays (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12), day INTEGER NOT NULL CHECK (day BETWEEN 1 AND 31), timezone TEXT NOT NULL, enabled INTEGER NOT NULL CHECK (enabled IN (0,1)), updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, user_id)); CREATE TABLE IF NOT EXISTS engagement_birthday_announcements (guild_id TEXT NOT NULL, year INTEGER NOT NULL, month INTEGER NOT NULL, day INTEGER NOT NULL, user_id TEXT NOT NULL, announced_at INTEGER NOT NULL, PRIMARY KEY (guild_id, year, month, day, user_id)); CREATE INDEX IF NOT EXISTS engagement_birthdays_due ON engagement_birthdays (guild_id, month, day, enabled);',
+        );
         this.recordMigration(20);
       }
       if (!this.hasMigration(21)) {
@@ -1716,7 +2004,9 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         this.recordMigration(21);
       }
       if (!this.hasMigration(22)) {
-        this.database.exec("CREATE TABLE IF NOT EXISTS engagement_feature_flags (guild_id TEXT NOT NULL, name TEXT NOT NULL, enabled INTEGER NOT NULL CHECK (enabled IN (0,1)), updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, name)); CREATE INDEX IF NOT EXISTS engagement_feature_flags_retention ON engagement_feature_flags (updated_at, guild_id);");
+        this.database.exec(
+          'CREATE TABLE IF NOT EXISTS engagement_feature_flags (guild_id TEXT NOT NULL, name TEXT NOT NULL, enabled INTEGER NOT NULL CHECK (enabled IN (0,1)), updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, name)); CREATE INDEX IF NOT EXISTS engagement_feature_flags_retention ON engagement_feature_flags (updated_at, guild_id);',
+        );
         this.recordMigration(22);
       }
       if (!this.hasMigration(24)) {
@@ -1724,6 +2014,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           'CREATE TABLE IF NOT EXISTS platform_metrics_daily (server_id TEXT NOT NULL, metric_day TEXT NOT NULL, feature TEXT NOT NULL, command TEXT NOT NULL, event_name TEXT NOT NULL, event_count INTEGER NOT NULL CHECK (event_count >= 0), duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0), PRIMARY KEY (server_id, metric_day, feature, command, event_name)); CREATE INDEX IF NOT EXISTS platform_metrics_daily_retention ON platform_metrics_daily (metric_day, server_id);',
         );
         this.recordMigration(24);
+      }
+      if (!this.hasMigration(25)) {
+        this.database.exec(
+          "CREATE TABLE IF NOT EXISTS engagement_member_profiles (server_id TEXT NOT NULL, user_id TEXT NOT NULL, bio TEXT, interests TEXT, visibility TEXT NOT NULL CHECK (visibility IN ('visible','hidden')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (server_id, user_id)); CREATE INDEX IF NOT EXISTS engagement_member_profiles_visibility ON engagement_member_profiles (server_id, visibility, updated_at);",
+        );
+        this.recordMigration(25);
       }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",

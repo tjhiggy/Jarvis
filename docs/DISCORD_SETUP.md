@@ -73,23 +73,23 @@ Global registration is not implemented as a runtime toggle. It is a future, manu
 
 ## Commands
 
-| Command                | Behavior                                                                                                                                |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `/ask prompt:<text>`   | Sends a bounded prompt to the selected provider with history from the current channel or thread.                                        |
-| `/search query:<text>` | Requires `TAVILY_API_KEY`; grounds the question with current Tavily results before the provider answers.                                |
-| `/forget`              | Deletes Jarvis's stored history for the current guild channel or thread and responds ephemerally.                                       |
-| `/channel-summary`    | Privately summarizes retained Jarvis conversation from the last 24 hours in the current channel or thread; it does not fetch arbitrary Discord history. |
-| `/faq`                 | Lists approved local FAQ questions publicly or returns the selected exact approved answer.                                              |
-| `/help`                | Lists the available commands and safety boundary in an ephemeral server-channel response.                                               |
-| `/status`              | Reports safe configuration, FAQ readiness, SQLite health, and safe reminder health ephemerally without a model request.                 |
-| `/config`              | Administrator-only ephemeral view of non-secret effective configuration. Destination IDs are masked; credentials and message content are omitted. |
-| `/reminder set`        | Privately creates a personal 1-minute to 30-day reminder with up to 500 characters; delivery returns to this allowed channel or thread. |
-| `/reminder list`       | Privately lists only the caller's retained reminders in this server.                                                                    |
-| `/reminder cancel`     | Privately cancels only the caller's active reminder by ID.                                                                              |
-| `/poll`                | Configured administrator IDs create a public anonymous two-to-five-option poll using a fixed duration preset.                           |
-| `/poll-close`          | Configured administrator IDs close an open poll early by poll ID.                                                                       |
-| `/fantasy standings`   | Reads the configured Sleeper league's standings and display names. Read-only; pre-draft unassigned rosters are shown safely.            |
-| `/fantasy player`      | Reads bounded, read-only statistics for one explicitly requested Sleeper player and season, optionally one week.                       |
+| Command                | Behavior                                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/ask prompt:<text>`   | Sends a bounded prompt to the selected provider with history from the current channel or thread.                                                        |
+| `/search query:<text>` | Requires `TAVILY_API_KEY`; grounds the question with current Tavily results before the provider answers.                                                |
+| `/forget`              | Deletes Jarvis's stored history for the current guild channel or thread and responds ephemerally.                                                       |
+| `/channel-summary`     | Privately summarizes retained Jarvis conversation from the last 24 hours in the current channel or thread; it does not fetch arbitrary Discord history. |
+| `/faq`                 | Lists approved local FAQ questions publicly or returns the selected exact approved answer.                                                              |
+| `/help`                | Lists the available commands and safety boundary in an ephemeral server-channel response.                                                               |
+| `/status`              | Reports safe configuration, FAQ readiness, SQLite health, and safe reminder health ephemerally without a model request.                                 |
+| `/config`              | Administrator-only ephemeral view of non-secret effective configuration. Destination IDs are masked; credentials and message content are omitted.       |
+| `/reminder set`        | Privately creates a personal 1-minute to 30-day reminder with up to 500 characters; delivery returns to this allowed channel or thread.                 |
+| `/reminder list`       | Privately lists only the caller's retained reminders in this server.                                                                                    |
+| `/reminder cancel`     | Privately cancels only the caller's active reminder by ID.                                                                                              |
+| `/poll`                | Configured administrator IDs create a public anonymous two-to-five-option poll using a fixed duration preset.                                           |
+| `/poll-close`          | Configured administrator IDs close an open poll early by poll ID.                                                                                       |
+| `/fantasy standings`   | Reads the configured Sleeper league's standings and display names. Read-only; pre-draft unassigned rosters are shown safely.                            |
+| `/fantasy player`      | Reads bounded, read-only statistics for one explicitly requested Sleeper player and season, optionally one week.                                        |
 
 `/ask`, `/search`, `/forget`, `/faq`, `/reminder`, `/poll`, and `/poll-close` enforce the channel allowlist. Reminder commands do not need an administrator ID or extra Discord permissions; scheduled delivery may mention only its verified owner. Poll command creation and early closure additionally require an exact ID in `POLL_ADMIN_USER_IDS`; voting is open to members who can use the poll message. All commands are server-only; direct messages receive a safe unavailable response. Direct mentions require a non-empty prompt after the bot mention.
 

@@ -42,7 +42,9 @@ describe('platform contracts', () => {
       durationMs: 42,
       metadata: { safe: 'kept' },
     });
-    expect(JSON.stringify(event)).not.toMatch(/private message|secret-token|prompt|token/i);
+    expect(JSON.stringify(event)).not.toMatch(
+      /private message|secret-token|prompt|token/i,
+    );
   });
 
   it('creates server-scoped audit events with bounded metadata', () => {

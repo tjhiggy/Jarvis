@@ -29,16 +29,16 @@ the module registry and instrumentation boundary, durable aggregate metrics,
 provider and integration readiness, and a localhost-only read-only Command
 Deck. Existing Discord command behavior remains unchanged.
 
-| Release | Focus | Shippable outcome |
-| --- | --- | --- |
-| 0.3 | Platform Core | Released. Module registry, interaction context, authorization, feature flags, storage and scheduler contracts, health, audit, and command analytics events. |
-| 0.3.x | Discord Interaction Shell | Consistent help, concise responses, private/public indicators, preview-confirm-cancel flows, buttons instead of UUID copy and paste, and standard error states. |
-| 0.4 | Crew Engagement | Shared UX and contracts across introductions, suggestions, events, RSVP, trivia, polls, reminders, birthdays, LFG, and game nights. |
-| 0.5 | Shipboard Broadcasts | RSS, proactive posts, recaps, reminders, quiet hours, cadence limits, preferences, previews, pause/resume, kill switches, and durable deduplication. |
-| 0.6 | Command Deck | Local Admin Console with safe channel selection, configuration previews, audit visibility, backup and rollback support, mobile polish, and authenticated, confirmed writes. |
-| 0.7 | Community Intelligence | Privacy-bounded recaps, approved knowledge, summaries, catch-me-up, and aggregate insights with source windows and minimum-group thresholds. |
-| 0.8 | Connected Systems | Read-only Sleeper Fantasy Football, GitHub, MCP, repository questions, and pull-request summaries with strict allowlists. |
-| 1.0 | MuthaShip Platform | Versioned module SDK, compatibility tests, security review, backup and restore rehearsal, rollback runbooks, and operational readiness. |
+| Release | Focus                     | Shippable outcome                                                                                                                                                                         |
+| ------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.3     | Platform Core             | Released. Module registry, interaction context, authorization, feature flags, storage and scheduler contracts, health, audit, and command analytics events.                               |
+| 0.3.x   | Discord Interaction Shell | Consistent help, concise responses, private/public indicators, preview-confirm-cancel flows, buttons instead of UUID copy and paste, and standard error states.                           |
+| 0.4     | Crew Engagement           | In progress. Starts with opt-in member profiles, then shared UX and contracts across introductions, suggestions, events, RSVP, trivia, polls, reminders, birthdays, LFG, and game nights. |
+| 0.5     | Shipboard Broadcasts      | RSS, proactive posts, recaps, reminders, quiet hours, cadence limits, preferences, previews, pause/resume, kill switches, and durable deduplication.                                      |
+| 0.6     | Command Deck              | Local Admin Console with safe channel selection, configuration previews, audit visibility, backup and rollback support, mobile polish, and authenticated, confirmed writes.               |
+| 0.7     | Community Intelligence    | Privacy-bounded recaps, approved knowledge, summaries, catch-me-up, and aggregate insights with source windows and minimum-group thresholds.                                              |
+| 0.8     | Connected Systems         | Read-only Sleeper Fantasy Football, GitHub, MCP, repository questions, and pull-request summaries with strict allowlists.                                                                 |
+| 1.0     | MuthaShip Platform        | Versioned module SDK, compatibility tests, security review, backup and restore rehearsal, rollback runbooks, and operational readiness.                                                   |
 
 ## Command analytics and engagement metrics
 
@@ -100,4 +100,3 @@ Each phase requires:
 Jarvis will not autonomously learn from raw Discord conversations, execute
 code or shell commands, modify server settings, perform GitHub writes, expose
 secrets, or grant arbitrary role permissions.
-

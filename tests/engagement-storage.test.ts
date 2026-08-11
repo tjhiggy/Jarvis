@@ -44,6 +44,7 @@ describe('SQLiteEngagementRepository', () => {
       'engagement_feature_flags',
       'engagement_idempotency_keys',
       'engagement_introductions',
+      'engagement_member_profiles',
       'engagement_operational_audit',
       'engagement_opt_outs',
       'engagement_preferences',

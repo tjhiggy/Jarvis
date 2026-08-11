@@ -17,7 +17,9 @@ export const buildChannelSummary = (
   }
   const lines = recent.map((message) => {
     const role = message.role === 'assistant' ? 'Jarvis' : 'Crew';
-    const content = neutralizeDiscordMentions(message.content.replace(/\s+/g, ' ').trim()).slice(0, 280);
+    const content = neutralizeDiscordMentions(
+      message.content.replace(/\s+/g, ' ').trim(),
+    ).slice(0, 280);
     return `• **${role}:** ${content}`;
   });
   return `**MuthaShip channel summary**\n_Last 24 hours of retained Jarvis conversation; no arbitrary Discord history was read._\n${lines.join('\n')}`;

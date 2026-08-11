@@ -75,7 +75,6 @@ import {
 import {
   toDiscordEngagementCard,
   type DiscordEngagementCard,
-  type EngagementCard,
 } from './engagement/discord-ui.js';
 import { EventService, type EventGateway } from './engagement/events.js';
 import { EventScheduler } from './engagement/event-scheduler.js';
@@ -100,6 +99,11 @@ import {
   ProactiveEngagementService,
 } from './engagement/proactive.js';
 import { DelegatedPostService } from './engagement/delegated-posts.js';
+import { FeatureFlagService } from './engagement/feature-flags.js';
+import {
+  MemberProfileService,
+  memberProfileRepositoryFromEngagement,
+} from './engagement/member-profiles.js';
 import { RssStorage } from './notifications/rss-storage.js';
 import { RssNotificationClient } from './notifications/rss-notifications.js';
 import { RssScheduler } from './notifications/rss-scheduler.js';
@@ -474,6 +478,7 @@ export const createApplication = async (
   let birthdayScheduler: BirthdayScheduler | undefined;
   let proactiveScheduler: DurableProactiveScheduler | undefined;
   let proactiveService: ProactiveEngagementService | undefined;
+  let memberProfileService: MemberProfileService | undefined;
   let triviaScheduler: TriviaExpiryScheduler | undefined;
   let engagementDeletionService: EngagementDeletionService | undefined;
   let client: RuntimeDiscordClient | undefined;
@@ -493,10 +498,13 @@ export const createApplication = async (
     while (activeWork.size > 0) await Promise.allSettled([...activeWork]);
   };
 
-    const shutdown = (): Promise<void> => {
+  const shutdown = (): Promise<void> => {
     acceptingWork = false;
     shutdownPromise ??= (async () => {
-      if (adminConsole !== undefined) { await adminConsole.close(); adminConsole = undefined; }
+      if (adminConsole !== undefined) {
+        await adminConsole.close();
+        adminConsole = undefined;
+      }
       if (cleanupTimer !== undefined) {
         timers.clearInterval(cleanupTimer);
         cleanupTimer = undefined;
@@ -659,6 +667,7 @@ export const createApplication = async (
       config.storage.maxStoredMessages,
     );
     const initializedStore = store;
+    let featureFlags: FeatureFlagService | undefined;
     reminderStore =
       dependencies.createReminderStore?.(config.storage.databasePath) ??
       new SQLiteReminderStore(config.storage.databasePath);
@@ -680,21 +689,41 @@ export const createApplication = async (
           await engagementRepository?.recordAnalyticsEvent?.(event);
         },
       });
+      featureFlags = new FeatureFlagService(
+        engagementRepository as Required<
+          Pick<EngagementRepository, 'getFeatureFlags' | 'setFeatureFlag'>
+        >,
+      );
     }
     const ai = aiFactory(config);
     client = discordFactory();
     if (rssStorage !== undefined && config.engagement.channels.rssId !== '') {
       rssScheduler = new RssScheduler(
         rssStorage,
-        new RssNotificationClient(fetch, 8_000, config.engagement.rssAllowedHosts),
+        new RssNotificationClient(
+          fetch,
+          8_000,
+          config.engagement.rssAllowedHosts,
+        ),
         {
           publish: async (channelId, item) => {
             const channels = client?.channels;
-            if (channels === undefined) throw new Error('Discord channels are unavailable.');
+            if (channels === undefined)
+              throw new Error('Discord channels are unavailable.');
             const channel = await channels.fetch(channelId);
-            const sendable = channel as unknown as { send(payload: unknown): Promise<unknown> };
-            if (channel === undefined || channel === null || typeof sendable.send !== 'function') throw new Error('Configured RSS channel is unavailable.');
-            await sendable.send({ content: `**${item.title}**\n${item.url}`, allowedMentions: { parse: [], repliedUser: false } });
+            const sendable = channel as unknown as {
+              send(payload: unknown): Promise<unknown>;
+            };
+            if (
+              channel === undefined ||
+              channel === null ||
+              typeof sendable.send !== 'function'
+            )
+              throw new Error('Configured RSS channel is unavailable.');
+            await sendable.send({
+              content: `**${item.title}**\n${item.url}`,
+              allowedMentions: { parse: [], repliedUser: false },
+            });
           },
         },
         config.discord.guildId,
@@ -751,6 +780,25 @@ export const createApplication = async (
             ),
             createId: () => randomUUID(),
           });
+    if (
+      engagementRepository !== undefined &&
+      supportsMemberProfiles(engagementRepository)
+    ) {
+      memberProfileService = new MemberProfileService({
+        repository: memberProfileRepositoryFromEngagement(engagementRepository),
+        introductionReader: {
+          getSuggestedInterests: async (serverId, userId) =>
+            (
+              await engagementRepository!.findActiveIntroductionByOwner(
+                serverId,
+                userId,
+              )
+            )?.interests ?? null,
+        },
+        createId: () => randomUUID(),
+        maxDraftsPerOwner: config.engagement.maxRecordsPerUser,
+      });
+    }
     birthdayService =
       engagementRepository !== undefined &&
       typeof engagementRepository.getBirthday === 'function'
@@ -970,24 +1018,74 @@ export const createApplication = async (
       adminConsole = await startAdminConsole({
         port: config.adminConsole.port,
         host: config.adminConsole.host,
-        rssControl: rssStorage === undefined || config.adminConsole.token === '' ? undefined : { token: config.adminConsole.token, setPaused: async (paused: boolean) => { rssStorage?.setPaused(config.discord.guildId, paused); }, preview: async (url: string) => new RssNotificationClient(fetch, 8_000, config.engagement.rssAllowedHosts).fetch(url) },
+        rssControl:
+          rssStorage === undefined || config.adminConsole.token === ''
+            ? undefined
+            : {
+                token: config.adminConsole.token,
+                setPaused: async (paused: boolean) => {
+                  rssStorage?.setPaused(config.discord.guildId, paused);
+                },
+                preview: async (url: string) =>
+                  new RssNotificationClient(
+                    fetch,
+                    8_000,
+                    config.engagement.rssAllowedHosts,
+                  ).fetch(url),
+              },
         snapshot: async () => {
-          const rows = engagementRepository?.analyticsSummary === undefined
-            ? []
-            : await engagementRepository.analyticsSummary(config.discord.guildId, new Date(Date.now() - 7 * 86_400_000));
+          const rows =
+            engagementRepository?.analyticsSummary === undefined
+              ? []
+              : await engagementRepository.analyticsSummary(
+                  config.discord.guildId,
+                  new Date(Date.now() - 7 * 86_400_000),
+                );
           const features = ['introductions', 'suggestions', 'events', 'trivia'];
           return {
-            platform: { version: config.runtimeIdentity?.version ?? 'unknown', environment: config.runtimeIdentity?.environment ?? 'unknown' },
-            database: engagementRepository === undefined ? 'unavailable' : 'healthy',
+            platform: {
+              version: config.runtimeIdentity?.version ?? 'unknown',
+              environment: config.runtimeIdentity?.environment ?? 'unknown',
+            },
+            database:
+              engagementRepository === undefined ? 'unavailable' : 'healthy',
             engagement: { enabled: config.engagement.enabled, features },
-            providers: { ai: config.ai.provider, openAiConfigured: config.openai.apiKey !== '', ollamaConfigured: config.ollama.baseUrl !== '', webSearchConfigured: config.webSearch.apiKey !== '' },
-            integrations: { rss: config.engagement.channels.rssId !== '', sleeper: config.sleeper?.leagueId !== '', github: config.github !== undefined },
-            metrics: engagementRepository?.analyticsSummary === undefined ? null : { events: rows.reduce((sum, row) => sum + row.count, 0), failures: rows.filter((row) => row.eventName === 'command_failed').reduce((sum, row) => sum + row.count, 0) },
-            rss: rssStorage === undefined ? undefined : { paused: rssStorage.isPaused(config.discord.guildId), feeds: rssStorage.listFeeds(config.discord.guildId).map(({ label, url }) => ({ label, url })) },
+            providers: {
+              ai: config.ai.provider,
+              openAiConfigured: config.openai.apiKey !== '',
+              ollamaConfigured: config.ollama.baseUrl !== '',
+              webSearchConfigured: config.webSearch.apiKey !== '',
+            },
+            integrations: {
+              rss: config.engagement.channels.rssId !== '',
+              sleeper: config.sleeper?.leagueId !== '',
+              github: config.github !== undefined,
+            },
+            metrics:
+              engagementRepository?.analyticsSummary === undefined
+                ? null
+                : {
+                    events: rows.reduce((sum, row) => sum + row.count, 0),
+                    failures: rows
+                      .filter((row) => row.eventName === 'command_failed')
+                      .reduce((sum, row) => sum + row.count, 0),
+                  },
+            rss:
+              rssStorage === undefined
+                ? undefined
+                : {
+                    paused: rssStorage.isPaused(config.discord.guildId),
+                    feeds: rssStorage
+                      .listFeeds(config.discord.guildId)
+                      .map(({ label, url }) => ({ label, url })),
+                  },
           };
         },
       });
-      logger?.info({ port: config.adminConsole.port, host: config.adminConsole.host }, 'Local read-only Admin Console started.');
+      logger?.info(
+        { port: config.adminConsole.port, host: config.adminConsole.host },
+        'Local read-only Admin Console started.',
+      );
     }
     await triviaService?.recover();
     await cleanup();
@@ -1099,6 +1197,10 @@ export const createApplication = async (
               }),
           ...(triviaService === undefined ? {} : { triviaService }),
           ...(proactiveService === undefined ? {} : { proactiveService }),
+          ...(featureFlags === undefined ? {} : { featureFlags }),
+          ...(memberProfileService === undefined
+            ? {}
+            : { memberProfileService }),
           ...(engagementRepository === undefined
             ? {}
             : {
@@ -1163,6 +1265,13 @@ export const createApplication = async (
         }),
       ...(pollController === undefined ? {} : { pollController }),
       ...(introductionService === undefined ? {} : { introductionService }),
+      ...(memberProfileService === undefined ? {} : { memberProfileService }),
+      ...(memberProfileService === undefined || featureFlags === undefined
+        ? {}
+        : {
+            isMemberProfileEnabled: (serverId: string) =>
+              featureFlags.isEnabled(serverId, 'profiles'),
+          }),
       ...(suggestionService === undefined
         ? {}
         : {
@@ -1335,6 +1444,26 @@ export const createApplication = async (
     throw error;
   }
 };
+
+type MemberProfileCapableRepository = Required<
+  Pick<
+    EngagementRepository,
+    | 'getMemberProfile'
+    | 'createMemberProfile'
+    | 'updateMemberProfile'
+    | 'setMemberProfileVisibility'
+    | 'deleteMemberProfile'
+  >
+>;
+
+const supportsMemberProfiles = (
+  repository: EngagementRepository,
+): repository is EngagementRepository & MemberProfileCapableRepository =>
+  typeof repository.getMemberProfile === 'function' &&
+  typeof repository.createMemberProfile === 'function' &&
+  typeof repository.updateMemberProfile === 'function' &&
+  typeof repository.setMemberProfileVisibility === 'function' &&
+  typeof repository.deleteMemberProfile === 'function';
 
 const elapsedMilliseconds = (startedAt: number, finishedAt: number): number => {
   const elapsed = finishedAt - startedAt;
