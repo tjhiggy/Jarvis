@@ -24,6 +24,7 @@ export interface DelegatedPostDraft {
   readonly id: string;
   readonly guildId: string;
   readonly ownerUserId: string;
+  readonly ownerName: string;
   readonly channelId: string;
   readonly content: string;
   readonly createdAt: Date;
@@ -86,6 +87,7 @@ export class DelegatedPostService {
       id: this.dependencies.createId(),
       guildId,
       ownerUserId,
+      ownerName: bound(input.ownerName, 80) || 'MuthaShip administrator',
       channelId,
       content,
       createdAt: now,
@@ -111,7 +113,7 @@ export class DelegatedPostService {
     const card = buildEngagementCard({
       title: 'MuthaShip transmission',
       description: draft.content,
-      fields: [{ name: 'Posted for', value: `<@${draft.ownerUserId}>` }],
+      fields: [{ name: 'Posted for', value: draft.ownerName }],
     });
     try {
       return await this.dependencies.gateway.post(draft.channelId, card);
