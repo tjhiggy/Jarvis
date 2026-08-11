@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-08-10
+
+### Added
+
+- Platform Core contracts for module registration, interaction context,
+  authorization, feature flags, storage, scheduling, delivery, audit, and
+  aggregate command metrics.
+- Local-first Command Deck health, provider readiness, RSS state, version
+  identity, and content-free engagement metrics.
+- Native GitHub Project automation and Discussion intake that keep backlog
+  triage human-approved while synchronizing approved work to the delivery
+  board.
+- Phase 0 architecture, security, operations, release, and QA documentation.
+
+### Operational notes
+
+- This release does not grant Jarvis GitHub write or merge authority.
+- The Command Deck remains local-first and read-only for this release.
+- Run the deployment smoke checklist and database backup procedure before
+  promoting the release to production.
+
 ## [0.2.0] - 2026-08-08
 
 ### Added
