@@ -450,9 +450,15 @@ default Ollama model on this workstation. See the
 
 ## Release and license
 
-The current release package and changelog version is `0.7.0`. Release actions
+The current release package and changelog version is `0.8.0`. Release actions
 are maintainer-owned and documented in
 [Releases](docs/RELEASES.md) and the [Changelog](CHANGELOG.md).
+
+The next planned milestone is `v0.9.0 Crew Engagement`, covering opt-in member
+profiles, MuthaShip Coins and daily rewards, participation streaks, game roles,
+persistent teams, and aggregate Command Deck visibility. See the
+[platform architecture roadmap](docs/PLATFORM_ARCHITECTURE_ROADMAP.md) and
+[roadmap](docs/ROADMAP.md) for scope and acceptance rules.
 
 Copyright 2026 Jim Higgins. All rights reserved. Except for the adapted
 [Code of Conduct](CODE_OF_CONDUCT.md), which is licensed under
