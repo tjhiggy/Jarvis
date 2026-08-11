@@ -107,6 +107,8 @@ import {
 import { RssStorage } from './notifications/rss-storage.js';
 import { RssNotificationClient } from './notifications/rss-notifications.js';
 import { RssScheduler } from './notifications/rss-scheduler.js';
+import type { BroadcastStore } from './notifications/broadcast-store.js';
+import { SqliteBroadcastStore } from './notifications/sqlite-broadcast-store.js';
 import { HttpGitHubReadOnlyService } from './github/github-service.js';
 import { startAdminConsole, type AdminConsole } from './admin/admin-console.js';
 
@@ -126,6 +128,11 @@ interface RuntimeDiscordClient {
   login(token: string): Promise<unknown>;
   destroy(): void;
 }
+
+type BroadcastPreferenceStore = Pick<
+  BroadcastStore,
+  'getMemberPreference' | 'setMemberPreference'
+> & { close(): Promise<void> };
 
 interface IntroductionChannel {
   send(
@@ -269,6 +276,9 @@ export interface ApplicationDependencies {
     }>,
   ) => PollScheduler;
   readonly createReminderStore?: (databasePath: string) => ReminderStore;
+  readonly createBroadcastStore?: (
+    databasePath: string,
+  ) => BroadcastPreferenceStore;
   readonly createEngagementRepository?: (
     databasePath: string,
   ) => EngagementRepository;
@@ -466,6 +476,7 @@ export const createApplication = async (
   let pollScheduler: PollScheduler | undefined;
   let reminderStore: ReminderStore | undefined;
   let reminderScheduler: ReminderScheduler | undefined;
+  let broadcastStore: BroadcastPreferenceStore | undefined;
   let engagementRepository: EngagementRepository | undefined;
   let instrumentation: Instrumentation | undefined;
   let rssStorage: RssStorage | undefined;
@@ -584,6 +595,17 @@ export const createApplication = async (
 
       await drainActiveWork();
 
+      if (broadcastStore !== undefined) {
+        try {
+          await broadcastStore.close();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'broadcast_storage_shutdown'),
+            'Notification preference storage close failed during shutdown.',
+          );
+        }
+      }
+
       if (reminderStore !== undefined) {
         try {
           await reminderStore.closeConnection();
@@ -672,6 +694,10 @@ export const createApplication = async (
       dependencies.createReminderStore?.(config.storage.databasePath) ??
       new SQLiteReminderStore(config.storage.databasePath);
     const initializedReminderStore = reminderStore;
+    broadcastStore =
+      dependencies.createBroadcastStore?.(config.storage.databasePath) ??
+      new SqliteBroadcastStore(config.storage.databasePath);
+    const initializedBroadcastStore = broadcastStore;
     if (
       config.engagement.channels.rssId !== '' &&
       config.engagement.rssAllowedHosts.length > 0
@@ -1174,6 +1200,7 @@ export const createApplication = async (
               }
             : {}),
           ...(rssStorage === undefined ? {} : { rssStorage }),
+          broadcastStore: initializedBroadcastStore,
           conversationService,
           conversationHistory: initializedStore,
           store: initializedStore,

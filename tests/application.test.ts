@@ -8,6 +8,7 @@ import type { FaqCatalog } from '../src/faq/faq-catalog.js';
 import type { PollController } from '../src/polls/poll-controller.js';
 import type { PollScheduler } from '../src/polls/poll-scheduler.js';
 import type { PollStore } from '../src/polls/poll-store.js';
+import type { BroadcastStore } from '../src/notifications/broadcast-store.js';
 import { ReminderScheduler } from '../src/reminders/reminder-scheduler.js';
 import type { ReminderStore } from '../src/reminders/reminder-store.js';
 import type { ReminderView } from '../src/reminders/reminder-types.js';
@@ -158,6 +159,68 @@ describe('reportStartupFailure', () => {
 });
 
 describe('createApplication', () => {
+  it('shares the configured database with notification preferences and closes it after active command work drains', async () => {
+    const events: string[] = [];
+    const listeners = new Map<string, (...args: unknown[]) => unknown>();
+    let releaseResponse = (): void => undefined;
+    let signalReplyStarted = (): void => undefined;
+    const responseCompleted = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    const replyStarted = new Promise<void>((resolve) => {
+      signalReplyStarted = () => resolve();
+    });
+    const application = await createTestApplication({
+      loadConfig: () => config,
+      loadPersona: async () => ({}) as TrustedPersona,
+      createStore: () => conversationStore(),
+      createReminderStore: () => reminderStore(),
+      createBroadcastStore: (path) => {
+        events.push(`broadcast-store:${path}`);
+        return broadcastStore({
+          close: async () => {
+            events.push('broadcast-store-close');
+          },
+        });
+      },
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: (event, listener) => {
+          listeners.set(event, listener);
+        },
+        login: async () => undefined,
+        destroy: () => undefined,
+      }),
+    });
+
+    listeners.get('interactionCreate')?.({
+      isChatInputCommand: () => true,
+      id: 'notifications-1',
+      commandName: 'notifications',
+      guildId: 'guild-id',
+      channelId: 'channel-id',
+      channel: { parentId: null, isThread: () => false },
+      user: { id: 'crew-member-1' },
+      options: { getSubcommand: () => 'status', getString: () => null },
+      deferReply: async () => undefined,
+      fetchReply: async () => ({ id: 'reply-id' }),
+      reply: async () => {
+        signalReplyStarted();
+        await responseCompleted;
+      },
+    });
+    await replyStarted;
+    const stopping = application.shutdown();
+    expect(events).toEqual(['broadcast-store::memory:']);
+    releaseResponse();
+    await stopping;
+    expect(events).toEqual([
+      'broadcast-store::memory:',
+      'broadcast-store-close',
+    ]);
+  });
+
   it('opens reminder storage before login and constructs post-login runtime in order', async () => {
     const events: string[] = [];
     const gateway = {
@@ -1443,6 +1506,25 @@ function reminderStore(overrides: Partial<ReminderStore> = {}): ReminderStore {
     }),
     healthCheck: async () => true,
     closeConnection: async () => undefined,
+    ...overrides,
+  };
+}
+
+function broadcastStore(
+  overrides: Partial<BroadcastStore & { close(): Promise<void> }> = {},
+): BroadcastStore & { close(): Promise<void> } {
+  return {
+    getPolicy: async () => undefined,
+    setPolicy: async () => undefined,
+    getMemberPreference: async () => undefined,
+    setMemberPreference: async () => undefined,
+    claimDelivery: async () => undefined,
+    completeDelivery: async () => false,
+    releaseDelivery: async () => false,
+    deliveryHealth: async () => undefined,
+    getLatestCompletedAt: async () => undefined,
+    cleanup: async () => 0,
+    close: async () => undefined,
     ...overrides,
   };
 }
