@@ -6,9 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+No changes yet.
+
+## [0.8.0] - 2026-08-11
+
 ### Added
 
-- v0.8 Connected Systems provider contract and secret-free health projection.
+- Shared read-only provider contract for Connected Systems integrations.
+- Secret-free provider health and readiness projection in the Command Deck.
 
 ### Added
 

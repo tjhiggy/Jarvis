@@ -7,8 +7,8 @@ import { classifyRuntimeQuestion } from '../src/services/runtime-question.js';
 
 describe('runtime identity and self-question handling', () => {
   it('uses the package metadata as the canonical version fallback', () => {
-    expect(loadApplicationVersion()).toBe('0.7.0');
-    expect(loadRuntimeIdentity({}).version).toBe('0.7.0');
+    expect(loadApplicationVersion()).toBe('0.8.0');
+    expect(loadRuntimeIdentity({}).version).toBe('0.8.0');
   });
 
   it('strips control characters from deployment metadata', () => {
@@ -92,7 +92,9 @@ describe('runtime identity and self-question handling', () => {
     ]) {
       const answer = classifyRuntimeQuestion(prompt, identity);
       expect(answer).toBeDefined();
-      expect(answer).toMatch(/will not guess|runtime|cannot inspect|activity|running Jarvis/i);
+      expect(answer).toMatch(
+        /will not guess|runtime|cannot inspect|activity|running Jarvis/i,
+      );
       expect(answer).not.toMatch(/Clash Ninja|Veterans Affairs|sources:/i);
     }
   });
