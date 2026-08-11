@@ -18,7 +18,7 @@ second, imaginary moderator powers never. It answers questions in Discord,
 keeps bounded conversation history per channel or thread, and can use local or
 hosted AI without pretending an interface is a superpower.
 
-Release package: `0.5.0` | Runtime: Node.js 22+ | License: proprietary, except
+Release package: `0.6.0` | Runtime: Node.js 22+ | License: proprietary, except
 the Code of Conduct under CC BY 4.0
 
 Share the [Jarvis community platform overview](assets/jarvis-admin-overview-infographic-v3.png)
@@ -412,9 +412,20 @@ Operators should start with the [v0.5.0 release checklist](docs/releases/v0.5.0.
 then use [Operations](docs/OPERATIONS.md) and the
 [Engagement runbook](docs/ENGAGEMENT_RUNBOOK.md) for live control and rollback.
 
+## Command Deck
+
+v0.6.0 defines the ownership of every registered command and adds the first
+complete local operator workflow. An authenticated administrator can select an
+allowlisted channel by friendly name, compose a bounded MuthaShip broadcast,
+preview the exact public card, then confirm or cancel. Confirmation is
+single-use and failed delivery remains retryable. Discord `/post` remains the
+fallback. See the [command surface matrix](docs/COMMAND_SURFACE_MATRIX.md),
+[Command Deck guide](docs/ADMIN_CONSOLE.md), and
+[v0.6.0 release checklist](docs/releases/v0.6.0.md).
+
 ## Release and license
 
-The current release package and changelog version is `0.5.0`. Release actions
+The current release package and changelog version is `0.6.0`. Release actions
 are maintainer-owned and documented in
 [Releases](docs/RELEASES.md) and the [Changelog](CHANGELOG.md).
 

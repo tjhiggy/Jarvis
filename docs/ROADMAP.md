@@ -31,6 +31,9 @@ dates, promises, or claims that an interface declaration is a working feature.
   allowlisted self-service roles, and bounded proactive post controls.
 - Approved knowledge lookup with administrator-controlled per-server source
   approvals, `/catch-me-up`, and `/channel-summary` over retained Jarvis data.
+- A localhost-authenticated Command Deck with safe health and delivery
+  visibility, complete Discord/Deck command ownership decisions, and confirmed
+  one-off broadcasts to friendly allowlisted destinations.
 
 ## Implemented, pending the next versioned release
 
