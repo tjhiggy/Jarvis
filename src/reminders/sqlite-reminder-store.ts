@@ -137,19 +137,40 @@ export class SQLiteReminderStore implements ReminderStore {
 
   async listByGuild(guildId: string): Promise<readonly ReminderView[]> {
     this.ensureOpen();
-    const rows = this.database.prepare(`SELECT * FROM reminders WHERE guild_id = ? ORDER BY due_at ASC, id ASC`).all(guildId) as ReminderRow[];
+    const rows = this.database
+      .prepare(
+        `SELECT * FROM reminders WHERE guild_id = ? ORDER BY due_at ASC, id ASC`,
+      )
+      .all(guildId) as ReminderRow[];
     return rows.map(toReminderView);
   }
 
-  async cancelAny(guildId: string, reminderId: string, now: Date): Promise<ReminderView | undefined> {
+  async cancelAny(
+    guildId: string,
+    reminderId: string,
+    now: Date,
+  ): Promise<ReminderView | undefined> {
     this.ensureOpen();
     const ms = finiteDateMilliseconds(now);
-    return this.database.transaction(() => {
-      const row = this.database.prepare('SELECT * FROM reminders WHERE id = ? AND guild_id = ?').get(reminderId, guildId) as ReminderRow | undefined;
-      if (!row || row.status === 'delivered' || row.status === 'failed') return undefined;
-      this.database.prepare(`UPDATE reminders SET status='cancelled', cancelled_at=?, updated_at=?, lease_id=NULL, claimed_at=NULL WHERE id=? AND status IN (${activeStatuses})`).run(ms, ms, reminderId);
-      return toReminderView(this.database.prepare('SELECT * FROM reminders WHERE id = ?').get(reminderId) as ReminderRow);
-    }).immediate();
+    return this.database
+      .transaction(() => {
+        const row = this.database
+          .prepare('SELECT * FROM reminders WHERE id = ? AND guild_id = ?')
+          .get(reminderId, guildId) as ReminderRow | undefined;
+        if (!row || row.status === 'delivered' || row.status === 'failed')
+          return undefined;
+        this.database
+          .prepare(
+            `UPDATE reminders SET status='cancelled', cancelled_at=?, updated_at=?, lease_id=NULL, claimed_at=NULL WHERE id=? AND status IN (${activeStatuses})`,
+          )
+          .run(ms, ms, reminderId);
+        return toReminderView(
+          this.database
+            .prepare('SELECT * FROM reminders WHERE id = ?')
+            .get(reminderId) as ReminderRow,
+        );
+      })
+      .immediate();
   }
 
   async cancelOwned(

@@ -17,8 +17,14 @@ describe('engagement health', () => {
         engagementPaused: async () => false,
       },
       schedulers: {
-        events: { healthy: true, lastRun: { status: 'success', at: new Date('2026-08-08T12:00:00Z') } },
-        recaps: { healthy: false, lastRun: { status: 'error', at: new Date('2026-08-08T11:00:00Z') } },
+        events: {
+          healthy: true,
+          lastRun: { status: 'success', at: new Date('2026-08-08T12:00:00Z') },
+        },
+        recaps: {
+          healthy: false,
+          lastRun: { status: 'error', at: new Date('2026-08-08T11:00:00Z') },
+        },
       },
     });
 
@@ -38,7 +44,9 @@ describe('engagement health', () => {
         recaps: { state: 'degraded', lastRun: 'error' },
       },
     });
-    expect(JSON.stringify(health)).not.toMatch(/prompt|suggestion text|rsvp reason|token/i);
+    expect(JSON.stringify(health)).not.toMatch(
+      /prompt|suggestion text|rsvp reason|token/i,
+    );
   });
 
   it('fails closed when engagement diagnostics are unavailable', async () => {

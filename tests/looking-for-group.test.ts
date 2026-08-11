@@ -10,17 +10,33 @@ const interaction = (values: Record<string, string | null>) => ({
 
 describe('looking for group command', () => {
   it('posts a concise crew signal using the member display name', async () => {
-    const value = interaction({ game: 'Fortnite', when: 'tonight', details: 'Zero Build' });
-    await handleLookingForGroupCommand(value, { enabled: true, channelId: 'activity' });
-    expect(value.reply).toHaveBeenCalledWith(expect.objectContaining({
-      content: expect.stringContaining('UselessBoi is looking for a group'),
-      allowedMentions: { parse: [], repliedUser: false },
-    }));
+    const value = interaction({
+      game: 'Fortnite',
+      when: 'tonight',
+      details: 'Zero Build',
+    });
+    await handleLookingForGroupCommand(value, {
+      enabled: true,
+      channelId: 'activity',
+    });
+    expect(value.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('UselessBoi is looking for a group'),
+        allowedMentions: { parse: [], repliedUser: false },
+      }),
+    );
   });
 
   it('rejects empty game names without posting', async () => {
     const value = interaction({ game: '  ' });
-    await handleLookingForGroupCommand(value, { enabled: true, channelId: 'activity' });
-    expect(value.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining('which game') }));
+    await handleLookingForGroupCommand(value, {
+      enabled: true,
+      channelId: 'activity',
+    });
+    expect(value.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('which game'),
+      }),
+    );
   });
 });

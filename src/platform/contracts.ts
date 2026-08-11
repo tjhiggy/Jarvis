@@ -1,8 +1,5 @@
 export type PlatformCapability =
-  | 'command'
-  | 'scheduled-delivery'
-  | 'provider'
-  | 'storage';
+  'command' | 'scheduled-delivery' | 'provider' | 'storage';
 
 export interface InteractionContext {
   readonly serverId: string;
@@ -81,8 +78,17 @@ const safeMetadata = (
 ): Readonly<Record<string, SafeValue>> => {
   const result: Record<string, SafeValue> = {};
   for (const [key, value] of Object.entries(metadata ?? {})) {
-    if (/content|message|prompt|token|secret|key|authorization|password/i.test(key)) continue;
-    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    if (
+      /content|message|prompt|token|secret|key|authorization|password/i.test(
+        key,
+      )
+    )
+      continue;
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    ) {
       result[key] = typeof value === 'string' ? value.slice(0, 120) : value;
     }
   }
@@ -104,9 +110,13 @@ export const createAnalyticsEvent = (input: {
     serverId: input.context.serverId,
     channelId: input.context.channelId,
     feature: input.feature.slice(0, 80),
-    ...(input.command === undefined ? {} : { command: input.command.slice(0, 120) }),
+    ...(input.command === undefined
+      ? {}
+      : { command: input.command.slice(0, 120) }),
     result: input.result,
-    ...(input.durationMs === undefined ? {} : { durationMs: Math.max(0, Math.round(input.durationMs)) }),
+    ...(input.durationMs === undefined
+      ? {}
+      : { durationMs: Math.max(0, Math.round(input.durationMs)) }),
     metadata: safeMetadata(input.metadata),
   });
 

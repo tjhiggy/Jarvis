@@ -24,19 +24,29 @@ export interface EngagementHealth {
   readonly database: 'healthy' | 'degraded' | 'unavailable';
   readonly recordCounts: EngagementRecordCounts | 'unavailable';
   readonly schedulers: Readonly<
-    Record<string, Readonly<{ state: 'healthy' | 'degraded'; lastRun: SchedulerLastRunStatus }>>
+    Record<
+      string,
+      Readonly<{
+        state: 'healthy' | 'degraded';
+        lastRun: SchedulerLastRunStatus;
+      }>
+    >
   >;
 }
 
-export const collectEngagementHealth = async (input: Readonly<{
-  enabled: boolean;
-  repository?: Readonly<{
-    healthCheck(): Promise<boolean>;
-    statusCounts(): Promise<EngagementRecordCounts>;
-    engagementPaused(): Promise<boolean>;
-  }>;
-  schedulers?: Readonly<Record<string, EngagementSchedulerHealth | undefined>>;
-}>): Promise<EngagementHealth> => {
+export const collectEngagementHealth = async (
+  input: Readonly<{
+    enabled: boolean;
+    repository?: Readonly<{
+      healthCheck(): Promise<boolean>;
+      statusCounts(): Promise<EngagementRecordCounts>;
+      engagementPaused(): Promise<boolean>;
+    }>;
+    schedulers?: Readonly<
+      Record<string, EngagementSchedulerHealth | undefined>
+    >;
+  }>,
+): Promise<EngagementHealth> => {
   if (!input.repository)
     return {
       enabled: input.enabled,
@@ -61,15 +71,21 @@ export const collectEngagementHealth = async (input: Readonly<{
 };
 
 const schedulerHealth = (
-  schedulers: Readonly<Record<string, EngagementSchedulerHealth | undefined>> | undefined,
+  schedulers:
+    Readonly<Record<string, EngagementSchedulerHealth | undefined>> | undefined,
 ): EngagementHealth['schedulers'] =>
   Object.fromEntries(
     Object.entries(schedulers ?? {}).flatMap(([name, scheduler]) =>
       scheduler === undefined
         ? []
-        : [[name, {
-            state: scheduler.healthy ? 'healthy' : 'degraded',
-            lastRun: scheduler.lastRun?.status ?? 'never',
-          }]],
+        : [
+            [
+              name,
+              {
+                state: scheduler.healthy ? 'healthy' : 'degraded',
+                lastRun: scheduler.lastRun?.status ?? 'never',
+              },
+            ],
+          ],
     ),
   );

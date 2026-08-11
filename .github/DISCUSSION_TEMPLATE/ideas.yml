@@ -1,6 +1,6 @@
 name: Ideas & Feedback
 description: Suggest a Jarvis capability or improvement for discussion.
-title: "[Idea] "
+title: '[Idea] '
 labels:
   - discussion:new
   - enhancement

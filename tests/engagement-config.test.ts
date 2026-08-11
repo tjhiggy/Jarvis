@@ -65,9 +65,9 @@ describe('engagement configuration', () => {
       eventId: '34567890123456789',
       recapId: '45678901234567890',
       activityId: '56789012345678901',
-        birthdayId: '',
-        rssId: '',
-      });
+      birthdayId: '',
+      rssId: '',
+    });
     expect([...engagement.adminRoleIds]).toEqual([
       '67890123456789012',
       '78901234567890123',

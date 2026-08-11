@@ -66,9 +66,7 @@ export interface EngagementRepository extends Partial<PlatformMetricsRepository>
     enabled: boolean,
     updatedAt?: Date,
   ): Promise<void>;
-  getProactiveState?(
-    guildId: string,
-  ): Promise<{
+  getProactiveState?(guildId: string): Promise<{
     state: import('./proactive.js').ProactiveState;
     lastPostedAt?: Date;
   }>;

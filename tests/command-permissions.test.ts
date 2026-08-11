@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { commandPermissionRules, formatCommandPermissionRules } from '../src/commands/command-permissions.js';
+import {
+  commandPermissionRules,
+  formatCommandPermissionRules,
+} from '../src/commands/command-permissions.js';
 
 describe('command permission contract', () => {
   it('documents every privileged command scope without granting Discord authority', () => {
-    expect(commandPermissionRules.find((rule) => rule.command.includes('/knowledge approve'))?.scope).toBe('configured-admin');
-    expect(commandPermissionRules.find((rule) => rule.command.includes('/poll'))?.scope).toBe('poll-admin-user');
-    expect(commandPermissionRules.every((rule) => rule.notes.length > 0)).toBe(true);
+    expect(
+      commandPermissionRules.find((rule) =>
+        rule.command.includes('/knowledge approve'),
+      )?.scope,
+    ).toBe('configured-admin');
+    expect(
+      commandPermissionRules.find((rule) => rule.command.includes('/poll'))
+        ?.scope,
+    ).toBe('poll-admin-user');
+    expect(commandPermissionRules.every((rule) => rule.notes.length > 0)).toBe(
+      true,
+    );
   });
 
   it('formats a safe read-only summary for administrators', () => {

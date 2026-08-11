@@ -7,7 +7,12 @@ type LogLevel =
   'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent';
 
 export interface AppConfig {
-  readonly adminConsole?: Readonly<{ enabled: boolean; port: number; host: string; token: string }>;
+  readonly adminConsole?: Readonly<{
+    enabled: boolean;
+    port: number;
+    host: string;
+    token: string;
+  }>;
   readonly runtimeIdentity?: RuntimeIdentity;
   readonly ai: Readonly<{
     provider: 'openai' | 'ollama';
@@ -55,7 +60,12 @@ export interface AppConfig {
     catalogPath: string;
   }>;
   readonly sleeper?: Readonly<{ leagueId: string }>;
-  readonly github?: Readonly<{ owner: string; repo: string; token: string; timeoutMs: number }>;
+  readonly github?: Readonly<{
+    owner: string;
+    repo: string;
+    token: string;
+    timeoutMs: number;
+  }>;
   readonly polls: PollConfig;
   readonly engagement: EngagementConfig;
   readonly logging: Readonly<{
@@ -187,9 +197,17 @@ const engagementTimezone = z.preprocess(
 );
 
 const baseEnvironmentSchema = z.object({
-  ADMIN_CONSOLE_ENABLED: z.preprocess((value) => typeof value === 'string' && value.trim() === '' ? undefined : value, z.enum(['true', 'false']).default('false')),
+  ADMIN_CONSOLE_ENABLED: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.enum(['true', 'false']).default('false'),
+  ),
   ADMIN_CONSOLE_PORT: integer(8787, 0, 65535),
-  ADMIN_CONSOLE_HOST: z.string().trim().regex(/^(?:127\.0\.0\.1|localhost)$/).default('127.0.0.1'),
+  ADMIN_CONSOLE_HOST: z
+    .string()
+    .trim()
+    .regex(/^(?:127\.0\.0\.1|localhost)$/)
+    .default('127.0.0.1'),
   ADMIN_CONSOLE_TOKEN: z.string().trim().default(''),
   DISCORD_TOKEN: requiredString,
   DISCORD_CLIENT_ID: requiredString,
@@ -227,8 +245,16 @@ const baseEnvironmentSchema = z.object({
     .trim()
     .regex(/^$|^\d{8,20}$/)
     .default(''),
-  GITHUB_OWNER: z.string().trim().regex(/^$|^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/).default(''),
-  GITHUB_REPO: z.string().trim().regex(/^$|^[A-Za-z0-9_.-]{1,100}$/).default(''),
+  GITHUB_OWNER: z
+    .string()
+    .trim()
+    .regex(/^$|^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/)
+    .default(''),
+  GITHUB_REPO: z
+    .string()
+    .trim()
+    .regex(/^$|^[A-Za-z0-9_.-]{1,100}$/)
+    .default(''),
   GITHUB_TOKEN: z.string().trim().default(''),
   GITHUB_TIMEOUT_MS: integer(8000, 1000, 30000),
   ALLOWED_CHANNEL_IDS: channelIds,
@@ -371,8 +397,16 @@ const environmentSchema = baseEnvironmentSchema.superRefine(
 
     validatePollConfiguration(value, context);
     validateEngagementConfiguration(value, context);
-    if (value.ADMIN_CONSOLE_ENABLED === 'true' && value.ADMIN_CONSOLE_TOKEN.trim() === '') {
-      context.addIssue({ code: 'custom', path: ['ADMIN_CONSOLE_TOKEN'], message: 'ADMIN_CONSOLE_TOKEN is required when ADMIN_CONSOLE_ENABLED=true.' });
+    if (
+      value.ADMIN_CONSOLE_ENABLED === 'true' &&
+      value.ADMIN_CONSOLE_TOKEN.trim() === ''
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ADMIN_CONSOLE_TOKEN'],
+        message:
+          'ADMIN_CONSOLE_TOKEN is required when ADMIN_CONSOLE_ENABLED=true.',
+      });
     }
   },
 );
@@ -413,7 +447,12 @@ const readonlySet = (values: string[]): ReadonlySet<string> => {
 export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
   const parsed = parseEnvironment(environmentSchema, env);
   return Object.freeze({
-    adminConsole: Object.freeze({ enabled: parsed.ADMIN_CONSOLE_ENABLED === 'true', port: parsed.ADMIN_CONSOLE_PORT, host: parsed.ADMIN_CONSOLE_HOST, token: parsed.ADMIN_CONSOLE_TOKEN }),
+    adminConsole: Object.freeze({
+      enabled: parsed.ADMIN_CONSOLE_ENABLED === 'true',
+      port: parsed.ADMIN_CONSOLE_PORT,
+      host: parsed.ADMIN_CONSOLE_HOST,
+      token: parsed.ADMIN_CONSOLE_TOKEN,
+    }),
     // Build identity is configuration metadata only. It is never inferred
     // from the host, package manager, or Discord content.
     runtimeIdentity: loadRuntimeIdentity(env),
@@ -459,7 +498,16 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
     }),
     faq: Object.freeze({ catalogPath: parsed.FAQ_CATALOG_PATH }),
     sleeper: Object.freeze({ leagueId: parsed.SLEEPER_LEAGUE_ID }),
-    ...(parsed.GITHUB_OWNER && parsed.GITHUB_REPO ? { github: Object.freeze({ owner: parsed.GITHUB_OWNER, repo: parsed.GITHUB_REPO, token: parsed.GITHUB_TOKEN, timeoutMs: parsed.GITHUB_TIMEOUT_MS }) } : {}),
+    ...(parsed.GITHUB_OWNER && parsed.GITHUB_REPO
+      ? {
+          github: Object.freeze({
+            owner: parsed.GITHUB_OWNER,
+            repo: parsed.GITHUB_REPO,
+            token: parsed.GITHUB_TOKEN,
+            timeoutMs: parsed.GITHUB_TIMEOUT_MS,
+          }),
+        }
+      : {}),
     polls: Object.freeze({
       enabled: parsed.POLL_ADMIN_USER_IDS.length > 0,
       adminUserIds: readonlySet(parsed.POLL_ADMIN_USER_IDS),
@@ -478,14 +526,20 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
         birthdayId: parsed.ENGAGEMENT_BIRTHDAY_CHANNEL_ID,
         rssId: parsed.ENGAGEMENT_RSS_CHANNEL_ID,
       }),
-      rssAllowedHosts: Object.freeze(parsed.ENGAGEMENT_RSS_ALLOWED_HOSTS.split(',').map((host) => host.trim().toLowerCase()).filter(Boolean)),
+      rssAllowedHosts: Object.freeze(
+        parsed.ENGAGEMENT_RSS_ALLOWED_HOSTS.split(',')
+          .map((host) => host.trim().toLowerCase())
+          .filter(Boolean),
+      ),
       adminRoleIds: readonlySet(parsed.ENGAGEMENT_ADMIN_ROLE_IDS),
       recapSchedule: parsed.ENGAGEMENT_RECAP_SCHEDULE,
       recapTimezone: parsed.ENGAGEMENT_RECAP_TIMEZONE,
       retentionDays: parsed.ENGAGEMENT_RETENTION_DAYS,
       maxRecordsPerUser: parsed.ENGAGEMENT_MAX_RECORDS_PER_USER,
       maxParticipants: parsed.ENGAGEMENT_MAX_PARTICIPANTS,
-      roleMenuChoices: Object.freeze(parseRoleMenuConfig(parsed.ENGAGEMENT_ROLE_MENU_OPTIONS)),
+      roleMenuChoices: Object.freeze(
+        parseRoleMenuConfig(parsed.ENGAGEMENT_ROLE_MENU_OPTIONS),
+      ),
     }),
     logging: Object.freeze({ level: parsed.LOG_LEVEL }),
   });

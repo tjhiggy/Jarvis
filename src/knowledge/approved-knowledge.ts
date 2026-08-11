@@ -35,20 +35,31 @@ export const redactKnowledgeText = (value: string): string =>
     .replace(emailPattern, '[REDACTED]')
     .replace(mentionPattern, '[REDACTED]');
 
-const entrySchema = z.object({
-  id: z.string().trim().min(1).max(64).regex(/^[a-z0-9-]+$/),
-  title: z.string().trim().min(1).max(120),
-  content: z.string().trim().min(1).max(8_000),
-  source: z.string().trim().min(1).max(200),
-  approved: z.boolean(),
-  updatedAt: z.string().datetime({ offset: true }),
-  retentionDays: z.number().int().min(1).max(3650).optional(),
-}).strict();
+const entrySchema = z
+  .object({
+    id: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .regex(/^[a-z0-9-]+$/),
+    title: z.string().trim().min(1).max(120),
+    content: z.string().trim().min(1).max(8_000),
+    source: z.string().trim().min(1).max(200),
+    approved: z.boolean(),
+    updatedAt: z.string().datetime({ offset: true }),
+    retentionDays: z.number().int().min(1).max(3650).optional(),
+  })
+  .strict();
 
 export const knowledgeEntriesSchema = z.array(entrySchema).max(500);
 
-export const loadKnowledgeCatalog = async (path: string): Promise<ApprovedKnowledgeCatalog> =>
-  buildKnowledgeCatalog(JSON.parse(await readFile(path, 'utf8')) as readonly unknown[]);
+export const loadKnowledgeCatalog = async (
+  path: string,
+): Promise<ApprovedKnowledgeCatalog> =>
+  buildKnowledgeCatalog(
+    JSON.parse(await readFile(path, 'utf8')) as readonly unknown[],
+  );
 
 const isActive = (entry: ApprovedKnowledgeEntry, now: Date): boolean => {
   if (!entry.approved) return false;
@@ -62,10 +73,12 @@ export const buildKnowledgeCatalog = (
   now = new Date(),
 ): ApprovedKnowledgeCatalog => {
   const parsed = knowledgeEntriesSchema.parse(rawEntries);
-  const entries = parsed.map((entry) => Object.freeze({
-    ...entry,
-    content: redactKnowledgeText(entry.content),
-  }));
+  const entries = parsed.map((entry) =>
+    Object.freeze({
+      ...entry,
+      content: redactKnowledgeText(entry.content),
+    }),
+  );
   const active = entries.filter((entry) => isActive(entry, now));
   const byId = new Map(active.map((entry) => [entry.id, entry]));
   const toResult = (entry: ApprovedKnowledgeEntry): KnowledgeResult => ({
@@ -85,7 +98,9 @@ export const buildKnowledgeCatalog = (
       const normalized = query.trim().toLowerCase();
       if (!normalized) return [];
       return active
-        .filter((entry) => `${entry.title} ${entry.content}`.toLowerCase().includes(normalized))
+        .filter((entry) =>
+          `${entry.title} ${entry.content}`.toLowerCase().includes(normalized),
+        )
         .slice(0, 5)
         .map(toResult);
     },

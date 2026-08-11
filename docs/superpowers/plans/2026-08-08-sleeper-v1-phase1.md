@@ -20,6 +20,7 @@
 ### Task 1: Sleeper client contract and standings retrieval
 
 **Files:**
+
 - Create: `src/sleeper/sleeper-types.ts`
 - Create: `src/sleeper/sleeper-service.ts`
 - Test: `tests/sleeper/sleeper-service.test.ts`
@@ -32,6 +33,7 @@
 ### Task 2: Configuration and command definition
 
 **Files:**
+
 - Modify: `src/config/config.ts`
 - Modify: `src/commands/definitions.ts`
 - Test: `tests/config/config.test.ts`
@@ -45,6 +47,7 @@
 ### Task 3: Handler integration and documentation
 
 **Files:**
+
 - Modify: `src/commands/handlers.ts`
 - Modify: `src/index.ts`
 - Modify: `.env.example`
@@ -55,4 +58,3 @@
 - [ ] Wire the service through application dependencies without adding write access.
 - [ ] Add mocked handler tests.
 - [ ] Run tests, targeted lint, and build.
-
