@@ -1,5 +1,6 @@
 import type { EngagementRepository } from './storage.js';
 import type { BroadcastPolicyService } from '../notifications/broadcast-policy.js';
+import type { BroadcastStore } from '../notifications/broadcast-store.js';
 import { projectOperationalError } from '../utils/logger.js';
 
 const minimumGroupSize = 3;
@@ -99,6 +100,10 @@ export class RecapScheduler {
       service: RecapService;
       gateway: RecapGateway;
       policy: Pick<BroadcastPolicyService, 'evaluate'>;
+      broadcastStore: Pick<
+        BroadcastStore,
+        'claimDelivery' | 'completeDelivery' | 'releaseDelivery'
+      >;
       now?: () => Date;
       logger?: {
         warn(fields: Record<string, string | number>, message: string): void;
@@ -172,6 +177,7 @@ export class RecapScheduler {
         now,
       );
       if (leaseToken === undefined) return;
+      let broadcastLeaseToken: string | undefined;
       try {
         const recap = await this.dependencies.service.preview(
           this.dependencies.guildId,
@@ -184,6 +190,14 @@ export class RecapScheduler {
           )
         )
           return;
+        broadcastLeaseToken =
+          await this.dependencies.broadcastStore.claimDelivery(
+            this.dependencies.guildId,
+            'recap',
+            key,
+            now,
+          );
+        if (broadcastLeaseToken === undefined) return;
         if (
           !(await this.allowsDelivery(
             (this.dependencies.now ?? (() => new Date()))(),
@@ -194,6 +208,16 @@ export class RecapScheduler {
           this.dependencies.channelId,
           recap.content!,
         );
+        const broadcastCompleted =
+          await this.dependencies.broadcastStore.completeDelivery(
+            this.dependencies.guildId,
+            'recap',
+            key,
+            broadcastLeaseToken,
+            (this.dependencies.now ?? (() => new Date()))(),
+          );
+        if (!broadcastCompleted) return;
+        broadcastLeaseToken = undefined;
         await this.dependencies.repository.completeRecapRun(
           this.dependencies.guildId,
           key,
@@ -202,6 +226,14 @@ export class RecapScheduler {
         );
         this.lastRunValue = { status: 'success', at: now };
       } finally {
+        if (broadcastLeaseToken !== undefined)
+          await this.dependencies.broadcastStore.releaseDelivery(
+            this.dependencies.guildId,
+            'recap',
+            key,
+            broadcastLeaseToken,
+            (this.dependencies.now ?? (() => new Date()))(),
+          );
         await this.dependencies.repository.releaseRecapRun(
           this.dependencies.guildId,
           key,

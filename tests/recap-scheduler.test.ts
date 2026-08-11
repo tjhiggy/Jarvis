@@ -26,6 +26,7 @@ describe('recap scheduler', () => {
       } as any,
       gateway: { post },
       policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-07T12:05:00Z'),
     }).tick();
     expect(post).not.toHaveBeenCalled();
@@ -53,6 +54,7 @@ describe('recap scheduler', () => {
       } as any,
       gateway: { post },
       policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-07T12:05:00Z'),
     });
     await scheduler.tick();
@@ -77,6 +79,7 @@ describe('recap scheduler', () => {
       service: { preview: async () => ({ status: 'unavailable' }) } as any,
       gateway: { post: vi.fn() },
       policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-07T12:05:00Z'),
     });
     await scheduler.tick();
@@ -122,6 +125,7 @@ describe('recap scheduler', () => {
         },
       },
       policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-07T12:05:00Z'),
     });
     await scheduler.tick();
@@ -137,6 +141,7 @@ describe('recap scheduler', () => {
       } as any,
       gateway: { post },
       policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-07T12:05:00Z'),
     }).tick();
     expect(post).toHaveBeenCalledOnce();
@@ -161,6 +166,7 @@ describe('recap scheduler', () => {
       } as any,
       gateway: { post: vi.fn() },
       policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-08T06:35:00.000Z'),
     }).tick();
 
@@ -174,4 +180,10 @@ describe('recap scheduler', () => {
 
 const allowPolicy = () => ({
   evaluate: async () => ({ allowed: true as const }),
+});
+
+const deliveryStore = () => ({
+  claimDelivery: async () => 'broadcast-lease',
+  completeDelivery: async () => true,
+  releaseDelivery: async () => true,
 });

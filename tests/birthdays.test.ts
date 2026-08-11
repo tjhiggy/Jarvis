@@ -52,6 +52,11 @@ describe('birthdays', () => {
       channelId: 'c',
       timezone: 'UTC',
       policy: { evaluate: async () => ({ allowed: true as const }) },
+      broadcastStore: {
+        claimDelivery: async () => 'broadcast-lease',
+        completeDelivery: async () => true,
+        releaseDelivery: async () => true,
+      },
       now: () => new Date('2026-07-04T12:00:00Z'),
     });
     await scheduler.tick();

@@ -1377,7 +1377,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return this.database.transaction(() => {
       const candidates = this.database
         .prepare(
-          "SELECT r.event_id, r.guild_id, r.user_id, e.channel_id, e.title, e.scheduled_at FROM engagement_rsvps r JOIN engagement_events e ON e.guild_id = r.guild_id AND e.id = r.event_id LEFT JOIN engagement_preferences p ON p.guild_id = r.guild_id WHERE e.status = 'scheduled' AND r.response = 'yes' AND r.reminder_opt_in = 1 AND r.reminder_state = 'pending' AND coalesce(p.paused, 0) = 0 AND e.scheduled_at <= ? AND (r.reminder_claimed_at IS NULL OR r.reminder_claimed_at < ?) ORDER BY e.scheduled_at ASC, r.updated_at ASC, r.user_id ASC LIMIT ?",
+          "SELECT r.event_id, r.guild_id, r.user_id, e.channel_id, e.title, e.scheduled_at FROM engagement_rsvps r JOIN engagement_events e ON e.guild_id = r.guild_id AND e.id = r.event_id LEFT JOIN engagement_preferences p ON p.guild_id = r.guild_id WHERE e.status IN ('scheduled', 'completed') AND r.response = 'yes' AND r.reminder_opt_in = 1 AND r.reminder_state = 'pending' AND coalesce(p.paused, 0) = 0 AND e.scheduled_at <= ? AND (r.reminder_claimed_at IS NULL OR r.reminder_claimed_at < ?) ORDER BY e.scheduled_at ASC, r.updated_at ASC, r.user_id ASC LIMIT ?",
         )
         .all(claimedAt, staleBefore, limit) as Array<{
         event_id: string;

@@ -1,5 +1,6 @@
 import type { EngagementRepository } from './storage.js';
 import type { BroadcastPolicyService } from '../notifications/broadcast-policy.js';
+import type { BroadcastStore } from '../notifications/broadcast-store.js';
 import { projectOperationalError } from '../utils/logger.js';
 export interface EventReminderGateway {
   deliver(input: {
@@ -36,6 +37,10 @@ export class EventScheduler {
         >;
       gateway: EventReminderGateway;
       policy: Pick<BroadcastPolicyService, 'evaluate'>;
+      broadcastStore: Pick<
+        BroadcastStore,
+        'claimDelivery' | 'completeDelivery' | 'releaseDelivery'
+      >;
       now?: () => Date;
       intervalMs?: number;
       logger?: {
@@ -87,6 +92,8 @@ export class EventScheduler {
         now,
         100,
       )) {
+        let broadcastLeaseToken: string | undefined;
+        const deliveryKey = `event_reminder:${reminder.eventId}:${reminder.userId}`;
         try {
           if (
             await this.dependencies.repository.engagementPaused?.(
@@ -100,6 +107,17 @@ export class EventScheduler {
             await this.releaseClaim(reminder, now);
             continue;
           }
+          broadcastLeaseToken =
+            await this.dependencies.broadcastStore.claimDelivery(
+              reminder.guildId,
+              'event_reminder',
+              deliveryKey,
+              now,
+            );
+          if (broadcastLeaseToken === undefined) {
+            await this.releaseClaim(reminder, now);
+            continue;
+          }
           if (
             !(await this.allowsDelivery(
               reminder,
@@ -110,12 +128,44 @@ export class EventScheduler {
               reminder,
               (this.dependencies.now ?? (() => new Date()))(),
             );
+            await this.dependencies.broadcastStore.releaseDelivery(
+              reminder.guildId,
+              'event_reminder',
+              deliveryKey,
+              broadcastLeaseToken,
+              (this.dependencies.now ?? (() => new Date()))(),
+            );
+            broadcastLeaseToken = undefined;
             continue;
           }
           await this.dependencies.gateway.deliver({
             ...reminder,
             allowedMentions: { parse: [], repliedUser: false },
           });
+          const broadcastCompleted =
+            await this.dependencies.broadcastStore.completeDelivery(
+              reminder.guildId,
+              'event_reminder',
+              deliveryKey,
+              broadcastLeaseToken,
+              (this.dependencies.now ?? (() => new Date()))(),
+            );
+          if (!broadcastCompleted) {
+            await this.dependencies.broadcastStore.releaseDelivery(
+              reminder.guildId,
+              'event_reminder',
+              deliveryKey,
+              broadcastLeaseToken,
+              (this.dependencies.now ?? (() => new Date()))(),
+            );
+            broadcastLeaseToken = undefined;
+            await this.releaseClaim(
+              reminder,
+              (this.dependencies.now ?? (() => new Date()))(),
+            );
+            continue;
+          }
+          broadcastLeaseToken = undefined;
           await this.dependencies.repository.markEventReminderDelivered(
             reminder.eventId,
             reminder.guildId,
@@ -124,6 +174,14 @@ export class EventScheduler {
             now,
           );
         } catch (error) {
+          if (broadcastLeaseToken !== undefined)
+            await this.dependencies.broadcastStore.releaseDelivery(
+              reminder.guildId,
+              'event_reminder',
+              deliveryKey,
+              broadcastLeaseToken,
+              (this.dependencies.now ?? (() => new Date()))(),
+            );
           this.dependencies.logger?.warn(
             {
               operation: 'event_reminder_delivery',

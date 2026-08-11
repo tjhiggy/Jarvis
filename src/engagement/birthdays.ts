@@ -1,5 +1,6 @@
 /** Privacy-first birthday primitives. No year is stored or accepted. */
 import type { BroadcastPolicyService } from '../notifications/broadcast-policy.js';
+import type { BroadcastStore } from '../notifications/broadcast-store.js';
 import { projectOperationalError } from '../utils/logger.js';
 export interface BirthdayRecord {
   readonly guildId: string;
@@ -125,6 +126,10 @@ export class BirthdayScheduler {
       channelId: string;
       timezone: string;
       policy: Pick<BroadcastPolicyService, 'evaluate'>;
+      broadcastStore: Pick<
+        BroadcastStore,
+        'claimDelivery' | 'completeDelivery' | 'releaseDelivery'
+      >;
       isGloballyPaused?: (guildId: string) => Promise<boolean>;
       now?: () => Date;
       intervalMs?: number;
@@ -175,11 +180,13 @@ export class BirthdayScheduler {
     try {
       const parts = new Intl.DateTimeFormat('en-US', {
         timeZone: this.dependencies.timezone,
+        year: 'numeric',
         month: 'numeric',
         day: 'numeric',
       }).formatToParts(now);
       const month = Number(parts.find((part) => part.type === 'month')?.value);
       const day = Number(parts.find((part) => part.type === 'day')?.value);
+      const year = Number(parts.find((part) => part.type === 'year')?.value);
       for (const birthday of await this.dependencies.store.due(
         this.dependencies.guildId,
         month,
@@ -187,13 +194,30 @@ export class BirthdayScheduler {
       )) {
         if (!(await this.allowsDelivery(birthday.userId, now))) continue;
         const content = birthdayAnnouncement(birthday.userId);
+        const deliveryKey = `birthday:${year}:${month}:${day}:${birthday.userId}`;
+        let broadcastLeaseToken =
+          await this.dependencies.broadcastStore.claimDelivery(
+            this.dependencies.guildId,
+            'birthday',
+            deliveryKey,
+            now,
+          );
+        if (broadcastLeaseToken === undefined) continue;
         if (
           !(await this.allowsDelivery(
             birthday.userId,
             this.dependencies.now?.() ?? new Date(),
           ))
-        )
+        ) {
+          await this.dependencies.broadcastStore.releaseDelivery(
+            this.dependencies.guildId,
+            'birthday',
+            deliveryKey,
+            broadcastLeaseToken,
+            this.dependencies.now?.() ?? new Date(),
+          );
           continue;
+        }
         if (
           !(await this.dependencies.store.claimAnnouncement(
             this.dependencies.guildId,
@@ -201,19 +225,47 @@ export class BirthdayScheduler {
             day,
             birthday.userId,
           ))
-        )
+        ) {
+          await this.dependencies.broadcastStore.releaseDelivery(
+            this.dependencies.guildId,
+            'birthday',
+            deliveryKey,
+            broadcastLeaseToken,
+            this.dependencies.now?.() ?? new Date(),
+          );
           continue;
-        await this.dependencies.gateway.announce({
-          guildId: this.dependencies.guildId,
-          channelId: this.dependencies.channelId,
-          userId: birthday.userId,
-          content,
-          allowedMentions: {
-            parse: [],
-            users: [birthday.userId],
-            repliedUser: false,
-          },
-        });
+        }
+        try {
+          await this.dependencies.gateway.announce({
+            guildId: this.dependencies.guildId,
+            channelId: this.dependencies.channelId,
+            userId: birthday.userId,
+            content,
+            allowedMentions: {
+              parse: [],
+              users: [birthday.userId],
+              repliedUser: false,
+            },
+          });
+          const broadcastCompleted =
+            await this.dependencies.broadcastStore.completeDelivery(
+              this.dependencies.guildId,
+              'birthday',
+              deliveryKey,
+              broadcastLeaseToken,
+              this.dependencies.now?.() ?? new Date(),
+            );
+          if (broadcastCompleted) broadcastLeaseToken = undefined;
+        } finally {
+          if (broadcastLeaseToken !== undefined)
+            await this.dependencies.broadcastStore.releaseDelivery(
+              this.dependencies.guildId,
+              'birthday',
+              deliveryKey,
+              broadcastLeaseToken,
+              this.dependencies.now?.() ?? new Date(),
+            );
+        }
       }
       this.lastRunValue = { status: 'success', at: now };
     } catch (error) {

@@ -1443,6 +1443,7 @@ export const createApplication = async (
       eventScheduler = new EventScheduler({
         repository: engagementRepository as any,
         policy: scheduledBroadcastPolicy,
+        broadcastStore: initializedBroadcastStore,
         logger: { warn: (fields, message) => logger?.warn(fields, message) },
         gateway: {
           deliver: async (reminder) => {
@@ -1491,6 +1492,7 @@ export const createApplication = async (
         >,
         logger: { warn: (fields, message) => logger?.warn(fields, message) },
         policy: scheduledBroadcastPolicy,
+        broadcastStore: initializedBroadcastStore,
         service: recapService,
         gateway: {
           post: async (channelId, content) => {
@@ -1540,6 +1542,7 @@ export const createApplication = async (
         channelId: config.engagement.channels.birthdayId,
         timezone: config.engagement.recapTimezone,
         policy: scheduledBroadcastPolicy,
+        broadcastStore: initializedBroadcastStore,
         isGloballyPaused: (guildId) =>
           engagementRepository!.engagementPaused!(guildId),
         gateway: {
