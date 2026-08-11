@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-11
+
+- Established the stable MuthaShip Platform baseline and Command Deck operating model.
+- Re-sequenced unfinished expansion ideas into the v1.1 Community Expansion milestone instead of presenting them as shipped.
+
 ## [0.9.0] - 2026-08-11
 
 - Shipped daily MuthaShip Coin rewards, participation streaks, privacy-aware profiles, and allowlisted crew roles.
