@@ -329,6 +329,7 @@ export interface CommandDefinition {
     | 'faq'
     | 'knowledge'
     | 'catch-me-up'
+    | 'server-search'
     | 'post'
     | 'channel-summary'
     | 'reminder'
@@ -499,6 +500,20 @@ export const createCommandDefinitions = (
       type: 1,
       name: 'channel-summary',
       description: 'Summarize retained Jarvis conversation for this channel.',
+    },
+    {
+      type: 1,
+      name: 'server-search',
+      description: 'Search retained Jarvis conversation in this channel.',
+      options: [
+        {
+          type: 3,
+          name: 'query',
+          description: 'Words to find in retained Jarvis conversation.',
+          required: true,
+          max_length: 200,
+        },
+      ],
     },
     {
       type: 1,

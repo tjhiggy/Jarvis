@@ -62,6 +62,7 @@ import {
 } from '../engagement/discord-ui.js';
 import type { RoleMenuChoice } from '../engagement/role-menus.js';
 import { buildChannelSummary } from './channel-summary.js';
+import { searchRetainedConversation } from './server-search.js';
 import type { ProactiveEngagementService } from '../engagement/proactive.js';
 import type { DelegatedPostService } from '../engagement/delegated-posts.js';
 import { handleDelegatedPostCommand } from './delegated-post.js';
@@ -271,6 +272,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/knowledge query:<search> searches administrator-approved MuthaShip knowledge.',
     '/catch-me-up summarizes recent Jarvis conversation in this channel.',
     '/channel-summary summarizes retained Jarvis conversation from the last 24 hours in this channel or thread.',
+    '/server-search searches retained Jarvis conversation only in this channel or thread.',
     '/reminder set in:<duration> message:<text> creates a private personal reminder request.',
     '/reminder list shows your retained reminders in this server.',
     '/reminder cancel id:<id> cancels one of your reminders.',
@@ -321,6 +323,9 @@ const handleCommandInternal = async (
       return;
     case 'channel-summary':
       await handleChannelSummary(interaction, dependencies);
+      return;
+    case 'server-search':
+      await handleServerSearch(interaction, dependencies);
       return;
     case 'reminder':
       await handleReminder(interaction, dependencies);
@@ -1598,6 +1603,57 @@ const handleChannelSummary = async (
     await replySafely(
       interaction,
       'Recent MuthaShip context is unavailable right now.',
+      true,
+    );
+  }
+};
+
+const handleServerSearch = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) return;
+  const channelId = interaction.channelId.trim();
+  const guildId = interaction.guildId?.trim() ?? '';
+  const parentChannelId = threadParentId(interaction);
+  if (
+    !guildId ||
+    !channelId ||
+    !isAllowedChannel(
+      channelId,
+      parentChannelId,
+      dependencies.config.security.allowedChannelIds,
+    )
+  ) {
+    await replySafely(interaction, disallowedMessage, true);
+    return;
+  }
+  const query = interaction.options.getString('query')?.trim() ?? '';
+  const historyStore = dependencies.conversationHistory;
+  if (!historyStore || query.length < 2 || query.length > 200) {
+    await replySafely(
+      interaction,
+      'Retained MuthaShip search is unavailable for that request.',
+      true,
+    );
+    return;
+  }
+  try {
+    const matches = searchRetainedConversation(
+      await historyStore.getRecent(guildId, channelId, 100),
+      query,
+    );
+    await replySafely(
+      interaction,
+      matches.length === 0
+        ? 'No relevant match exists in retained Jarvis conversation for this channel. Jarvis will not guess.'
+        : `**Retained MuthaShip search**\n_Current channel or thread only; no arbitrary Discord history was read._\n${matches.join('\n')}`,
+      true,
+    );
+  } catch {
+    await replySafely(
+      interaction,
+      'Retained MuthaShip search is unavailable right now.',
       true,
     );
   }

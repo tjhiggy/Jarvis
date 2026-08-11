@@ -53,11 +53,11 @@
 - Produces: `/server-search query:<text>` returning at most five timestamped matches from the current channel/thread's retained Jarvis conversation only.
 - Consumes: existing `ConversationStore.history()` and current interaction context.
 
-- [ ] Write failing ranking, channel-isolation, mention-neutralization, result-cap, and unavailable-state tests.
-- [ ] Run the focused suite and witness missing-command/search failures.
-- [ ] Implement deterministic token relevance with no arbitrary Discord history fetch.
-- [ ] Register and route the command through the existing allowlist and private-response boundary.
-- [ ] Run focused tests and commit `feat: add scoped retained conversation search`.
+- [x] Write failing ranking, channel-isolation, mention-neutralization, result-cap, and unavailable-state tests.
+- [x] Run the focused suite and witness missing-command/search failures.
+- [x] Implement deterministic token relevance with no arbitrary Discord history fetch.
+- [x] Register and route the command through the existing allowlist and private-response boundary.
+- [x] Run focused tests and commit `feat: add scoped retained conversation search`.
 
 ### Task 3: Opt-in member command statistics
 

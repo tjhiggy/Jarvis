@@ -114,6 +114,11 @@ invalid content fails closed with a sanitized error that names
   Replies pass through mention-neutralizing safe delivery, so unsafe mention
   tokens may be transformed. Listing or selecting a topic makes no AI, Tavily,
   or conversation-storage call; it only sends the requested public reply.
+- **Retained search boundary.** `/server-search` reads only the existing
+  Jarvis-owned conversation rows for the invoking channel or thread after the
+  normal allowlist check. It returns at most five private, timestamped matches,
+  neutralizes mentions, and never fetches arbitrary Discord history or searches
+  another channel, server, DM, voice session, or deleted row.
 - **Credential redaction.** Structured logs recursively redact values under
   keys named `token`, `apiKey`, or `authorization` (case-insensitive), including
   those keys in nested headers. This is not a general secret detector for
