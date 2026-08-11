@@ -4,7 +4,7 @@ on:
   issues:
     types: [opened, reopened, labeled]
   pull_request:
-    types: [opened, reopened, closed]
+    types: [opened, reopened, synchronize, closed]
   workflow_dispatch:
 
 permissions:
@@ -54,7 +54,7 @@ jobs:
             };
             if (context.eventName === 'pull_request') {
               if (context.payload.action === 'closed' && content.merged) await setSelect(status, 'Done');
-              else if (context.payload.action === 'opened' || context.payload.action === 'reopened') await setSelect(status, 'In review');
+              else if (context.payload.action === 'opened' || context.payload.action === 'reopened' || context.payload.action === 'synchronize') await setSelect(status, 'In review');
             } else if (context.payload.action === 'opened' || context.payload.action === 'reopened') {
               await setSelect(status, 'Backlog');
             }
