@@ -1,0 +1,73 @@
+name: Project automation
+
+on:
+  issues:
+    types: [opened, reopened, labeled]
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  sync-project:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Synchronize with Jarvis Delivery Board
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.JARVIS_PROJECT_TOKEN || github.token }}
+          script: |
+            const content = context.payload.issue ?? context.payload.pull_request;
+            if (!content) return core.info('No issue or pull request payload.');
+            let projectData;
+            try {
+              projectData = await github.graphql(`
+              query($owner:String!, $number:Int!) {
+                user(login:$owner) { projectV2(number:$number) {
+                  id fields(first:100) { nodes { ... on ProjectV2Field { id name } ... on ProjectV2SingleSelectField { id name options { id name } } } }
+                  items(first:100) { nodes { id content { ... on Issue { id } ... on PullRequest { id } } } }
+                } }
+              }`, { owner: 'tjhiggy', number: 1 });
+            } catch (error) {
+              core.warning('Project sync skipped: configure JARVIS_PROJECT_TOKEN with the project scope for the user-owned Delivery Board.');
+              core.debug(String(error));
+              return;
+            }
+            const project = projectData.user.projectV2;
+            if (!project) throw new Error('Jarvis Delivery Board was not found.');
+            const fields = new Map(project.fields.nodes.map((field) => [field.name, field]));
+            const status = fields.get('Status');
+            let item = project.items.nodes.find((candidate) => candidate.content?.id === content.node_id);
+            if (!item) {
+              const added = await github.graphql(`mutation($project:ID!, $content:ID!) { addProjectV2ItemById(input:{projectId:$project, contentId:$content}) { item { id } } }`, { project: project.id, content: content.node_id });
+              item = added.addProjectV2ItemById.item;
+            }
+            const setSelect = async (field, name) => {
+              const option = field?.options?.find((candidate) => candidate.name === name)?.id;
+              if (!option) return core.warning(`Project option ${name} is not available.`);
+              await github.graphql(`mutation($project:ID!, $item:ID!, $field:ID!, $option:String!) { updateProjectV2ItemFieldValue(input:{projectId:$project,itemId:$item,fieldId:$field,value:{singleSelectOptionId:$option}}) { projectV2Item { id } } }`, { project: project.id, item: item.id, field: field.id, option });
+            };
+            if (context.eventName === 'pull_request') {
+              if (context.payload.action === 'closed' && content.merged) await setSelect(status, 'Done');
+              else if (context.payload.action === 'opened' || context.payload.action === 'reopened' || context.payload.action === 'synchronize') await setSelect(status, 'In review');
+            } else if (context.payload.action === 'opened' || context.payload.action === 'reopened') {
+              await setSelect(status, 'Backlog');
+            }
+            const labels = new Set((content.labels ?? []).map((label) => label.name));
+            const mapping = {
+              'phase:1': ['Community Engagement', 'v0.4.0 Crew Engagement'],
+              'phase:2': ['Admin Console', 'v0.3.0 Platform Core'],
+              'phase:3': ['Community Intelligence', 'v0.7.0 Community Intelligence'],
+              'phase:4': ['Integrations', 'v0.8.0 Connected Systems'],
+            };
+            const phaseLabel = Object.keys(mapping).find((label) => labels.has(label));
+            if (phaseLabel) {
+              await setSelect(fields.get('Phase'), mapping[phaseLabel][0]);
+              await setSelect(fields.get('Release'), mapping[phaseLabel][1]);
+            }
+            core.info(`Synchronized ${content.html_url}.`);
