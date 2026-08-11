@@ -18,6 +18,7 @@ export interface AdminConsole {
 export interface AdminConsoleRssControl {
   readonly token: string;
   readonly setPaused: (paused: boolean) => Promise<void>;
+  readonly preview?: (url: string) => Promise<readonly { readonly title: string; readonly url: string; readonly publishedAt: string }[]>;
 }
 
 const html = (snapshot: AdminConsoleSnapshot): string => `<!doctype html>
@@ -29,9 +30,10 @@ body{margin:0;background:#0d1020;color:#f5f2ff;font:16px system-ui,sans-serif}ma
 <article class="card"><h2>Community</h2><p>Engagement: <strong>${snapshot.engagement.enabled ? 'enabled' : 'disabled'}</strong></p><ul>${snapshot.engagement.features.map((feature) => `<li>${feature}</li>`).join('')}</ul></article>
 <article class="card"><h2>Providers</h2><p>AI: ${snapshot.providers.ai}</p><p>OpenAI: ${snapshot.providers.openAiConfigured ? 'configured' : 'not configured'}</p><p>Ollama: ${snapshot.providers.ollamaConfigured ? 'configured' : 'not configured'}</p><p>Web search: ${snapshot.providers.webSearchConfigured ? 'configured' : 'not configured'}</p></article>
 <article class="card"><h2>Integrations</h2><p>RSS: ${snapshot.integrations.rss ? 'ready' : 'not configured'}</p><p>Sleeper Fantasy Football: ${snapshot.integrations.sleeper ? 'ready' : 'not configured'}</p><p>GitHub read-only: ${snapshot.integrations.github ? 'ready' : 'not configured'}</p><p>Metrics: ${snapshot.metrics === null ? 'unavailable' : `${snapshot.metrics.events} events, ${snapshot.metrics.failures} failures`}</p></article>
-<article class="card"><h2>Shipboard Broadcasts</h2><p>RSS: ${snapshot.rss?.paused ? 'paused' : snapshot.rss ? 'active' : 'not configured'}</p>${snapshot.rss ? `<ul>${snapshot.rss.feeds.map((feed) => `<li>${feed.label} <small>${feed.url}</small></li>`).join('')}</ul><button onclick="controlRss('pause')">Pause</button><button onclick="controlRss('resume')">Resume</button><p id="rss-result" class="muted"></p>` : ''}</article>
+<article class="card"><h2>Shipboard Broadcasts</h2><p>RSS: ${snapshot.rss?.paused ? 'paused' : snapshot.rss ? 'active' : 'not configured'}</p>${snapshot.rss ? `<ul>${snapshot.rss.feeds.map((feed) => `<li>${feed.label} <small>${feed.url}</small></li>`).join('')}</ul><button onclick="controlRss('pause')">Pause</button><button onclick="controlRss('resume')">Resume</button><p><input id="rss-url" placeholder="Allowlisted HTTPS feed URL"><button onclick="previewRss()">Preview feed</button></p><p id="rss-result" class="muted"></p>` : ''}</article>
 </section><p><small>Bound to localhost. Refresh for a current snapshot.</small></p></main><script>
 async function controlRss(action){if(!confirm('Confirm RSS '+action+' for this MuthaShip?'))return;const token=prompt('Enter the local Admin Console token:');if(!token)return;const result=document.getElementById('rss-result');try{const response=await fetch('/api/rss/'+action,{method:'POST',headers:{Authorization:'Bearer '+token}});const body=await response.json();if(!response.ok)throw new Error(body.error||'Request failed');result.textContent='RSS '+action+'d successfully. Refreshing...';setTimeout(()=>location.reload(),300);}catch(error){result.textContent=error instanceof Error?error.message:'RSS control failed';}}
+async function previewRss(){const token=prompt('Enter the local Admin Console token:');const url=document.getElementById('rss-url').value;if(!token||!url)return;const result=document.getElementById('rss-result');try{const response=await fetch('/api/rss/preview',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({url})});const body=await response.json();if(!response.ok)throw new Error(body.error||'Preview failed');result.textContent=body.items.length+' feed items found. No feed was saved.';}catch(error){result.textContent=error instanceof Error?error.message:'RSS preview failed';}}
 </script></body></html>`;
 
 export const startAdminConsole = (options: {
@@ -42,6 +44,12 @@ export const startAdminConsole = (options: {
 }): Promise<AdminConsole> => {
   const host = options.host ?? '127.0.0.1';
   const server = createServer(async (request, response) => {
+    if (request.method === 'POST' && request.url === '/api/rss/preview') {
+      if (options.rssControl?.preview === undefined || request.headers.authorization !== `Bearer ${options.rssControl.token}`) { response.writeHead(401, { 'content-type': 'application/json; charset=utf-8' }); response.end(JSON.stringify({ error: 'Unauthorized' })); return; }
+      let body = ''; for await (const chunk of request) { body += chunk.toString(); if (body.length > 2048) break; }
+      try { const url = String((JSON.parse(body) as { url?: unknown }).url ?? '').trim(); const items = await options.rssControl.preview(url); response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify({ url, items: items.slice(0, 5) })); } catch { response.writeHead(400, { 'content-type': 'application/json; charset=utf-8' }); response.end(JSON.stringify({ error: 'RSS preview unavailable. Check the allowlist and feed URL.' })); }
+      return;
+    }
     if (request.method === 'POST' && (request.url === '/api/rss/pause' || request.url === '/api/rss/resume')) {
       if (options.rssControl === undefined || request.headers.authorization !== `Bearer ${options.rssControl.token}`) {
         response.writeHead(401, { 'content-type': 'application/json; charset=utf-8' }); response.end(JSON.stringify({ error: 'Unauthorized' })); return;
