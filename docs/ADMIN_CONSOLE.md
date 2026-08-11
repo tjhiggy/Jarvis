@@ -6,7 +6,12 @@ purple navigation accents, and gold Jarvis identity cues. This is presentation
 only; it does not grant additional Discord permissions.
 Enable it with `ADMIN_CONSOLE_ENABLED=true`, then restart Jarvis. It reports
 platform health, providers, integrations, aggregate metrics, configured RSS
-feeds, and broadcast state. With `ADMIN_CONSOLE_TOKEN`, it also provides
+feeds, broadcast state, and a privacy-bounded Community Intelligence card. The
+intelligence card reports approved-source totals, retained-search readiness,
+the aggregate number of members who opted into private command statistics,
+image-generation readiness, and the configured local model. It never exposes
+member identities, source content, conversation text, prompts, or generated
+images. With `ADMIN_CONSOLE_TOKEN`, it also provides
 bounded, confirmed operator workflows. It does not expose tokens, conversation
 content, or Discord server-management controls.
 

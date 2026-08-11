@@ -9,7 +9,17 @@ export interface AnalyticsSink {
 }
 
 export class Instrumentation {
-  constructor(private readonly sink: AnalyticsSink) {}
+  constructor(
+    private readonly sink: AnalyticsSink,
+    private readonly memberStatistics?: Readonly<{
+      recordCommand(
+        serverId: string,
+        userId: string,
+        command: string,
+        occurredAt: Date,
+      ): Promise<void>;
+    }>,
+  ) {}
 
   async run<T>(input: {
     readonly context: InteractionContext;
@@ -35,6 +45,23 @@ export class Instrumentation {
         result: 'success',
         durationMs: Date.now() - startedAt,
       });
+      if (
+        this.memberStatistics !== undefined &&
+        input.command !== undefined &&
+        input.command !== 'my-stats' &&
+        input.context.serverId !== 'direct-message'
+      ) {
+        try {
+          await this.memberStatistics.recordCommand(
+            input.context.serverId,
+            input.context.userId,
+            input.command,
+            new Date(),
+          );
+        } catch {
+          // Private statistics must never alter command behavior.
+        }
+      }
       return value;
     } catch (error) {
       await this.record({

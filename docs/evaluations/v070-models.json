@@ -1,0 +1,14 @@
+{
+  "evaluatedAt": "2026-08-11",
+  "cases": 5,
+  "results": [
+    {
+      "model": "gemma3:4b",
+      "passed": 3,
+      "score": 13,
+      "averageLatencyMs": 5687
+    },
+    { "model": "qwen3:4b", "passed": 2, "score": 12, "averageLatencyMs": 9689 }
+  ],
+  "recommendedLocalModel": "gemma3:4b"
+}

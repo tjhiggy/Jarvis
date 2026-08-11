@@ -79,6 +79,17 @@ runs ESLint across the project, `npm run build` type-checks and emits the
 configured TypeScript build, and `npm run docs:check` validates tracked
 documentation and GitHub YAML through PowerShell 7.
 
+The synthetic local-model comparison is opt-in and never reads Discord data.
+Build first, then run one model at a time so Ollama unloads it before the next:
+
+```powershell
+npm run model:evaluate -- gemma3:4b
+npm run model:evaluate -- qwen3:4b
+```
+
+Only aggregate score and latency are printed. Do not redirect provider
+responses or Discord content into evaluation artifacts.
+
 Tests avoid live services by injecting factories or clients. Examples include the application dependencies for environment loading, storage, AI, Discord, logging, timers, process signals, and elapsed time; provider adapters accept mock clients or `fetch`; and command registration accepts a mock REST client. Keep that boundary intact. A unit test that needs a real bot token is not an integration test, it is a credential leak wearing a fake mustache.
 
 ## Safe debugging

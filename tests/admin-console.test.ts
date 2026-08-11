@@ -18,6 +18,13 @@ describe('admin console', () => {
       },
       integrations: { rss: 'ready', sleeper: false, github: false },
       metrics: { events: 2, failures: 0 },
+      intelligence: {
+        approvedSources: 3,
+        retainedSearch: 'ready',
+        optedInMembers: 2,
+        imageGeneration: 'disabled',
+        localModel: 'gemma3:4b',
+      },
       rss: {
         paused: false,
         feeds: [
@@ -45,6 +52,10 @@ describe('admin console', () => {
     expect(statusBody).not.toMatch(/operator|token|key=|feed\.xml/);
     const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
     expect(page).toContain('Jarvis Command Deck');
+    expect(page).toContain('Community Intelligence');
+    expect(page).toContain('Approved sources: 3');
+    expect(page).toContain('Opted-in members: 2');
+    expect(page).toContain('gemma3:4b');
     expect(page).toContain('controlBroadcast');
     expect(page).toContain('RSS preview');
     expect(page).toContain('saving establishes a baseline');

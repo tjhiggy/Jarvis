@@ -287,6 +287,18 @@ interface NotificationSubcommandDefinition {
     }[];
   }[];
 }
+interface ImageSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'generate';
+  readonly description: string;
+  readonly options: readonly {
+    readonly type: 3;
+    readonly name: 'prompt';
+    readonly description: string;
+    readonly required: true;
+    readonly max_length: number;
+  }[];
+}
 
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
@@ -314,7 +326,8 @@ export type CommandOptionDefinition =
   | BirthdaySubcommandDefinition
   | GitHubSubcommandDefinition
   | RssSubcommandDefinition
-  | NotificationSubcommandDefinition;
+  | NotificationSubcommandDefinition
+  | ImageSubcommandDefinition;
 // GitHub is intentionally read-only and repository-scoped.
 
 export interface CommandDefinition {
@@ -329,6 +342,9 @@ export interface CommandDefinition {
     | 'faq'
     | 'knowledge'
     | 'catch-me-up'
+    | 'server-search'
+    | 'my-stats'
+    | 'image'
     | 'post'
     | 'channel-summary'
     | 'reminder'
@@ -499,6 +515,63 @@ export const createCommandDefinitions = (
       type: 1,
       name: 'channel-summary',
       description: 'Summarize retained Jarvis conversation for this channel.',
+    },
+    {
+      type: 1,
+      name: 'server-search',
+      description: 'Search retained Jarvis conversation in this channel.',
+      options: [
+        {
+          type: 3,
+          name: 'query',
+          description: 'Words to find in retained Jarvis conversation.',
+          required: true,
+          max_length: 200,
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'my-stats',
+      description: 'Manage your private, opt-in Jarvis command statistics.',
+      options: [
+        {
+          type: 1,
+          name: 'status',
+          description: 'Show your private 30-day command count.',
+        },
+        {
+          type: 1,
+          name: 'enable',
+          description: 'Opt in to private command-count statistics.',
+        },
+        {
+          type: 1,
+          name: 'disable',
+          description: 'Opt out and delete your retained command counts.',
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'image',
+      description: 'Generate one administrator-controlled MuthaShip image.',
+      options: [
+        {
+          type: 1,
+          name: 'generate',
+          description: 'Generate one image in the configured channel.',
+          options: [
+            {
+              type: 3,
+              name: 'prompt',
+              description: 'Image description (20-1000 characters).',
+              required: true,
+              max_length: 1000,
+            },
+          ],
+        },
+      ],
     },
     {
       type: 1,

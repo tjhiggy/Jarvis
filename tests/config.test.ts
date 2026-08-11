@@ -32,6 +32,36 @@ describe('loadConfig', () => {
     expect([...config.persona.restrainedChannelIds]).toEqual(['3']);
     expect(config.storage.maxHistoryMessages).toBe(20);
     expect(config.storage.maxStoredMessages).toBe(10_000);
+    expect(config.imageGeneration).toEqual({
+      enabled: false,
+      channelId: '',
+      model: 'gpt-image-1-mini',
+      timeoutMs: 60_000,
+    });
+  });
+
+  it('requires an OpenAI key and destination when image generation is enabled', () => {
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        IMAGE_GENERATION_ENABLED: 'true',
+      }),
+    ).toThrow(/IMAGE_GENERATION_ENABLED/);
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        IMAGE_GENERATION_ENABLED: 'true',
+        IMAGE_GENERATION_CHANNEL_ID: '1536175231373148181',
+      }),
+    ).toThrow(/ENGAGEMENT_ADMIN_ROLE_IDS/);
+    expect(
+      loadConfig({
+        ...validEnv,
+        IMAGE_GENERATION_ENABLED: 'true',
+        IMAGE_GENERATION_CHANNEL_ID: '1536175231373148181',
+        ENGAGEMENT_ADMIN_ROLE_IDS: '1147945394039435316',
+      }).imageGeneration,
+    ).toMatchObject({ enabled: true, channelId: '1536175231373148181' });
   });
 
   it('loads the FAQ catalog path with a default and override', () => {

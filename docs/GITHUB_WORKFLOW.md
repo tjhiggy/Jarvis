@@ -60,8 +60,9 @@ current sequence is:
 4. **Sprint 4: v0.6.0 Command Deck** - safe channel selection, audit
    visibility, configuration previews, backup/rollback, mobile polish, and
    authenticated admin broadcasts.
-5. **Sprint 5: v0.7.0 Community Intelligence** - approved knowledge,
-   summaries, recaps, and administrator analytics.
+5. **Sprint 5: v0.7.0 Community Intelligence** - ranked approved knowledge,
+   current-context retained search, opt-in member statistics, controlled image
+   generation, measured model routing, and aggregate Command Deck visibility.
 6. **Sprint 6: v0.8.0 Connected Systems** - Sleeper enhancements, GitHub
    read-only tools, RSS/stream improvements, and MCP foundations.
 

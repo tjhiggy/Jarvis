@@ -18,6 +18,7 @@ import {
   loadKnowledgeCatalog,
   type ApprovedKnowledgeCatalog,
 } from './knowledge/approved-knowledge.js';
+import { SQLiteKnowledgeApprovalStore } from './knowledge/knowledge-store.js';
 import {
   OpenAIResponsesService,
   type AIService,
@@ -62,6 +63,12 @@ import { loadRuntimeIdentity } from './config/runtime-identity.js';
 import { HttpSleeperService } from './sleeper/sleeper-service.js';
 import { randomUUID } from 'node:crypto';
 import { Instrumentation } from './platform/instrumentation.js';
+import {
+  MemberStatisticsService,
+  SQLiteMemberStatisticsStore,
+} from './community/member-statistics.js';
+import { ImageGenerationService } from './images/image-generation.js';
+import { OpenAIImageProvider } from './openai/openai-image-service.js';
 import {
   IntroductionService,
   type IntroductionGateway,
@@ -506,6 +513,10 @@ export const createApplication = async (
   let broadcastStore: BroadcastPreferenceStore | undefined;
   let engagementRepository: EngagementRepository | undefined;
   let instrumentation: Instrumentation | undefined;
+  let memberStatisticsStore: SQLiteMemberStatisticsStore | undefined;
+  let memberStatistics: MemberStatisticsService | undefined;
+  let knowledgeStore: SQLiteKnowledgeApprovalStore | undefined;
+  let imageGeneration: ImageGenerationService | undefined;
   let rssStorage: RssStorage | undefined;
   let rssScheduler: RssScheduler | undefined;
   let delegatedPostService: DelegatedPostService | undefined;
@@ -654,6 +665,28 @@ export const createApplication = async (
           );
         }
       }
+      if (memberStatisticsStore !== undefined) {
+        try {
+          memberStatisticsStore.close();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'member_statistics_shutdown'),
+            'Member statistics storage close failed during shutdown.',
+          );
+        }
+        memberStatisticsStore = undefined;
+      }
+      if (knowledgeStore !== undefined) {
+        try {
+          knowledgeStore.close();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'knowledge_storage_shutdown'),
+            'Approved knowledge storage close failed during shutdown.',
+          );
+        }
+        knowledgeStore = undefined;
+      }
       if (rssScheduler !== undefined) {
         try {
           await rssScheduler.stop();
@@ -728,6 +761,10 @@ export const createApplication = async (
       config.storage.maxStoredMessages,
     );
     const initializedStore = store;
+    if (knowledge !== undefined)
+      knowledgeStore = new SQLiteKnowledgeApprovalStore(
+        config.storage.databasePath,
+      );
     let featureFlags: FeatureFlagService | undefined;
     reminderStore =
       dependencies.createReminderStore?.(config.storage.databasePath) ??
@@ -816,24 +853,40 @@ export const createApplication = async (
     ) {
       rssStorage = new RssStorage(config.storage.databasePath);
     }
+    memberStatisticsStore = new SQLiteMemberStatisticsStore(
+      config.storage.databasePath,
+    );
+    memberStatistics = new MemberStatisticsService(memberStatisticsStore);
     if (config.engagement.enabled) {
       engagementRepository =
         dependencies.createEngagementRepository?.(
           config.storage.databasePath,
         ) ?? new SQLiteEngagementRepository(config.storage.databasePath);
-      instrumentation = new Instrumentation({
-        record: async (event) => {
-          if (event.serverId === 'direct-message') return;
-          await engagementRepository?.recordAnalyticsEvent?.(event);
-        },
-      });
       featureFlags = new FeatureFlagService(
         engagementRepository as Required<
           Pick<EngagementRepository, 'getFeatureFlags' | 'setFeatureFlag'>
         >,
       );
     }
+    instrumentation = new Instrumentation(
+      {
+        record: async (event) => {
+          if (event.serverId === 'direct-message') return;
+          await engagementRepository?.recordAnalyticsEvent?.(event);
+        },
+      },
+      memberStatistics,
+    );
     const ai = aiFactory(config);
+    if (config.imageGeneration.enabled) {
+      imageGeneration = new ImageGenerationService(
+        new OpenAIImageProvider(
+          config.openai.apiKey,
+          config.imageGeneration.model,
+          config.imageGeneration.timeoutMs,
+        ),
+      );
+    }
     client = discordFactory();
     if (rssStorage !== undefined && config.engagement.channels.rssId !== '') {
       const rssBroadcastStore = initializedBroadcastStore;
@@ -1160,6 +1213,14 @@ export const createApplication = async (
           logger?.warn({ error }, 'Engagement retention cleanup failed.');
         }
       }
+      try {
+        await memberStatistics?.cleanup();
+      } catch (error) {
+        logger?.warn(
+          projectOperationalError(error, 'member_statistics_cleanup'),
+          'Member statistics retention cleanup failed.',
+        );
+      }
     };
     const handlerState: {
       handlers: ReturnType<typeof createDiscordHandlers> | undefined;
@@ -1400,6 +1461,17 @@ export const createApplication = async (
             }),
           );
           const features = ['introductions', 'suggestions', 'events', 'trivia'];
+          const approvedSources =
+            knowledge === undefined
+              ? 0
+              : knowledgeStore === undefined
+                ? knowledge.entries.filter((entry) => entry.approved).length
+                : (
+                    await knowledgeStore.listForAdmin(
+                      config.discord.guildId,
+                      knowledge,
+                    )
+                  ).filter((entry) => entry.active).length;
           return {
             platform: {
               version: config.runtimeIdentity?.version ?? 'unknown',
@@ -1431,6 +1503,20 @@ export const createApplication = async (
                       .filter((row) => row.eventName === 'command_failed')
                       .reduce((sum, row) => sum + row.count, 0),
                   },
+            intelligence: {
+              approvedSources,
+              retainedSearch: store === undefined ? 'unavailable' : 'ready',
+              optedInMembers:
+                (await memberStatistics?.optedInCount(
+                  config.discord.guildId,
+                )) ?? 0,
+              imageGeneration: config.imageGeneration.enabled
+                ? imageGeneration === undefined
+                  ? 'unavailable'
+                  : 'ready'
+                : 'disabled',
+              localModel: config.ollama.model,
+            },
             rss:
               rssStorage === undefined
                 ? undefined
@@ -1559,6 +1645,9 @@ export const createApplication = async (
           },
           faq,
           ...(knowledge === undefined ? {} : { knowledge }),
+          ...(knowledgeStore === undefined ? {} : { knowledgeStore }),
+          ...(memberStatistics === undefined ? {} : { memberStatistics }),
+          ...(imageGeneration === undefined ? {} : { imageGeneration }),
           ...(introductionService === undefined ? {} : { introductionService }),
           ...(suggestionService === undefined ? {} : { suggestionService }),
           ...(eventService === undefined ? {} : { eventService }),

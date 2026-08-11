@@ -61,6 +61,13 @@ export interface AdminConsoleSnapshot {
     readonly events: number;
     readonly failures: number;
   } | null;
+  readonly intelligence?: {
+    readonly approvedSources: number;
+    readonly retainedSearch: 'ready' | 'unavailable';
+    readonly optedInMembers: number;
+    readonly imageGeneration: 'ready' | 'disabled' | 'unavailable';
+    readonly localModel: string;
+  };
   readonly rss?:
     | {
         readonly paused: boolean;
@@ -181,6 +188,9 @@ const safeSnapshot = (
   providers: snapshot.providers,
   integrations: snapshot.integrations,
   metrics: snapshot.metrics,
+  ...(snapshot.intelligence === undefined
+    ? {}
+    : { intelligence: snapshot.intelligence }),
   ...(snapshot.rss === undefined
     ? {}
     : { rss: { paused: snapshot.rss.paused } }),
@@ -207,6 +217,7 @@ const html = (
 <article class="card"><h2>Community</h2><p>Engagement: <strong>${snapshot.engagement.enabled ? 'enabled' : 'disabled'}</strong></p><ul>${snapshot.engagement.features.map((feature) => `<li>${feature}</li>`).join('')}</ul></article>
 <article class="card"><h2>Providers</h2><p>AI: ${snapshot.providers.ai}</p><p>OpenAI: ${snapshot.providers.openAiConfigured ? 'configured' : 'not configured'}</p><p>Ollama: ${snapshot.providers.ollamaConfigured ? 'configured' : 'not configured'}</p><p>Web search: ${snapshot.providers.webSearchConfigured ? 'configured' : 'not configured'}</p></article>
 <article class="card"><h2>Integrations</h2><p>RSS: ${rssIntegrationStatus(snapshot.integrations.rss)}</p><p>Sleeper Fantasy Football: ${snapshot.integrations.sleeper ? 'ready' : 'not configured'}</p><p>GitHub read-only: ${snapshot.integrations.github ? 'ready' : 'not configured'}</p><p>Metrics: ${snapshot.metrics === null ? 'unavailable' : `${snapshot.metrics.events} events, ${snapshot.metrics.failures} failures`}</p></article>
+${snapshot.intelligence === undefined ? '<article class="card"><h2>Community Intelligence</h2><p class="muted">Intelligence status is unavailable.</p></article>' : `<article class="card"><h2>Community Intelligence</h2><p>Approved sources: ${snapshot.intelligence.approvedSources}</p><p>Retained search: ${snapshot.intelligence.retainedSearch}</p><p>Opted-in members: ${snapshot.intelligence.optedInMembers}</p><p>Image generation: ${snapshot.intelligence.imageGeneration}</p><p>Local model: ${escapeHtml(snapshot.intelligence.localModel)}</p></article>`}
 ${renderBroadcastCards(snapshot)}
 ${
   postControl === undefined

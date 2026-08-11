@@ -59,6 +59,35 @@ describe('approved knowledge', () => {
     expect(catalog.search('old')).toEqual([]);
   });
 
+  it('ranks multi-token matches deterministically without requiring an exact phrase', () => {
+    const catalog = buildKnowledgeCatalog(
+      [
+        {
+          id: 'events',
+          title: 'Crew event guide',
+          content: 'Create game nights and collect RSVP responses.',
+          source: 'operator-guide',
+          approved: true,
+          updatedAt: '2026-08-01T00:00:00Z',
+        },
+        {
+          id: 'games',
+          title: 'Game library',
+          content: 'A list of games played by the crew.',
+          source: 'games-list',
+          approved: true,
+          updatedAt: '2026-08-01T00:00:00Z',
+        },
+      ],
+      new Date('2026-08-09T00:00:00Z'),
+    );
+
+    expect(catalog.search('game RSVP').map(({ id }) => id)).toEqual([
+      'events',
+      'games',
+    ]);
+  });
+
   it('lists pending and expired sources with approval status for administrators', async () => {
     const catalog = buildKnowledgeCatalog(
       [

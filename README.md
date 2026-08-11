@@ -18,7 +18,7 @@ second, imaginary moderator powers never. It answers questions in Discord,
 keeps bounded conversation history per channel or thread, and can use local or
 hosted AI without pretending an interface is a superpower.
 
-Release package: `0.6.0` | Runtime: Node.js 22+ | License: proprietary, except
+Release package: `0.7.0` | Runtime: Node.js 22+ | License: proprietary, except
 the Code of Conduct under CC BY 4.0
 
 Share the [Jarvis community platform overview](assets/jarvis-admin-overview-infographic-v3.png)
@@ -89,6 +89,11 @@ The copied `.env.example` is Ollama-first. Ollama runs locally and needs no API
 credits. OpenAI is an optional hosted provider, and Tavily is an optional web
 grounding service. Provider choice changes where prompts are processed, not
 what authority Jarvis has.
+
+For v0.7, the measured local recommendation remains `gemma3:4b`. It scored
+higher and responded substantially faster than `qwen3:4b` on the current
+16 GB host. The evidence and routing decision are in
+[`docs/adr/001-community-intelligence-model-strategy.md`](docs/adr/001-community-intelligence-model-strategy.md).
 
 ## First local run
 
@@ -207,6 +212,9 @@ gate reduce risk but cannot make language-model output infallible; use
 | `/knowledge list` / `/knowledge approve id:<id>` / `/knowledge revoke id:<id>` | Administrators inspect and change this server's approval override for catalog sources. These commands never edit the checked-in catalog.                      |
 | `/catch-me-up`                                                                 | Privately shows up to the 12 most recent Jarvis conversation messages retained for the current channel or thread. It never fetches arbitrary Discord history. |
 | `/channel-summary`                                                             | Privately summarizes up to 20 retained Jarvis messages from the last 24 hours for the current channel or thread. It never fetches arbitrary Discord history.  |
+| `/server-search query:<text>`                                                  | Privately searches up to 100 retained Jarvis messages in the current channel or thread and returns at most five source-timestamped matches.                   |
+| `/my-stats status` / `/my-stats enable` / `/my-stats disable`                  | Privately manages an optional 30-day count of your successful Jarvis commands. Opt-out is the default; disabling deletes retained counts.                     |
+| `/image generate prompt:<description>`                                         | Lets a configured administrator generate one bounded image in the approved channel when the feature is explicitly enabled.                                    |
 | `/post preview content:<message>`                                              | Administrators preview and explicitly confirm a bounded MuthaShip transmission to the configured test channel.                                                |
 | `/help`                                                                        | Lists the available commands and safety boundary.                                                                                                             |
 | `/status`                                                                      | Reports Discord configuration, SQLite health, selected provider configuration, web-search configuration, and FAQ readiness without a model request.           |
@@ -423,9 +431,21 @@ fallback. See the [command surface matrix](docs/COMMAND_SURFACE_MATRIX.md),
 [Command Deck guide](docs/ADMIN_CONSOLE.md), and
 [v0.6.0 release checklist](docs/releases/v0.6.0.md).
 
+## Community Intelligence
+
+v0.7.0 adds deterministic relevance for administrator-approved knowledge,
+private `/server-search` over only the current channel or thread's retained
+Jarvis conversation, and private opt-in `/my-stats` command totals. Optional
+administrator image generation remains disabled until explicitly configured
+for one allowlisted channel. The Command Deck reports readiness and aggregate
+counts without exposing member identity, prompts, source content, or
+conversation text. A measured local evaluation keeps `gemma3:4b` as the
+default Ollama model on this workstation. See the
+[v0.7.0 release checklist](docs/releases/v0.7.0.md).
+
 ## Release and license
 
-The current release package and changelog version is `0.6.0`. Release actions
+The current release package and changelog version is `0.7.0`. Release actions
 are maintainer-owned and documented in
 [Releases](docs/RELEASES.md) and the [Changelog](CHANGELOG.md).
 

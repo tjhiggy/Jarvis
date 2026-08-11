@@ -62,6 +62,7 @@ import {
 } from '../engagement/discord-ui.js';
 import type { RoleMenuChoice } from '../engagement/role-menus.js';
 import { buildChannelSummary } from './channel-summary.js';
+import { searchRetainedConversation } from './server-search.js';
 import type { ProactiveEngagementService } from '../engagement/proactive.js';
 import type { DelegatedPostService } from '../engagement/delegated-posts.js';
 import { handleDelegatedPostCommand } from './delegated-post.js';
@@ -78,6 +79,11 @@ import { handleMemberProfileCommand } from './member-profile.js';
 import type { MemberProfileService } from '../engagement/member-profiles.js';
 import { handleNotificationCommand } from './notifications.js';
 import type { BroadcastStore } from '../notifications/broadcast-store.js';
+import type { MemberStatisticsService } from '../community/member-statistics.js';
+import {
+  ImageGenerationError,
+  type ImageGenerationService,
+} from '../images/image-generation.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -124,6 +130,7 @@ export interface CommandDependencies {
     runtimeIdentity?: RuntimeIdentity;
     discord: Readonly<{ token: string; clientId: string; guildId: string }>;
     openai: Readonly<{ apiKey: string }>;
+    imageGeneration?: Readonly<{ enabled: boolean; channelId: string }>;
     ai: Readonly<{ provider: 'openai' | 'ollama' }>;
     ollama: Readonly<{ baseUrl: string; model: string }>;
     github?: Readonly<{ owner: string; repo: string }>;
@@ -185,6 +192,8 @@ export interface CommandDependencies {
   readonly faq: FaqCatalog;
   readonly knowledge?: ApprovedKnowledgeCatalog;
   readonly knowledgeStore?: SQLiteKnowledgeApprovalStore;
+  readonly memberStatistics?: MemberStatisticsService;
+  readonly imageGeneration?: ImageGenerationService;
   readonly sleeper?: Readonly<{ leagueId: string; service: SleeperService }>;
   readonly github?: Readonly<{ service: GitHubReadOnlyService }>;
   readonly rssStorage?: Pick<
@@ -271,6 +280,9 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/knowledge query:<search> searches administrator-approved MuthaShip knowledge.',
     '/catch-me-up summarizes recent Jarvis conversation in this channel.',
     '/channel-summary summarizes retained Jarvis conversation from the last 24 hours in this channel or thread.',
+    '/server-search searches retained Jarvis conversation only in this channel or thread.',
+    '/my-stats status, enable, or disable manages your private opt-in command count.',
+    '/image generate is an administrator-only image tool in its configured channel.',
     '/reminder set in:<duration> message:<text> creates a private personal reminder request.',
     '/reminder list shows your retained reminders in this server.',
     '/reminder cancel id:<id> cancels one of your reminders.',
@@ -321,6 +333,15 @@ const handleCommandInternal = async (
       return;
     case 'channel-summary':
       await handleChannelSummary(interaction, dependencies);
+      return;
+    case 'server-search':
+      await handleServerSearch(interaction, dependencies);
+      return;
+    case 'my-stats':
+      await handleMemberStatistics(interaction, dependencies);
+      return;
+    case 'image':
+      await handleImageGeneration(interaction, dependencies);
       return;
     case 'reminder':
       await handleReminder(interaction, dependencies);
@@ -1598,6 +1619,149 @@ const handleChannelSummary = async (
     await replySafely(
       interaction,
       'Recent MuthaShip context is unavailable right now.',
+      true,
+    );
+  }
+};
+
+const handleMemberStatistics = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) return;
+  const service = dependencies.memberStatistics;
+  if (service === undefined || interaction.guildId === null) {
+    await replySafely(
+      interaction,
+      'Private member statistics are unavailable on this MuthaShip.',
+      true,
+    );
+    return;
+  }
+  const subcommand = interaction.options.getSubcommand();
+  if (subcommand === 'enable') {
+    await service.enable(interaction.guildId, interaction.user.id);
+    await replySafely(
+      interaction,
+      'Private command statistics enabled. Jarvis will retain only your command count for up to 30 days. No historical activity was added.',
+      true,
+    );
+    return;
+  }
+  if (subcommand === 'disable') {
+    await service.disable(interaction.guildId, interaction.user.id);
+    await replySafely(
+      interaction,
+      'Private command statistics disabled and your retained command counts were deleted.',
+      true,
+    );
+    return;
+  }
+  const status = await service.status(interaction.guildId, interaction.user.id);
+  await replySafely(
+    interaction,
+    `Your private Jarvis statistics are ${status.enabled ? 'enabled' : 'disabled'}. Commands retained in the last 30 days: ${status.commandCount}.`,
+    true,
+  );
+};
+
+const handleImageGeneration = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) return;
+  const configuration = dependencies.config.imageGeneration;
+  const service = dependencies.imageGeneration;
+  if (
+    configuration?.enabled !== true ||
+    configuration.channelId === '' ||
+    service === undefined
+  ) {
+    await replySafely(
+      interaction,
+      'Image generation is disabled on this MuthaShip.',
+      true,
+    );
+    return;
+  }
+  const administrator = [
+    ...(dependencies.config.engagement?.adminRoleIds ?? new Set<string>()),
+  ].some((roleId) => interaction.member?.roles?.cache?.has(roleId) === true);
+  if (!administrator || interaction.channelId !== configuration.channelId) {
+    await replySafely(
+      interaction,
+      'Image generation is restricted to configured MuthaShip administrators in its approved channel.',
+      true,
+    );
+    return;
+  }
+  const prompt = interaction.options.getString('prompt') ?? '';
+  await interaction.deferReply({ ephemeral: false, allowedMentions });
+  try {
+    const image = await service.generate(prompt);
+    const extension =
+      image.mediaType === 'image/jpeg' ? 'jpg' : image.mediaType.split('/')[1];
+    await interaction.editReply({
+      content: 'MuthaShip visual generated by Jarvis.',
+      allowedMentions,
+      files: [{ attachment: image.bytes, name: `jarvis-image.${extension}` }],
+    });
+  } catch (error) {
+    const message =
+      error instanceof ImageGenerationError &&
+      ['invalid-prompt', 'unsafe-prompt'].includes(error.code)
+        ? 'Provide a safe image description between 20 and 1000 characters without mass or role mentions.'
+        : 'Image generation is temporarily unavailable. No image was posted.';
+    await interaction.editReply({ content: message, allowedMentions });
+  }
+};
+
+const handleServerSearch = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) return;
+  const channelId = interaction.channelId.trim();
+  const guildId = interaction.guildId?.trim() ?? '';
+  const parentChannelId = threadParentId(interaction);
+  if (
+    !guildId ||
+    !channelId ||
+    !isAllowedChannel(
+      channelId,
+      parentChannelId,
+      dependencies.config.security.allowedChannelIds,
+    )
+  ) {
+    await replySafely(interaction, disallowedMessage, true);
+    return;
+  }
+  const query = interaction.options.getString('query')?.trim() ?? '';
+  const historyStore = dependencies.conversationHistory;
+  if (!historyStore || query.length < 2 || query.length > 200) {
+    await replySafely(
+      interaction,
+      'Retained MuthaShip search is unavailable for that request.',
+      true,
+    );
+    return;
+  }
+  try {
+    const matches = searchRetainedConversation(
+      await historyStore.getRecent(guildId, channelId, 100),
+      query,
+    );
+    await replySafely(
+      interaction,
+      matches.length === 0
+        ? 'No relevant match exists in retained Jarvis conversation for this channel. Jarvis will not guess.'
+        : `**Retained MuthaShip search**\n_Current channel or thread only; no arbitrary Discord history was read._\n${matches.join('\n')}`,
+      true,
+    );
+  } catch {
+    await replySafely(
+      interaction,
+      'Retained MuthaShip search is unavailable right now.',
       true,
     );
   }
