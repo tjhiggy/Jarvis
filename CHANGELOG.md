@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Administrator-only `/feature-request` preview, confirm, and cancel workflow
+  that creates one labeled issue in the configured GitHub repository. The
+  integration cannot edit or close issues, manage pull requests, choose another
+  repository, or change repository settings.
+
 ## [0.7.0] - 2026-08-11
 
 ### Added

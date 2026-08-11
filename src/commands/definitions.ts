@@ -260,6 +260,18 @@ interface GitHubSubcommandDefinition {
     readonly min_value: number;
   }[];
 }
+interface FeatureRequestSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'preview' | 'confirm' | 'cancel';
+  readonly description: string;
+  readonly options: readonly {
+    readonly type: 3;
+    readonly name: 'title' | 'description' | 'draft_id';
+    readonly description: string;
+    readonly required: true;
+    readonly max_length: number;
+  }[];
+}
 interface RssSubcommandDefinition {
   readonly type: 1;
   readonly name: 'add' | 'list' | 'remove' | 'pause' | 'resume';
@@ -325,6 +337,7 @@ export type CommandOptionDefinition =
   | ProactiveSubcommandDefinition
   | BirthdaySubcommandDefinition
   | GitHubSubcommandDefinition
+  | FeatureRequestSubcommandDefinition
   | RssSubcommandDefinition
   | NotificationSubcommandDefinition
   | ImageSubcommandDefinition;
@@ -365,6 +378,7 @@ export interface CommandDefinition {
     | 'roles'
     | 'profile'
     | 'github'
+    | 'feature-request'
     | 'rss'
     | 'notifications';
   readonly description: string;
@@ -1014,6 +1028,62 @@ export const createCommandDefinitions = (
               description: 'Pull request number.',
               required: true,
               min_value: 1,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'feature-request',
+      description: 'Submit a reviewed idea to the approved GitHub backlog.',
+      options: [
+        {
+          type: 1,
+          name: 'preview',
+          description: 'Privately preview a GitHub feature request.',
+          options: [
+            {
+              type: 3,
+              name: 'title',
+              description: 'Short issue title.',
+              required: true,
+              max_length: 120,
+            },
+            {
+              type: 3,
+              name: 'description',
+              description: 'Problem or desired outcome.',
+              required: true,
+              max_length: 1500,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'confirm',
+          description: 'Create one privately previewed GitHub issue.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'cancel',
+          description: 'Discard one private GitHub issue preview.',
+          options: [
+            {
+              type: 3,
+              name: 'draft_id',
+              description: 'Private preview ID.',
+              required: true,
+              max_length: 128,
             },
           ],
         },

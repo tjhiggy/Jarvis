@@ -114,8 +114,10 @@ design. No migration is implied by this roadmap.
 - Arbitrary code execution, shell access, or arbitrary file access.
 - Discord moderation, administration, role or channel changes, or mutation of
   content owned by others.
-- GitHub writes, merge actions, issue changes, or pull-request changes by
-  Jarvis.
+- General GitHub writes, merge actions, editing existing issues, or
+  pull-request changes by Jarvis. The bounded `/feature-request` workflow may
+  create a labeled issue in one configured repository after administrator
+  confirmation.
 - Unrestricted external-tool access, secret disclosure, or using untrusted
   content as instructions.
 

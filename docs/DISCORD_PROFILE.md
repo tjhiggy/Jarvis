@@ -42,7 +42,7 @@ Upload the avatar and banner through the Discord Developer Portal. Do not commit
 
 ## Capability boundary
 
-Public copy must not imply that Jarvis can execute code, change server settings, write to GitHub, manage roles, moderate members, or learn from conversations as a training loop. Those are not current capabilities.
+Public copy must not imply that Jarvis can execute code, change server settings, broadly write to GitHub, manage roles, moderate members, or learn from conversations as a training loop. Jarvis can only create a labeled issue in one configured repository through the administrator-confirmed `/feature-request` workflow.
 
 ## Manual verification record
 
