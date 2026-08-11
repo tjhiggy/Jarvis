@@ -9,6 +9,7 @@ import type { PollController } from '../src/polls/poll-controller.js';
 import type { PollScheduler } from '../src/polls/poll-scheduler.js';
 import type { PollStore } from '../src/polls/poll-store.js';
 import type { BroadcastStore } from '../src/notifications/broadcast-store.js';
+import type { ProactivePrompt } from '../src/notifications/proactive-catalog.js';
 import { ReminderScheduler } from '../src/reminders/reminder-scheduler.js';
 import type { ReminderStore } from '../src/reminders/reminder-store.js';
 import type { ReminderView } from '../src/reminders/reminder-types.js';
@@ -80,6 +81,7 @@ const config: AppConfig = {
       rssId: '',
     },
     rssAllowedHosts: [],
+    proactiveCatalogPath: '',
     adminRoleIds: new Set(),
     recapSchedule: '',
     recapTimezone: 'UTC',
@@ -159,6 +161,43 @@ describe('reportStartupFailure', () => {
 });
 
 describe('createApplication', () => {
+  it('loads the configured approved proactive catalog before application startup', async () => {
+    const catalogPaths: string[] = [];
+    const application = await createTestApplication({
+      loadConfig: () => ({
+        ...config,
+        engagement: {
+          ...config.engagement,
+          proactiveCatalogPath: './config/approved-prompts.json',
+        },
+      }),
+      loadPersona: async () => ({}) as TrustedPersona,
+      loadProactiveCatalog: async (path) => {
+        catalogPaths.push(path);
+        return [
+          {
+            id: 'crew-check-in',
+            category: 'community',
+            text: 'Crew check-in: what is everyone playing today?',
+            active: true,
+          },
+        ] satisfies readonly ProactivePrompt[];
+      },
+      createStore: () => conversationStore(),
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: () => undefined,
+        login: async () => undefined,
+        destroy: () => undefined,
+      }),
+      timers: inertTimers(),
+    });
+
+    expect(catalogPaths).toEqual(['./config/approved-prompts.json']);
+    await application.shutdown();
+  });
+
   it('shares the configured database with notification preferences and closes it after active command work drains', async () => {
     const events: string[] = [];
     const listeners = new Map<string, (...args: unknown[]) => unknown>();

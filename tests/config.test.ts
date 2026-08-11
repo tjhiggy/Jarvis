@@ -42,6 +42,16 @@ describe('loadConfig', () => {
     ).toBe('./config/custom-faq.json');
   });
 
+  it('loads a blank proactive catalog path by default and permits an approved local override', () => {
+    expect(loadConfig(validEnv).engagement.proactiveCatalogPath).toBe('');
+    expect(
+      loadConfig({
+        ...validEnv,
+        ENGAGEMENT_PROACTIVE_CATALOG_PATH: './config/prompts.json',
+      }).engagement.proactiveCatalogPath,
+    ).toBe('./config/prompts.json');
+  });
+
   it('rejects invalid limits', () => {
     expect(() =>
       loadConfig({ ...validEnv, MAX_HISTORY_MESSAGES: '0' }),

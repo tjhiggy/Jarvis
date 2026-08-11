@@ -107,6 +107,10 @@ import {
 import { RssStorage } from './notifications/rss-storage.js';
 import { RssNotificationClient } from './notifications/rss-notifications.js';
 import {
+  loadProactiveCatalog,
+  type ProactivePrompt,
+} from './notifications/proactive-catalog.js';
+import {
   renderRssDigest,
   RssScheduler,
   type RssDigest,
@@ -253,6 +257,9 @@ export interface ApplicationDependencies {
   readonly loadKnowledgeCatalog?: (
     path: string,
   ) => Promise<ApprovedKnowledgeCatalog>;
+  readonly loadProactiveCatalog?: (
+    path: string,
+  ) => Promise<readonly ProactivePrompt[]>;
   readonly createStore?: (
     databasePath: string,
     maxStoredMessages: number,
@@ -454,6 +461,8 @@ export const createApplication = async (
   const faqCatalogLoader = dependencies.loadFaqCatalog ?? loadFaqCatalog;
   const knowledgeCatalogLoader =
     dependencies.loadKnowledgeCatalog ?? loadKnowledgeCatalog;
+  const proactiveCatalogLoader =
+    dependencies.loadProactiveCatalog ?? loadProactiveCatalog;
   const storeFactory =
     dependencies.createStore ??
     ((path, maxStoredMessages) =>
@@ -678,6 +687,10 @@ export const createApplication = async (
     logger = loggerFactory(config.logging.level);
     const persona = await personaLoader(config.persona.promptPath);
     const faq = await faqCatalogLoader(config.faq.catalogPath);
+    const proactiveCatalog =
+      config.engagement.proactiveCatalogPath === ''
+        ? []
+        : await proactiveCatalogLoader(config.engagement.proactiveCatalogPath);
     let knowledge: ApprovedKnowledgeCatalog | undefined;
     const knowledgePath =
       process.env.KNOWLEDGE_CATALOG_PATH?.trim() || './config/knowledge.json';
@@ -857,8 +870,28 @@ export const createApplication = async (
         : undefined;
     if (
       engagementRepository !== undefined &&
-      config.engagement.channels.activityId !== ''
+      config.engagement.channels.activityId !== '' &&
+      proactiveCatalog.length > 0
     ) {
+      const proactiveChannelId = config.engagement.channels.activityId;
+      const existingProactivePolicy = await initializedBroadcastStore.getPolicy(
+        config.discord.guildId,
+        'proactive',
+      );
+      if (existingProactivePolicy === undefined) {
+        await initializedBroadcastStore.setPolicy({
+          serverId: config.discord.guildId,
+          category: 'proactive',
+          state: 'enabled',
+          channelId: proactiveChannelId,
+          timezone: 'UTC',
+          quietStartMinute: 23 * 60,
+          quietEndMinute: 8 * 60,
+          minimumIntervalSeconds: 6 * 60 * 60,
+          digestMode: false,
+          updatedAt: new Date(),
+        });
+      }
       proactiveService = new ProactiveEngagementService({
         store: {
           get: (guildId) => engagementRepository!.getProactiveState!(guildId),
@@ -866,8 +899,6 @@ export const createApplication = async (
             engagementRepository!.setProactiveState!(guildId, state, at),
           recordPosted: (guildId, at) =>
             engagementRepository!.recordProactivePosted!(guildId, at),
-          claim: (guildId, key, at) =>
-            engagementRepository!.claimProactive!(guildId, key, at),
         },
         gateway: {
           post: async (channelId, content) => {
@@ -882,7 +913,13 @@ export const createApplication = async (
         },
         channelId: config.engagement.channels.activityId,
         guildId: config.discord.guildId,
+        catalog: proactiveCatalog,
+        policy: new BroadcastPolicyService(initializedBroadcastStore, [
+          ...config.security.allowedChannelIds,
+        ]),
+        broadcastStore: initializedBroadcastStore,
         quietHours: [23, 8],
+        logger,
       });
     }
     const suggestionService =

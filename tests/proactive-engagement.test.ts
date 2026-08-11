@@ -17,7 +17,6 @@ describe('proactive engagement safety', () => {
             ? { state: next, lastPostedAt: at }
             : { state: next };
       },
-      claim: async () => true,
     };
     const service = new ProactiveEngagementService({
       store,
@@ -29,15 +28,29 @@ describe('proactive engagement safety', () => {
       channelId: 'channel-1',
       guildId: 'guild-1',
       now: () => new Date('2026-08-09T12:00:00Z'),
+      catalog: [
+        {
+          id: 'crew-check-in',
+          category: 'community',
+          text: '@everyone Crew check-in: what is everyone playing today?',
+          active: true,
+        },
+      ],
+      policy: {
+        evaluate: async () => ({ allowed: true }),
+      },
+      broadcastStore: {
+        claimDelivery: async () => 'lease-token',
+        completeDelivery: async () => true,
+        releaseDelivery: async () => true,
+      },
     });
     return { service, posts };
   };
 
   it('previews without posting and neutralizes mentions', async () => {
     const { service, posts } = setup('disabled');
-    expect(await service.preview('@everyone crew check-in')).not.toContain(
-      '@everyone',
-    );
+    expect(await service.preview()).not.toContain('@everyone');
     expect(posts).toHaveLength(0);
   });
 
@@ -50,6 +63,98 @@ describe('proactive engagement safety', () => {
     const { service, posts } = setup();
     expect(await service.tick()).toBe(true);
     expect(posts).toHaveLength(1);
+  });
+
+  it('releases a failed delivery so the approved prompt can be retried', async () => {
+    let fail = true;
+    const releases: string[] = [];
+    const service = new ProactiveEngagementService({
+      store: {
+        get: async () => ({ state: 'enabled' as const }),
+        set: async () => undefined,
+      },
+      gateway: {
+        post: async () => {
+          if (fail) throw new Error('temporary network failure');
+        },
+      },
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      now: () => new Date('2026-08-11T12:00:00Z'),
+      catalog: [
+        {
+          id: 'crew-check-in',
+          category: 'community',
+          text: 'Crew check-in: what is everyone playing today?',
+          active: true,
+        },
+      ],
+      policy: { evaluate: async () => ({ allowed: true }) },
+      broadcastStore: {
+        claimDelivery: async () => 'lease-token',
+        completeDelivery: async () => true,
+        releaseDelivery: async (
+          _server,
+          _category,
+          _key,
+          _token,
+          _now,
+          error,
+        ) => {
+          if (error !== undefined) releases.push(error);
+          return true;
+        },
+      },
+    });
+
+    expect(await service.tick()).toBe(false);
+    expect(releases).toEqual(['network']);
+    fail = false;
+    expect(await service.tick()).toBe(true);
+  });
+
+  it('does not post when policy pauses after delivery is claimed', async () => {
+    let policyChecks = 0;
+    let postCalls = 0;
+    const service = new ProactiveEngagementService({
+      store: {
+        get: async () => ({ state: 'enabled' as const }),
+        set: async () => undefined,
+      },
+      gateway: {
+        post: async () => {
+          postCalls += 1;
+        },
+      },
+      channelId: 'channel-1',
+      guildId: 'guild-1',
+      now: () => new Date('2026-08-11T12:00:00Z'),
+      catalog: [
+        {
+          id: 'crew-check-in',
+          category: 'community',
+          text: 'Crew check-in: what is everyone playing today?',
+          active: true,
+        },
+      ],
+      policy: {
+        evaluate: async () => {
+          policyChecks += 1;
+          return policyChecks === 1
+            ? { allowed: true as const }
+            : { allowed: false as const, reason: 'globally_paused' as const };
+        },
+      },
+      broadcastStore: {
+        claimDelivery: async () => 'lease-token',
+        completeDelivery: async () => true,
+        releaseDelivery: async () => true,
+      },
+    });
+
+    expect(await service.tick()).toBe(false);
+    expect(policyChecks).toBe(2);
+    expect(postCalls).toBe(0);
   });
 
   it('persists proactive state and idempotency across repository instances', async () => {
