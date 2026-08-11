@@ -74,6 +74,10 @@ export interface BroadcastStore {
     category: BroadcastCategory,
     deliveryKey: string,
   ): Promise<BroadcastDeliveryHealth | undefined>;
+  latestDeliveryHealth(
+    serverId: string,
+    category: BroadcastCategory,
+  ): Promise<BroadcastDeliveryHealth | undefined>;
   getLatestCompletedAt(
     serverId: string,
     category: BroadcastCategory,

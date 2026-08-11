@@ -296,6 +296,23 @@ export class SqliteBroadcastStore implements BroadcastStore {
     return row === undefined ? undefined : toDeliveryHealth(row);
   }
 
+  async latestDeliveryHealth(
+    serverId: string,
+    category: BroadcastCategory,
+  ): Promise<BroadcastDeliveryHealth | undefined> {
+    this.ensureOpen();
+    const row = this.database
+      .prepare(
+        `SELECT status, claimed_at, completed_at, error_category
+        FROM broadcast_delivery_runs
+        WHERE server_id = ? AND category = ?
+        ORDER BY COALESCE(completed_at, claimed_at) DESC, delivery_key DESC
+        LIMIT 1`,
+      )
+      .get(serverId, category) as DeliveryRow | undefined;
+    return row === undefined ? undefined : toDeliveryHealth(row);
+  }
+
   async getLatestCompletedAt(
     serverId: string,
     category: BroadcastCategory,

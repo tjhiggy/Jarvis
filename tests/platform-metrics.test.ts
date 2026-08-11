@@ -95,4 +95,50 @@ describe('platform aggregate metrics', () => {
       ),
     ).resolves.toHaveLength(1);
   });
+
+  it('stores only bounded content-free delivery aggregates and scopes summaries to one server', async () => {
+    await repository.recordDeliveryMetric({
+      serverId: 'server-1',
+      category: 'rss',
+      name: 'delivery_attempted',
+      occurredAt: '2026-08-11T16:00:00.000Z',
+      durationMs: 12,
+    });
+    await repository.recordDeliveryMetric({
+      serverId: 'server-1',
+      category: 'rss',
+      name: 'delivery_succeeded',
+      occurredAt: '2026-08-11T16:00:01.000Z',
+      durationMs: 8,
+    });
+    await repository.recordDeliveryMetric({
+      serverId: 'server-2',
+      category: 'rss',
+      name: 'delivery_failed',
+      occurredAt: '2026-08-11T16:00:02.000Z',
+      durationMs: 3,
+    });
+
+    await expect(
+      repository.deliveryMetricsSummary(
+        'server-1',
+        new Date('2026-08-05T00:00:00.000Z'),
+      ),
+    ).resolves.toEqual([
+      {
+        serverId: 'server-1',
+        category: 'rss',
+        eventName: 'delivery_attempted',
+        count: 1,
+        durationMs: 12,
+      },
+      {
+        serverId: 'server-1',
+        category: 'rss',
+        eventName: 'delivery_succeeded',
+        count: 1,
+        durationMs: 8,
+      },
+    ]);
+  });
 });

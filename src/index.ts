@@ -120,10 +120,18 @@ import {
   BroadcastPolicyService,
   type BroadcastCategory,
 } from './notifications/broadcast-policy.js';
-import type { BroadcastStore } from './notifications/broadcast-store.js';
+import type {
+  BroadcastDeliveryHealth,
+  BroadcastPolicy,
+  BroadcastStore,
+} from './notifications/broadcast-store.js';
 import { SqliteBroadcastStore } from './notifications/sqlite-broadcast-store.js';
 import { HttpGitHubReadOnlyService } from './github/github-service.js';
-import { startAdminConsole, type AdminConsole } from './admin/admin-console.js';
+import {
+  startAdminConsole,
+  type AdminConsole,
+  type AdminConsoleBroadcastCategory,
+} from './admin/admin-console.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -1139,6 +1147,40 @@ export const createApplication = async (
       adminConsole = await startAdminConsole({
         port: config.adminConsole.port,
         host: config.adminConsole.host,
+        broadcastControl:
+          config.adminConsole.token === ''
+            ? undefined
+            : {
+                token: config.adminConsole.token,
+                allowedCategories: configuredBroadcasts(config)
+                  .filter(({ channelId }) =>
+                    config.security.allowedChannelIds.has(channelId),
+                  )
+                  .map(({ category }) => category),
+                setState: async (category, state) => {
+                  const policy = await initializedBroadcastStore.getPolicy(
+                    config.discord.guildId,
+                    category,
+                  );
+                  if (
+                    policy === undefined ||
+                    !config.security.allowedChannelIds.has(policy.channelId)
+                  ) {
+                    throw new Error('Broadcast category is not allowlisted.');
+                  }
+                  await initializedBroadcastStore.setPolicy({
+                    ...policy,
+                    state,
+                    updatedAt: new Date(),
+                  });
+                },
+                audit: async ({ category, operation }) => {
+                  logger?.info(
+                    { operation: `broadcast_${operation}`, category },
+                    'Shipboard broadcast state changed from the Command Deck.',
+                  );
+                },
+              },
         rssControl:
           rssStorage === undefined || config.adminConsole.token === ''
             ? undefined
@@ -1155,6 +1197,7 @@ export const createApplication = async (
                   ).fetch(url, 5),
               },
         snapshot: async () => {
+          const snapshotNow = new Date();
           const rows =
             engagementRepository?.analyticsSummary === undefined
               ? []
@@ -1162,6 +1205,56 @@ export const createApplication = async (
                   config.discord.guildId,
                   new Date(Date.now() - 7 * 86_400_000),
                 );
+          const deliveryRows7 =
+            engagementRepository?.deliveryMetricsSummary === undefined
+              ? []
+              : await engagementRepository.deliveryMetricsSummary(
+                  config.discord.guildId,
+                  new Date(snapshotNow.getTime() - 7 * 86_400_000),
+                );
+          const deliveryRows30 =
+            engagementRepository?.deliveryMetricsSummary === undefined
+              ? []
+              : await engagementRepository.deliveryMetricsSummary(
+                  config.discord.guildId,
+                  new Date(snapshotNow.getTime() - 30 * 86_400_000),
+                );
+          const broadcasts = await Promise.all(
+            configuredBroadcasts(config).map(async (configured) => {
+              const [policy, delivery, lastSuccess] = await Promise.all([
+                initializedBroadcastStore.getPolicy(
+                  config.discord.guildId,
+                  configured.category,
+                ),
+                initializedBroadcastStore.latestDeliveryHealth(
+                  config.discord.guildId,
+                  configured.category,
+                ),
+                initializedBroadcastStore.getLatestCompletedAt(
+                  config.discord.guildId,
+                  configured.category,
+                ),
+              ]);
+              const runtimeAvailable = broadcastRuntimeAvailable(
+                configured.category,
+                {
+                  rss: rssScheduler !== undefined,
+                  proactive: proactiveScheduler !== undefined,
+                  recap: recapScheduler?.healthy === true,
+                  eventReminder: eventScheduler?.healthy === true,
+                  birthday: birthdayScheduler?.healthy === true,
+                },
+              );
+              return broadcastCard(
+                configured,
+                policy,
+                delivery,
+                lastSuccess,
+                runtimeAvailable,
+                snapshotNow,
+              );
+            }),
+          );
           const features = ['introductions', 'suggestions', 'events', 'trivia'];
           return {
             platform: {
@@ -1203,6 +1296,19 @@ export const createApplication = async (
                       .listFeeds(config.discord.guildId)
                       .map(({ label, url }) => ({ label, url })),
                   },
+            broadcasts: {
+              categories: broadcasts,
+              last7Days: deliveryRows7.map((row) => ({
+                category: row.category,
+                eventName: row.eventName,
+                count: row.count,
+              })),
+              last30Days: deliveryRows30.map((row) => ({
+                category: row.category,
+                eventName: row.eventName,
+                count: row.count,
+              })),
+            },
           };
         },
       });
@@ -1599,6 +1705,175 @@ export const createApplication = async (
 
 export const formatRssDigest = (digest: RssDigest): string => {
   return renderRssDigest(digest).content;
+};
+
+const configuredBroadcasts = (config: AppConfig) =>
+  [
+    {
+      category: 'rss' as const,
+      channelId: config.engagement.channels.rssId,
+      label: 'RSS',
+      destination: '#jarvis-updates',
+    },
+    {
+      category: 'proactive' as const,
+      channelId: config.engagement.channels.activityId,
+      label: 'Crew pulse',
+      destination: '#crew-activity',
+    },
+    {
+      category: 'recap' as const,
+      channelId: config.engagement.channels.recapId,
+      label: 'Crew recap',
+      destination: '#crew-recaps',
+    },
+    {
+      category: 'event_reminder' as const,
+      channelId: config.engagement.channels.eventId,
+      label: 'Event reminders',
+      destination: '#crew-events',
+    },
+    {
+      category: 'birthday' as const,
+      channelId: config.engagement.channels.birthdayId,
+      label: 'Birthday watch',
+      destination: '#crew-birthdays',
+    },
+  ].filter(({ channelId }) => channelId !== '');
+
+const broadcastRuntimeAvailable = (
+  category: BroadcastCategory,
+  runtime: Readonly<{
+    rss: boolean;
+    proactive: boolean;
+    recap: boolean;
+    eventReminder: boolean;
+    birthday: boolean;
+  }>,
+): boolean =>
+  ({
+    rss: runtime.rss,
+    proactive: runtime.proactive,
+    recap: runtime.recap,
+    event_reminder: runtime.eventReminder,
+    birthday: runtime.birthday,
+  })[category];
+
+const broadcastCard = (
+  configured: ReturnType<typeof configuredBroadcasts>[number],
+  policy: BroadcastPolicy | undefined,
+  delivery: BroadcastDeliveryHealth | undefined,
+  lastSuccess: Date | undefined,
+  runtimeAvailable: boolean,
+  now: Date,
+): AdminConsoleBroadcastCategory => {
+  const nextEligibleAt =
+    policy === undefined
+      ? undefined
+      : nextBroadcastEligibleAt(policy, lastSuccess, now).toISOString();
+  const health =
+    policy === undefined
+      ? 'unavailable'
+      : runtimeAvailable
+        ? 'ready'
+        : 'degraded';
+  return {
+    category: configured.category,
+    label: configured.label,
+    state: policy?.state ?? 'disabled',
+    destination: configured.destination,
+    quietHours:
+      policy === undefined ? 'not configured' : formatQuietHours(policy),
+    cadence:
+      policy === undefined
+        ? 'not configured'
+        : formatCadence(policy.minimumIntervalSeconds),
+    ...(nextEligibleAt === undefined ? {} : { nextEligibleAt }),
+    ...(delivery?.claimedAt === undefined
+      ? {}
+      : { lastAttemptAt: delivery.claimedAt.toISOString() }),
+    ...(lastSuccess === undefined
+      ? {}
+      : { lastSuccessAt: lastSuccess.toISOString() }),
+    ...(delivery?.errorCategory === undefined
+      ? {}
+      : { errorCategory: delivery.errorCategory }),
+    health,
+    ...(health === 'ready'
+      ? {}
+      : {
+          recovery:
+            policy === undefined
+              ? 'Broadcast policy is not available for this MuthaShip.'
+              : 'Scheduler or provider is unavailable on this MuthaShip.',
+        }),
+  };
+};
+
+export const nextBroadcastEligibleAt = (
+  policy: BroadcastPolicy,
+  lastSuccess: Date | undefined,
+  now: Date,
+): Date => {
+  let candidate = new Date(
+    Math.max(
+      now.getTime(),
+      (lastSuccess?.getTime() ?? now.getTime()) +
+        policy.minimumIntervalSeconds * 1_000,
+    ),
+  );
+  if (
+    policy.quietStartMinute === undefined ||
+    policy.quietEndMinute === undefined ||
+    policy.quietStartMinute === policy.quietEndMinute
+  ) {
+    return candidate;
+  }
+  for (let minute = 0; minute <= 24 * 60; minute += 1) {
+    if (!isBroadcastQuietHour(policy, candidate)) return candidate;
+    candidate = new Date(
+      Math.floor(candidate.getTime() / 60_000) * 60_000 + 60_000,
+    );
+  }
+  return candidate;
+};
+
+const isBroadcastQuietHour = (policy: BroadcastPolicy, now: Date): boolean => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: policy.timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+  const currentMinute = hour * 60 + minute;
+  const start = policy.quietStartMinute;
+  const end = policy.quietEndMinute;
+  if (start === undefined || end === undefined) return false;
+  return start < end
+    ? currentMinute >= start && currentMinute < end
+    : currentMinute >= start || currentMinute < end;
+};
+
+const formatQuietHours = (policy: BroadcastPolicy): string => {
+  if (
+    policy.quietStartMinute === undefined ||
+    policy.quietEndMinute === undefined
+  ) {
+    return 'none';
+  }
+  const display = (minute: number): string =>
+    `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+  return `${display(policy.quietStartMinute)} to ${display(policy.quietEndMinute)} ${policy.timezone}`;
+};
+
+const formatCadence = (seconds: number): string => {
+  if (seconds === 0) return 'no minimum interval';
+  if (seconds % 3_600 === 0)
+    return `${seconds / 3_600} hour${seconds === 3_600 ? '' : 's'}`;
+  if (seconds % 60 === 0) return `${seconds / 60} minutes`;
+  return `${seconds} seconds`;
 };
 
 export const rssIntegrationHealth = (

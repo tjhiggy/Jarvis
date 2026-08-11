@@ -195,6 +195,49 @@ describe('SqliteBroadcastStore', () => {
     await store.close();
   });
 
+  it('projects only the latest category delivery health without exposing a delivery key', async () => {
+    const store = new SqliteBroadcastStore(await databasePath(directories));
+    try {
+      const first = await store.claimDelivery(
+        'server',
+        'rss',
+        'first-key',
+        date(0),
+      );
+      await store.completeDelivery(
+        'server',
+        'rss',
+        'first-key',
+        first!,
+        date(1),
+      );
+      const latest = await store.claimDelivery(
+        'server',
+        'rss',
+        'latest-key',
+        date(2),
+      );
+      await store.releaseDelivery(
+        'server',
+        'rss',
+        'latest-key',
+        latest!,
+        date(3),
+        'network',
+      );
+
+      await expect(
+        store.latestDeliveryHealth('server', 'rss'),
+      ).resolves.toEqual({
+        status: 'pending',
+        claimedAt: date(2),
+        errorCategory: 'network',
+      });
+    } finally {
+      await store.close();
+    }
+  });
+
   it('uses category and state constraints in the durable schema', async () => {
     const path = await databasePath(directories);
     const store = new SqliteBroadcastStore(path);

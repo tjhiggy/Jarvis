@@ -19,6 +19,7 @@ import type { ReminderStore } from '../src/reminders/reminder-store.js';
 import type { ReminderView } from '../src/reminders/reminder-types.js';
 import {
   createApplication,
+  nextBroadcastEligibleAt,
   reportStartupFailure,
   type Application,
   type ApplicationDependencies,
@@ -165,6 +166,27 @@ describe('reportStartupFailure', () => {
 });
 
 describe('createApplication', () => {
+  it('moves a cadence-eligible broadcast past its configured quiet hours', () => {
+    expect(
+      nextBroadcastEligibleAt(
+        {
+          serverId: 'server',
+          category: 'rss',
+          state: 'enabled',
+          channelId: 'channel',
+          timezone: 'UTC',
+          quietStartMinute: 9 * 60,
+          quietEndMinute: 10 * 60,
+          minimumIntervalSeconds: 0,
+          digestMode: false,
+          updatedAt: new Date('2026-08-11T08:00:00.000Z'),
+        },
+        undefined,
+        new Date('2026-08-11T09:30:00.000Z'),
+      ),
+    ).toEqual(new Date('2026-08-11T10:00:00.000Z'));
+  });
+
   it('provisions shared policy for recap, event reminders, and birthdays before starting their schedulers', async () => {
     const policies: BroadcastPolicy[] = [];
     const application = await createTestApplication({
@@ -1802,6 +1824,7 @@ function broadcastStore(
     completeDelivery: async () => false,
     releaseDelivery: async () => false,
     deliveryHealth: async () => undefined,
+    latestDeliveryHealth: async () => undefined,
     getLatestCompletedAt: async () => undefined,
     cleanup: async () => 0,
     close: async () => undefined,

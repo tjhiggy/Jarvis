@@ -232,6 +232,10 @@ class InMemoryBroadcastStore implements BroadcastStore {
     return undefined;
   }
 
+  async latestDeliveryHealth(): Promise<BroadcastDeliveryHealth | undefined> {
+    return undefined;
+  }
+
   async cleanup(): Promise<number> {
     return 0;
   }

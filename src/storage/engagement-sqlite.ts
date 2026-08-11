@@ -36,8 +36,20 @@ import type {
   FeatureFlagRecord,
 } from '../engagement/feature-flags.js';
 import type { AnalyticsEvent } from '../platform/contracts.js';
-import type { MetricsSummaryRow } from '../platform/metrics.js';
+import type {
+  DeliveryMetricEvent,
+  DeliveryMetricsSummaryRow,
+  MetricsSummaryRow,
+} from '../platform/metrics.js';
 import type { MemberProfile } from '../engagement/member-profiles.js';
+
+const deliveryMetricNames = [
+  'delivery_attempted',
+  'delivery_succeeded',
+  'delivery_failed',
+  'delivery_suppressed',
+  'delivery_retried',
+] as const;
 
 interface IntroductionRow {
   id: string;
@@ -349,6 +361,75 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       serverId: row.server_id,
       feature: row.feature,
       command: row.command,
+      eventName: row.event_name,
+      count: row.event_count,
+      durationMs: row.duration_ms,
+    }));
+  }
+
+  async recordDeliveryMetric(event: DeliveryMetricEvent): Promise<void> {
+    this.ensureOpen();
+    if (!deliveryMetricNames.includes(event.name)) {
+      throw new RangeError('Unsupported delivery metric name.');
+    }
+    const occurredAt = new Date(event.occurredAt);
+    if (!Number.isFinite(occurredAt.getTime())) {
+      throw new RangeError('Delivery metric time must be valid.');
+    }
+    const durationMs = event.durationMs ?? 0;
+    if (!Number.isSafeInteger(durationMs) || durationMs < 0) {
+      throw new RangeError(
+        'Delivery metric duration must be a non-negative integer.',
+      );
+    }
+    this.database
+      .prepare(
+        `
+      INSERT INTO platform_metrics_daily
+        (server_id, metric_day, feature, command, event_name, event_count, duration_ms)
+      VALUES (?, ?, 'broadcast', ?, ?, 1, ?)
+      ON CONFLICT(server_id, metric_day, feature, command, event_name)
+      DO UPDATE SET event_count = event_count + 1,
+        duration_ms = duration_ms + excluded.duration_ms
+    `,
+      )
+      .run(
+        event.serverId,
+        occurredAt.toISOString().slice(0, 10),
+        event.category,
+        event.name,
+        durationMs,
+      );
+  }
+
+  async deliveryMetricsSummary(
+    serverId: string,
+    since: Date,
+  ): Promise<readonly DeliveryMetricsSummaryRow[]> {
+    this.ensureOpen();
+    const sinceDay = since.toISOString().slice(0, 10);
+    return (
+      this.database
+        .prepare(
+          `
+        SELECT server_id, command, event_name, SUM(event_count) AS event_count,
+          SUM(duration_ms) AS duration_ms
+        FROM platform_metrics_daily
+        WHERE server_id = ? AND metric_day >= ? AND feature = 'broadcast'
+        GROUP BY server_id, command, event_name
+        ORDER BY command, event_name
+      `,
+        )
+        .all(serverId, sinceDay) as Array<{
+        server_id: string;
+        command: DeliveryMetricsSummaryRow['category'];
+        event_name: DeliveryMetricsSummaryRow['eventName'];
+        event_count: number;
+        duration_ms: number;
+      }>
+    ).map((row) => ({
+      serverId: row.server_id,
+      category: row.command,
       eventName: row.event_name,
       count: row.event_count,
       durationMs: row.duration_ms,
@@ -1797,6 +1878,19 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           .run(cutoffMilliseconds, remaining);
         changes += result.changes;
         remaining -= result.changes;
+      }
+      if (remaining > 0) {
+        const result = this.database
+          .prepare(
+            `DELETE FROM platform_metrics_daily WHERE rowid IN (
+              SELECT rowid FROM platform_metrics_daily
+              WHERE metric_day < ?
+              ORDER BY metric_day ASC, server_id ASC, feature ASC, command ASC, event_name ASC
+              LIMIT ?
+            )`,
+          )
+          .run(cutoff.toISOString().slice(0, 10), remaining);
+        changes += result.changes;
       }
       return changes;
     })();
