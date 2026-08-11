@@ -51,8 +51,18 @@ export interface EngagementRepository extends Partial<PlatformMetricsRepository>
     claimedAt: Date,
   ): Promise<boolean>;
   isEngagementOptedOut?(guildId: string, userId: string): Promise<boolean>;
-  recordParticipationStreak?(guildId: string, userId: string, day: string, at: Date): Promise<{ current: number; longest: number }>;
-  recordParticipationStreak?(guildId: string, userId: string, day: string, at: Date): Promise<{ current: number; longest: number }>;
+  recordParticipationStreak?(
+    guildId: string,
+    userId: string,
+    day: string,
+    at: Date,
+  ): Promise<{ current: number; longest: number }>;
+  recordParticipationStreak?(
+    guildId: string,
+    userId: string,
+    day: string,
+    at: Date,
+  ): Promise<{ current: number; longest: number }>;
   getMemberProfile?(
     serverId: string,
     userId: string,
