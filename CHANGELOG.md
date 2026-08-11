@@ -27,8 +27,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Release status
 
-- This release package awaits independent review, deployment verification,
-  tagging, and GitHub release publication.
+- Independent review, deployment verification, command registration, tag
+  `v0.5.0`, and GitHub release publication completed on 2026-08-11.
 
 ## [0.4.0] - 2026-08-11
 
