@@ -7,5 +7,14 @@ configured RSS feeds and pause state. It does not expose tokens, conversation
 content, or Discord server-management controls.
 
 The console is intentionally disabled by default and rejects non-local bind
-addresses. Discord commands remain the operational fallback. Safe RSS preview,
-pause/resume, and audited configuration writes are planned follow-up work.
+addresses. Discord commands remain the operational fallback. When enabled with
+`ADMIN_CONSOLE_TOKEN`, the local operator can preview an allowlisted HTTPS RSS
+feed without saving it, and pause or resume the configured RSS scheduler. These
+actions require an explicit local confirmation, never expose the token to the
+browser page, and do not change Discord permissions or server settings.
+
+The preview endpoint is `POST /api/rss/preview` with
+`{"url":"https://example.com/feed.xml"}` and a bearer token. Preview accepts
+only feeds allowed by `ENGAGEMENT_RSS_ALLOWED_HOSTS`; it returns at most five
+items and never persists the feed. `POST /api/rss/pause` and
+`POST /api/rss/resume` control delivery for the configured MuthaShip.
