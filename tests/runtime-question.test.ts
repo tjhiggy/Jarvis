@@ -83,4 +83,17 @@ describe('runtime identity and self-question handling', () => {
       classifyRuntimeQuestion('What changed in your latest release?', identity),
     ).toContain('Jarvis 1.2.3');
   });
+
+  it('treats personal activity questions as unavailable runtime questions', () => {
+    for (const prompt of [
+      'Tell me about your recent upgrades.',
+      'What did you do today?',
+      'What have you been working on recently?',
+    ]) {
+      const answer = classifyRuntimeQuestion(prompt, identity);
+      expect(answer).toBeDefined();
+      expect(answer).toMatch(/will not guess|runtime|cannot inspect|activity|running Jarvis/i);
+      expect(answer).not.toMatch(/Clash Ninja|Veterans Affairs|sources:/i);
+    }
+  });
 });
