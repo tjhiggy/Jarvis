@@ -59,6 +59,26 @@ Discord-setting changes, and external writes remain out of scope.
   member and administrator deletion, and a disabled-by-default feature flag.
 - Profiles are never learned from chat, voice, reactions, or browsing activity.
 
+## Planned release 0.9.0: Crew Engagement
+
+The next feature release focuses on repeatable, privacy-safe participation in
+the MuthaShip community. These items are planned, not implemented, and will be
+shipped independently behind server-scoped feature flags:
+
+- Member profile cards with explicit opt-in and current Discord identity.
+- MuthaShip Coins, daily rewards, and bounded ambassador-card collection.
+- Participation streaks and aggregate engagement progress.
+- Allowlisted game roles and persistent teams without arbitrary role or server
+  administration.
+- Command Deck visibility for feature health, participation, and economy
+  metrics without raw message content.
+
+Tracked backlog: #9 profile cards, #22 daily rewards, #14 participation
+streaks, #45 game roles, #48 persistent teams, and #186 MuthaShip Coins and
+ambassador cards. Each item requires tests, documentation, retention and
+opt-out behavior, a Discord smoke test, and a tagged release before it is
+called shipped.
+
 ## Next
 
 **Planned, not implemented.** Add a dedicated `SAFETY_IDENTIFIER_SECRET` so
