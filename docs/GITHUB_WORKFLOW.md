@@ -46,16 +46,21 @@ remains proprietary and production authority remains with the maintainer.
 Use short, named sprints rather than an unbounded “in progress” queue. The
 current sequence is:
 
-1. **Sprint 1: v0.3.0 Platform Core** - Command Deck broadcast workflow,
-   release verification, deployment smoke test, and the v0.3.0 tag/release.
-2. **Sprint 2: Admin Console hardening** - safe channel selection, audit
-   visibility, configuration previews, backup/rollback, and mobile polish.
-3. **Sprint 3: Community engagement** - MuthaShip Coins and ambassador cards,
-   daily rewards, and bounded activity earning rules.
-4. **Sprint 4: Community intelligence** - approved knowledge, summaries,
-   recaps, and administrator analytics.
-5. **Sprint 5: Integrations** - Sleeper enhancements, GitHub read-only tools,
-   RSS/stream improvements, and MCP foundations.
+1. **Sprint 1: v0.3.0 Platform Core** - released on 2026-08-10 with platform
+   contracts, aggregate metrics, release verification, and deployment smoke
+   testing.
+2. **Sprint 2: v0.4.0 Crew Engagement** - shared UX and contracts across
+   introductions, suggestions, events, trivia, polls, reminders, birthdays,
+   LFG, game nights, and bounded community rewards.
+3. **Sprint 3: v0.5.0 Shipboard Broadcasts** - RSS, proactive posts, recaps,
+   reminders, quiet hours, previews, pause controls, and durable deduplication.
+4. **Sprint 4: v0.6.0 Command Deck** - safe channel selection, audit
+   visibility, configuration previews, backup/rollback, mobile polish, and
+   authenticated admin broadcasts.
+5. **Sprint 5: v0.7.0 Community Intelligence** - approved knowledge,
+   summaries, recaps, and administrator analytics.
+6. **Sprint 6: v0.8.0 Connected Systems** - Sleeper enhancements, GitHub
+   read-only tools, RSS/stream improvements, and MCP foundations.
 
 Only move an Issue to **Released** after its pull requests merge, the required
 tests/build/docs/diff gates pass, deployment smoke testing is recorded, and a
