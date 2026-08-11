@@ -8,6 +8,10 @@ remains proprietary and production authority remains with the maintainer.
 
 - **Issues**: bugs, feature requests, operational follow-ups, and discrete
   backlog items. Use the supplied forms and include reproducible evidence.
+  When a request includes an image, attach the original image to the Issue and
+  add a short caption describing what it demonstrates. Do not rely on an image
+  remaining available only in chat. Redact tokens, private identifiers, and
+  sensitive member data before attaching it.
 - **Discussions**: design questions, community ideas, administrator guidance,
   and topics that are not yet actionable work.
 - **Projects**: prioritize and group issues into backlog, ready, active,
