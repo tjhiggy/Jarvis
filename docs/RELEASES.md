@@ -3,6 +3,12 @@
 Jarvis releases are operator-owned, reviewable changes. The bot does not create
 tags, push branches, publish GitHub releases, or modify repositories.
 
+Every roadmap phase ends with a shipped version. A phase is not complete when
+its pull requests merge. It is complete only after the release tag and GitHub
+release exist, release notes and migration notes are published, the full test,
+build, documentation, and diff gates pass, and the deployed instance completes
+the smoke checklist. The next planned milestone is `v0.3.0` (Platform Core).
+
 ## Versioning
 
 Use Semantic Versioning: `MAJOR.MINOR.PATCH`.
