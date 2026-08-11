@@ -113,69 +113,94 @@ export class RssScheduler {
       }
       if (claimed.length === 0) return 0;
 
-      const beforePost = await this.policy.evaluate({
-        serverId: this.serverId,
-        category: 'rss',
-        channelId: this.channelId,
-        now: this.now(),
-        globallyPaused: this.storage.isPaused(this.serverId),
-      });
-      if (!beforePost.allowed) {
+      const release = async (
+        deliveries: readonly (typeof claimed)[number][],
+        errorCategory?: 'network',
+      ): Promise<void> => {
         await Promise.all(
-          claimed.map(({ key, lease }) =>
+          deliveries.map(({ key, lease }) =>
             this.deliveryStore.releaseDelivery(
               this.serverId,
               'rss',
               key,
               lease,
               this.now(),
+              errorCategory,
             ),
           ),
         );
+      };
+
+      const policyAllowsPost = async (): Promise<boolean> =>
+        (
+          await this.policy.evaluate({
+            serverId: this.serverId,
+            category: 'rss',
+            channelId: this.channelId,
+            now: this.now(),
+            globallyPaused: this.storage.isPaused(this.serverId),
+          })
+        ).allowed;
+
+      const complete = async (
+        delivery: (typeof claimed)[number],
+      ): Promise<boolean> => {
+        const completedAt = this.now();
+        const completed = await this.deliveryStore.completeDelivery(
+          this.serverId,
+          'rss',
+          delivery.key,
+          delivery.lease,
+          completedAt,
+        );
+        if (completed) {
+          this.storage.recordCompletedItem(
+            this.serverId,
+            delivery.key,
+            completedAt,
+          );
+        }
+        return completed;
+      };
+
+      if (!digestMode) {
+        let published = 0;
+        for (const [index, delivery] of claimed.entries()) {
+          if (!(await policyAllowsPost())) {
+            await release(claimed.slice(index));
+            return published;
+          }
+          try {
+            await this.publisher.publish(this.channelId, {
+              entries: [delivery.entry],
+            });
+          } catch {
+            await release([delivery], 'network');
+            await release(claimed.slice(index + 1));
+            return published;
+          }
+          if (await complete(delivery)) published += 1;
+        }
+        return published;
+      }
+
+      if (!(await policyAllowsPost())) {
+        await release(claimed);
         return 0;
       }
 
       try {
-        if (digestMode) {
-          await this.publisher.publish(this.channelId, {
-            entries: claimed.map(({ entry }) => entry),
-          });
-        } else {
-          for (const { entry } of claimed) {
-            await this.publisher.publish(this.channelId, { entries: [entry] });
-          }
-        }
+        await this.publisher.publish(this.channelId, {
+          entries: claimed.map(({ entry }) => entry),
+        });
       } catch {
-        await Promise.all(
-          claimed.map(({ key, lease }) =>
-            this.deliveryStore.releaseDelivery(
-              this.serverId,
-              'rss',
-              key,
-              lease,
-              this.now(),
-              'network',
-            ),
-          ),
-        );
+        await release(claimed, 'network');
         return 0;
       }
 
-      const completedAt = this.now();
       let published = 0;
-      for (const { key, lease } of claimed) {
-        if (
-          await this.deliveryStore.completeDelivery(
-            this.serverId,
-            'rss',
-            key,
-            lease,
-            completedAt,
-          )
-        ) {
-          this.storage.recordCompletedItem(this.serverId, key, completedAt);
-          published += 1;
-        }
+      for (const delivery of claimed) {
+        if (await complete(delivery)) published += 1;
       }
       return published;
     } finally {

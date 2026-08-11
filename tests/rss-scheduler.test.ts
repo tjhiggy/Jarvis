@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { formatRssDigest, rssIntegrationHealth } from '../src/index.js';
 import { RssScheduler } from '../src/notifications/rss-scheduler.js';
 import { RssStorage } from '../src/notifications/rss-storage.js';
 
@@ -147,6 +148,78 @@ describe('RssScheduler', () => {
     await expect(scheduler.tick()).resolves.toBe(0);
     expect(publisher.publish).toHaveBeenCalledTimes(4);
   });
+
+  it('completes each non-digest post before a later delivery fails and retries only the unposted item', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore(false);
+    const policy = { evaluate: vi.fn().mockResolvedValue({ allowed: true }) };
+    const publisher = {
+      publish: vi
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('gateway'))
+        .mockResolvedValueOnce(undefined),
+    };
+    const scheduler = schedulerFor(
+      storage,
+      { fetch: vi.fn().mockResolvedValue([item('first'), item('second')]) },
+      publisher,
+      'server',
+      policy,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    await expect(scheduler.tick()).resolves.toBe(1);
+
+    expect(publisher.publish).toHaveBeenCalledTimes(3);
+    expect(
+      publisher.publish.mock.calls.map((call) => call[1].entries[0].id),
+    ).toEqual(['first', 'second', 'second']);
+    expect(delivery.completeDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:first',
+      'lease:https://news.example.com/feed.xml:first',
+      expect.any(Date),
+    );
+    expect(delivery.releaseDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:second',
+      'lease:https://news.example.com/feed.xml:second',
+      expect.any(Date),
+      'network',
+    );
+    expect(policy.evaluate).toHaveBeenCalledTimes(5);
+  });
+
+  it('keeps every rendered digest entry complete within the payload bound', () => {
+    const digest = formatRssDigest({
+      entries: [
+        {
+          ...item('oversized'),
+          sourceLabel: 's'.repeat(500),
+          title: 't'.repeat(1_000),
+          url: `https://news.example.com/${'u'.repeat(2_000)}`,
+          publishedAt: 'p'.repeat(500),
+        },
+        { ...item('retained'), sourceLabel: 'News' },
+      ],
+    });
+
+    expect(digest.length).toBeLessThanOrEqual(1_900);
+    expect(digest).not.toContain('u'.repeat(500));
+    expect(digest).toContain('**News** · Update retained');
+    expect(digest).toContain('https://news.example.com/retained');
+    expect(digest).toContain('2026-08-11T12:00:00Z');
+  });
+
+  it('reports configured RSS as unavailable until a scheduler exists', () => {
+    expect(rssIntegrationHealth('', false)).toBe('not_configured');
+    expect(rssIntegrationHealth('channel-1', false)).toBe('unavailable');
+    expect(rssIntegrationHealth('channel-1', true)).toBe('ready');
+  });
 });
 
 function schedulerFor(
@@ -154,6 +227,8 @@ function schedulerFor(
   client: object,
   publisher: object,
   serverId: string,
+  policy: object = { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+  delivery = deliveryStore(),
 ): RssScheduler {
   return new RssScheduler(
     storage as never,
@@ -161,10 +236,8 @@ function schedulerFor(
     publisher as never,
     serverId,
     'channel-1',
-    {
-      evaluate: vi.fn().mockResolvedValue({ allowed: true }),
-    } as never,
-    deliveryStore(),
+    policy as never,
+    delivery as never,
     () => new Date('2026-08-11T12:00:00Z'),
   );
 }
@@ -177,11 +250,11 @@ function readyStorage(): RssStorage {
   return storage;
 }
 
-function deliveryStore() {
+function deliveryStore(digestMode = true) {
   const completed = new Set<string>();
   const claimed = new Set<string>();
   return {
-    getPolicy: vi.fn().mockResolvedValue({ digestMode: true }),
+    getPolicy: vi.fn().mockResolvedValue({ digestMode }),
     claimDelivery: vi
       .fn()
       .mockImplementation(async (_server, _category, key) => {

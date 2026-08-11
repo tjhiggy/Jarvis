@@ -16,7 +16,7 @@ describe('admin console', () => {
         ollamaConfigured: true,
         webSearchConfigured: false,
       },
-      integrations: { rss: true, sleeper: false, github: false },
+      integrations: { rss: 'ready', sleeper: false, github: false },
       metrics: { events: 2, failures: 0 },
       rss: {
         paused: false,
@@ -38,6 +38,7 @@ describe('admin console', () => {
     expect(page).toContain('controlRss');
     expect(page).toContain('Pause');
     expect(page).toContain('saving establishes a baseline');
+    expect(page).toContain('body.items.map');
     expect(page).not.toContain('api-key');
     await console.close();
   });
@@ -55,7 +56,7 @@ describe('admin console', () => {
           ollamaConfigured: false,
           webSearchConfigured: false,
         },
-        integrations: { rss: false, sleeper: false, github: false },
+        integrations: { rss: 'not_configured', sleeper: false, github: false },
         metrics: null,
       }),
     });
@@ -82,7 +83,7 @@ describe('admin console', () => {
           ollamaConfigured: false,
           webSearchConfigured: false,
         },
-        integrations: { rss: true, sleeper: false, github: false },
+        integrations: { rss: 'ready', sleeper: false, github: false },
         metrics: null,
       }),
       rssControl: {
@@ -90,9 +91,11 @@ describe('admin console', () => {
         setPaused: async () => {},
         preview: async (url) => {
           previewedUrl = url;
-          return [
-            { title: 'Xbox update', url, publishedAt: '2026-08-10T12:00:00Z' },
-          ];
+          return Array.from({ length: 6 }, (_, index) => ({
+            title: `Xbox update ${index + 1}`,
+            url: `${url}/${index + 1}`,
+            publishedAt: `2026-08-10T12:00:0${index}Z`,
+          }));
         },
       },
     });
@@ -122,13 +125,60 @@ describe('admin console', () => {
       url: 'https://news.example/feed.xml',
       items: [
         {
-          title: 'Xbox update',
-          url: 'https://news.example/feed.xml',
+          title: 'Xbox update 1',
+          url: 'https://news.example/feed.xml/1',
           publishedAt: '2026-08-10T12:00:00Z',
+        },
+        {
+          title: 'Xbox update 2',
+          url: 'https://news.example/feed.xml/2',
+          publishedAt: '2026-08-10T12:00:01Z',
+        },
+        {
+          title: 'Xbox update 3',
+          url: 'https://news.example/feed.xml/3',
+          publishedAt: '2026-08-10T12:00:02Z',
+        },
+        {
+          title: 'Xbox update 4',
+          url: 'https://news.example/feed.xml/4',
+          publishedAt: '2026-08-10T12:00:03Z',
+        },
+        {
+          title: 'Xbox update 5',
+          url: 'https://news.example/feed.xml/5',
+          publishedAt: '2026-08-10T12:00:04Z',
         },
       ],
     });
     expect(previewedUrl).toBe('https://news.example/feed.xml');
+    await console.close();
+  });
+
+  it('marks RSS unavailable with actionable setup guidance', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () =>
+        ({
+          platform: { version: 'x', environment: 'test' },
+          database: 'healthy',
+          engagement: { enabled: false, features: [] },
+          providers: {
+            ai: 'ollama',
+            openAiConfigured: false,
+            ollamaConfigured: false,
+            webSearchConfigured: false,
+          },
+          integrations: { rss: 'unavailable', sleeper: false, github: false },
+          metrics: null,
+        }) as unknown as AdminConsoleSnapshot,
+    });
+    const address = console.server.address();
+    const port =
+      typeof address === 'object' && address !== null ? address.port : 0;
+    const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+
+    expect(page).toContain('RSS: unavailable (configure approved RSS hosts)');
     await console.close();
   });
 });

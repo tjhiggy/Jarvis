@@ -1102,7 +1102,10 @@ export const createApplication = async (
               webSearchConfigured: config.webSearch.apiKey !== '',
             },
             integrations: {
-              rss: config.engagement.channels.rssId !== '',
+              rss: rssIntegrationHealth(
+                config.engagement.channels.rssId,
+                rssScheduler !== undefined,
+              ),
               sleeper: config.sleeper?.leagueId !== '',
               github: config.github !== undefined,
             },
@@ -1491,18 +1494,42 @@ export const createApplication = async (
   }
 };
 
-const formatRssDigest = (digest: RssDigest): string => {
-  const summary = digest.entries
-    .map(
-      (entry) =>
-        `**${boundedRssText(entry.sourceLabel, 80)}** · ${boundedRssText(entry.title, 280)}\n${entry.url}\n${boundedRssText(entry.publishedAt, 100)}`,
-    )
-    .join('\n\n');
-  return `**RSS update**\n${summary}`.slice(0, 1_900);
+export const formatRssDigest = (digest: RssDigest): string => {
+  const header = '**RSS update**';
+  const entries: string[] = [];
+  let content = header;
+  for (const entry of digest.entries.slice(0, 5)) {
+    const rendered = renderRssDigestEntry(entry);
+    if (
+      rendered === undefined ||
+      content.length + 2 + rendered.length > 1_900
+    ) {
+      continue;
+    }
+    entries.push(rendered);
+    content += `\n\n${rendered}`;
+  }
+  return entries.length === 0
+    ? `${header}\nNo bounded entries available.`
+    : content;
+};
+
+export const rssIntegrationHealth = (
+  rssChannelId: string,
+  schedulerAvailable: boolean,
+): 'ready' | 'unavailable' | 'not_configured' => {
+  if (rssChannelId === '') return 'not_configured';
+  return schedulerAvailable ? 'ready' : 'unavailable';
 };
 
 const boundedRssText = (value: string, limit: number): string =>
   value.replace(/\s+/g, ' ').trim().slice(0, limit);
+
+const renderRssDigestEntry = (entry: RssDigest['entries'][number]) => {
+  const url = entry.url.trim();
+  if (url === '' || url.length > 400) return undefined;
+  return `**${boundedRssText(entry.sourceLabel, 64)}** · ${boundedRssText(entry.title, 180)}\n${url}\n${boundedRssText(entry.publishedAt, 64)}`;
+};
 
 type MemberProfileCapableRepository = Required<
   Pick<

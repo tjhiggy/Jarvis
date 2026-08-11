@@ -14,7 +14,7 @@ export interface AdminConsoleSnapshot {
     readonly webSearchConfigured: boolean;
   };
   readonly integrations: {
-    readonly rss: boolean;
+    readonly rss: 'ready' | 'unavailable' | 'not_configured';
     readonly sleeper: boolean;
     readonly github: boolean;
   };
@@ -50,6 +50,15 @@ export interface AdminConsoleRssControl {
   >;
 }
 
+const rssIntegrationStatus = (
+  status: AdminConsoleSnapshot['integrations']['rss'],
+): string => {
+  if (status === 'ready') return 'ready';
+  if (status === 'unavailable')
+    return 'unavailable (configure approved RSS hosts)';
+  return 'not configured';
+};
+
 const html = (snapshot: AdminConsoleSnapshot): string => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jarvis Command Deck</title><style>
@@ -58,11 +67,11 @@ const html = (snapshot: AdminConsoleSnapshot): string => `<!doctype html>
 <article class="card"><h2>Platform</h2><p>Jarvis <strong>${snapshot.platform.version}</strong></p><p>${snapshot.platform.environment}</p><p class="ok">Database: ${snapshot.database}</p></article>
 <article class="card"><h2>Community</h2><p>Engagement: <strong>${snapshot.engagement.enabled ? 'enabled' : 'disabled'}</strong></p><ul>${snapshot.engagement.features.map((feature) => `<li>${feature}</li>`).join('')}</ul></article>
 <article class="card"><h2>Providers</h2><p>AI: ${snapshot.providers.ai}</p><p>OpenAI: ${snapshot.providers.openAiConfigured ? 'configured' : 'not configured'}</p><p>Ollama: ${snapshot.providers.ollamaConfigured ? 'configured' : 'not configured'}</p><p>Web search: ${snapshot.providers.webSearchConfigured ? 'configured' : 'not configured'}</p></article>
-<article class="card"><h2>Integrations</h2><p>RSS: ${snapshot.integrations.rss ? 'ready' : 'not configured'}</p><p>Sleeper Fantasy Football: ${snapshot.integrations.sleeper ? 'ready' : 'not configured'}</p><p>GitHub read-only: ${snapshot.integrations.github ? 'ready' : 'not configured'}</p><p>Metrics: ${snapshot.metrics === null ? 'unavailable' : `${snapshot.metrics.events} events, ${snapshot.metrics.failures} failures`}</p></article>
+<article class="card"><h2>Integrations</h2><p>RSS: ${rssIntegrationStatus(snapshot.integrations.rss)}</p><p>Sleeper Fantasy Football: ${snapshot.integrations.sleeper ? 'ready' : 'not configured'}</p><p>GitHub read-only: ${snapshot.integrations.github ? 'ready' : 'not configured'}</p><p>Metrics: ${snapshot.metrics === null ? 'unavailable' : `${snapshot.metrics.events} events, ${snapshot.metrics.failures} failures`}</p></article>
 <article class="card"><h2>Shipboard Broadcasts</h2><p>RSS: ${snapshot.rss?.paused ? 'paused' : snapshot.rss ? 'active' : 'not configured'}</p>${snapshot.rss ? `<ul>${snapshot.rss.feeds.map((feed) => `<li>${feed.label} <small>${feed.url}</small></li>`).join('')}</ul><button onclick="controlRss('pause')">Pause</button><button onclick="controlRss('resume')">Resume</button><p><input id="rss-url" placeholder="Allowlisted HTTPS feed URL"><button onclick="previewRss()">Preview feed</button></p><p id="rss-result" class="muted"></p>` : ''}</article>
 </section><p><small>Bound to localhost. Refresh for a current snapshot.</small></p></main><script>
 async function controlRss(action){if(!confirm('Confirm RSS '+action+' for this MuthaShip?'))return;const token=prompt('Enter the local Admin Console token:');if(!token)return;const result=document.getElementById('rss-result');try{const response=await fetch('/api/rss/'+action,{method:'POST',headers:{Authorization:'Bearer '+token}});const body=await response.json();if(!response.ok)throw new Error(body.error||'Request failed');result.textContent='RSS '+action+'d successfully. Refreshing...';setTimeout(()=>location.reload(),300);}catch(error){result.textContent=error instanceof Error?error.message:'RSS control failed';}}
-async function previewRss(){const token=prompt('Enter the local Admin Console token:');const url=document.getElementById('rss-url').value;if(!token||!url)return;const result=document.getElementById('rss-result');try{const response=await fetch('/api/rss/preview',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({url})});const body=await response.json();if(!response.ok)throw new Error(body.error||'Preview failed');result.textContent=body.items.length+' feed items found. No feed was saved; saving establishes a baseline, so historical entries are not posted.';}catch(error){result.textContent=error instanceof Error?error.message:'RSS preview failed';}}
+async function previewRss(){const token=prompt('Enter the local Admin Console token:');const url=document.getElementById('rss-url').value;if(!token||!url)return;const result=document.getElementById('rss-result');try{const response=await fetch('/api/rss/preview',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({url})});const body=await response.json();if(!response.ok)throw new Error(body.error||'Preview failed');const entries=body.items.map((item)=>[item.title,item.url,item.publishedAt].join('\n')).join('\n\n');result.textContent=body.items.length+' feed items found. No feed was saved; saving establishes a baseline, so historical entries are not posted.\n\n'+entries;}catch(error){result.textContent=error instanceof Error?error.message:'RSS preview failed';}}
 </script></body></html>`;
 
 export const startAdminConsole = (options: {
