@@ -1,7 +1,7 @@
 import type { RuntimeIdentity } from '../config/runtime-identity.js';
 
 const runtimeQuestion =
-  /\b(version|build|release|commit|deployment|running|operating system|os|host|machine|hardware|uptime|model|upgrade(?:s|d)?|changed|changes)\b/i;
+  /\b(version|build|release|commit|deployment|running|operating system|os|host|machine|hardware|uptime|model|upgrade(?:s|d)?|changed|changes|did you do|working on|activity|accomplish(?:ed)?)\b/i;
 const selfReference =
   /\b(jarvis|mutha\s*ship|ship diagnostics|you|your|you're|are you)\b/i;
 
@@ -21,6 +21,10 @@ export const classifyRuntimeQuestion = (
     return identity === undefined
       ? 'Jarvis runtime identity is not available in this deployment. I will not guess.'
       : `This MuthaShip is running Jarvis ${identity.version}, deployment ${identity.environment}, commit ${identity.commit}, built ${identity.builtAt}.`;
+  }
+
+  if (/\b(did you do|working on|activity|accomplish(?:ed)?)\b/i.test(prompt)) {
+    return 'I do not maintain a personal activity log. I can report verified Jarvis build metadata and configured capabilities, but I will not invent work or attribute unrelated search results to this MuthaShip.';
   }
 
   if (/\b(model)\b/i.test(prompt)) {
