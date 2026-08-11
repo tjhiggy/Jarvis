@@ -74,6 +74,8 @@ import { handleRssCommand } from './rss.js';
 import type { RssStorage } from '../notifications/rss-storage.js';
 import type { Instrumentation } from '../platform/instrumentation.js';
 import type { FeatureFlagService } from '../engagement/feature-flags.js';
+import { handleMemberProfileCommand } from './member-profile.js';
+import type { MemberProfileService } from '../engagement/member-profiles.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -88,17 +90,27 @@ export interface CommandInteraction extends ReplyTarget, DeferredReplyTarget {
   }> | null;
   readonly user: Readonly<{
     id: string;
+    bot?: boolean;
     globalName?: string | null;
     username?: string;
+    displayAvatarURL?(): string;
   }>;
   readonly member?: Readonly<{
     displayName?: string | null;
+    joinedAt?: Date | null;
     roles?: Readonly<{ cache?: Readonly<{ has(id: string): boolean }> }>;
   }> | null;
   readonly options: Readonly<{
     getSubcommand(): string;
     getString(name: string): string | null;
     getInteger?(name: string): number | null;
+    getUser?(name: string): Readonly<{
+      id: string;
+      bot?: boolean;
+      globalName?: string | null;
+      username?: string;
+      displayAvatarURL?(): string;
+    }> | null;
   }>;
   deferReply(payload: ReplyPayload): Promise<unknown>;
   fetchReply(): Promise<Readonly<{ id: string }>>;
@@ -194,6 +206,7 @@ export interface CommandDependencies {
   readonly proactiveService?: ProactiveEngagementService;
   readonly delegatedPostService?: DelegatedPostService;
   readonly featureFlags?: Pick<FeatureFlagService, 'isEnabled' | 'set'>;
+  readonly memberProfileService?: MemberProfileService;
   readonly engagementHealth?: Readonly<{
     repository: Required<
       Pick<
@@ -554,6 +567,22 @@ const handleCommandInternal = async (
           : dependencies.engagementHealth),
       });
       return;
+    case 'profile': {
+      const enabled =
+        dependencies.featureFlags !== undefined &&
+        interaction.guildId !== null &&
+        (await dependencies.featureFlags.isEnabled(
+          interaction.guildId,
+          'profiles',
+        ));
+      await handleMemberProfileCommand(interaction, {
+        enabled,
+        ...(dependencies.memberProfileService === undefined
+          ? {}
+          : { service: dependencies.memberProfileService }),
+      });
+      return;
+    }
     case 'help':
       if (await rejectDirectMessage(interaction)) {
         return;

@@ -24,7 +24,14 @@ import {
   neutralizeDiscordMentions,
   removeBotMention,
 } from '../utils/mentions.js';
-import { roleMenuSelection, type RoleMenuChoice } from '../engagement/role-menus.js';
+import {
+  roleMenuSelection,
+  type RoleMenuChoice,
+} from '../engagement/role-menus.js';
+import {
+  MemberProfileServiceError,
+  type MemberProfileService,
+} from '../engagement/member-profiles.js';
 
 export const discordGatewayIntents = Object.freeze([
   GatewayIntentBits.Guilds,
@@ -99,6 +106,10 @@ export interface MessageHandlerDependencies {
   readonly pollController?: PollController;
   readonly introductionService?: IntroductionService;
   readonly suggestionService?: SuggestionService;
+  readonly memberProfileService?: Pick<
+    MemberProfileService,
+    'confirm' | 'cancel'
+  >;
   readonly engagementAdminRoleIds?: ReadonlySet<string>;
   readonly suggestionChannelId?: string;
   readonly eventService?: EventService;
@@ -108,7 +119,7 @@ export interface MessageHandlerDependencies {
   readonly roleMenuChoices?: readonly RoleMenuChoice[];
   readonly onPreviewActionError?: (
     event: Readonly<{
-      kind: 'introduction' | 'suggestion';
+      kind: 'introduction' | 'suggestion' | 'profile';
       guildId: string;
       draftId: string;
       code: string;
@@ -189,28 +200,60 @@ const handleRoleMenu = async (
     values: readonly string[];
     guildId: string | null;
     user: { id: string };
-    member?: { roles?: { cache?: { has(roleId: string): boolean }; add(roleId: string): Promise<unknown>; remove(roleId: string): Promise<unknown> } } | null;
+    member?: {
+      roles?: {
+        cache?: { has(roleId: string): boolean };
+        add(roleId: string): Promise<unknown>;
+        remove(roleId: string): Promise<unknown>;
+      };
+    } | null;
     reply(payload: ReplyPayload): Promise<unknown>;
   }>,
   dependencies: MessageHandlerDependencies,
 ): Promise<void> => {
   const value = interaction.values[0];
-  const choice = value === undefined ? undefined : roleMenuSelection(dependencies.roleMenuChoices ?? [], value);
-  if (!interaction.customId.startsWith('roles:v1:') || !choice || interaction.guildId === null || !interaction.member?.roles) {
-    await interaction.reply({ content: 'This crew role menu is unavailable.', ephemeral: true, allowedMentions: { parse: [], repliedUser: false } });
+  const choice =
+    value === undefined
+      ? undefined
+      : roleMenuSelection(dependencies.roleMenuChoices ?? [], value);
+  if (
+    !interaction.customId.startsWith('roles:v1:') ||
+    !choice ||
+    interaction.guildId === null ||
+    !interaction.member?.roles
+  ) {
+    await interaction.reply({
+      content: 'This crew role menu is unavailable.',
+      ephemeral: true,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
     return;
   }
   try {
-    const currentlyAssigned = interaction.member.roles.cache?.has(choice.roleId) ?? false;
+    const currentlyAssigned =
+      interaction.member.roles.cache?.has(choice.roleId) ?? false;
     if (currentlyAssigned) {
       await interaction.member.roles.remove(choice.roleId);
-      await interaction.reply({ content: `Crew role **${choice.label}** removed.`, ephemeral: true, allowedMentions: { parse: [], repliedUser: false } });
+      await interaction.reply({
+        content: `Crew role **${choice.label}** removed.`,
+        ephemeral: true,
+        allowedMentions: { parse: [], repliedUser: false },
+      });
     } else {
       await interaction.member.roles.add(choice.roleId);
-      await interaction.reply({ content: `Crew role **${choice.label}** assigned.`, ephemeral: true, allowedMentions: { parse: [], repliedUser: false } });
+      await interaction.reply({
+        content: `Crew role **${choice.label}** assigned.`,
+        ephemeral: true,
+        allowedMentions: { parse: [], repliedUser: false },
+      });
     }
   } catch {
-    await interaction.reply({ content: 'Jarvis could not update that crew role. Ask a MuthaShip administrator to verify role order and permissions.', ephemeral: true, allowedMentions: { parse: [], repliedUser: false } });
+    await interaction.reply({
+      content:
+        'Jarvis could not update that crew role. Ask a MuthaShip administrator to verify role order and permissions.',
+      ephemeral: true,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
   }
 };
 
@@ -218,19 +261,19 @@ export const parsePreviewCustomId = (
   customId: string,
 ):
   | {
-      readonly kind: 'introduction' | 'suggestion';
+      readonly kind: 'introduction' | 'suggestion' | 'profile';
       readonly draftId: string;
       readonly action: 'confirm' | 'cancel';
     }
   | undefined => {
   const match =
-    /^preview:v1:(introduction|suggestion):([a-zA-Z0-9-]{1,64}):(confirm|cancel)$/.exec(
+    /^preview:v1:(introduction|suggestion|profile):([a-zA-Z0-9-]{1,64}):(confirm|cancel)$/.exec(
       customId.trim(),
     );
   return match === null
     ? undefined
     : {
-        kind: match[1]! as 'introduction' | 'suggestion',
+        kind: match[1]! as 'introduction' | 'suggestion' | 'profile',
         draftId: match[2]!,
         action: match[3]! as 'confirm' | 'cancel',
       };
@@ -254,7 +297,9 @@ const handlePreviewButton = async (
     (parsed.kind === 'introduction' &&
       dependencies.introductionService === undefined) ||
     (parsed.kind === 'suggestion' &&
-      dependencies.suggestionService === undefined)
+      dependencies.suggestionService === undefined) ||
+    (parsed.kind === 'profile' &&
+      dependencies.memberProfileService === undefined)
   ) {
     await replySafely(
       interaction,
@@ -265,16 +310,25 @@ const handlePreviewButton = async (
   }
   await interaction.deferReply({ ephemeral: true });
   try {
-    const service =
-      parsed.kind === 'introduction'
-        ? dependencies.introductionService!
-        : dependencies.suggestionService!;
     if (parsed.action === 'cancel') {
-      const cancelled = service.cancel({
-        guildId,
-        ownerUserId: interaction.user.id,
-        draftId: parsed.draftId,
-      });
+      const cancelled =
+        parsed.kind === 'profile'
+          ? dependencies.memberProfileService!.cancel({
+              serverId: guildId,
+              ownerUserId: interaction.user.id,
+              draftId: parsed.draftId,
+            })
+          : parsed.kind === 'introduction'
+            ? dependencies.introductionService!.cancel({
+                guildId,
+                ownerUserId: interaction.user.id,
+                draftId: parsed.draftId,
+              })
+            : dependencies.suggestionService!.cancel({
+                guildId,
+                ownerUserId: interaction.user.id,
+                draftId: parsed.draftId,
+              });
       await interaction.editReply({
         content: cancelled
           ? 'Preview cancelled. Nothing was saved or posted.'
@@ -283,22 +337,27 @@ const handlePreviewButton = async (
       });
       return;
     }
-    const created = await service.confirm({
-      guildId,
-      ownerUserId: interaction.user.id,
-      draftId: parsed.draftId,
-    });
+    const content =
+      parsed.kind === 'profile'
+        ? (await dependencies.memberProfileService!.confirm({
+            serverId: guildId,
+            ownerUserId: interaction.user.id,
+            draftId: parsed.draftId,
+          })) === null
+          ? 'Member profile deleted.'
+          : 'Member profile saved.'
+        : parsed.kind === 'introduction'
+          ? `Posted to the configured introduction channel. Your introduction ID is ${(await dependencies.introductionService!.confirm({ guildId, ownerUserId: interaction.user.id, draftId: parsed.draftId })).id}.`
+          : `Posted to the configured suggestion channel. Your suggestion ID is ${(await dependencies.suggestionService!.confirm({ guildId, ownerUserId: interaction.user.id, draftId: parsed.draftId })).id}.`;
     await interaction.editReply({
-      content:
-        parsed.kind === 'introduction'
-          ? `Posted to the configured introduction channel. Your introduction ID is ${created.id}.`
-          : `Posted to the configured suggestion channel. Your suggestion ID is ${created.id}.`,
+      content,
       allowedMentions: { parse: [], repliedUser: false },
     });
   } catch (error) {
     const code =
       error instanceof IntroductionServiceError ||
-      error instanceof SuggestionServiceError
+      error instanceof SuggestionServiceError ||
+      error instanceof MemberProfileServiceError
         ? error.code
         : 'unexpected';
     dependencies.onPreviewActionError?.({

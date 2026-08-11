@@ -101,6 +101,10 @@ import {
 } from './engagement/proactive.js';
 import { DelegatedPostService } from './engagement/delegated-posts.js';
 import { FeatureFlagService } from './engagement/feature-flags.js';
+import {
+  MemberProfileService,
+  memberProfileRepositoryFromEngagement,
+} from './engagement/member-profiles.js';
 import { RssStorage } from './notifications/rss-storage.js';
 import { RssNotificationClient } from './notifications/rss-notifications.js';
 import { RssScheduler } from './notifications/rss-scheduler.js';
@@ -475,6 +479,7 @@ export const createApplication = async (
   let birthdayScheduler: BirthdayScheduler | undefined;
   let proactiveScheduler: DurableProactiveScheduler | undefined;
   let proactiveService: ProactiveEngagementService | undefined;
+  let memberProfileService: MemberProfileService | undefined;
   let triviaScheduler: TriviaExpiryScheduler | undefined;
   let engagementDeletionService: EngagementDeletionService | undefined;
   let client: RuntimeDiscordClient | undefined;
@@ -776,6 +781,33 @@ export const createApplication = async (
             ),
             createId: () => randomUUID(),
           });
+    if (engagementRepository !== undefined) {
+      memberProfileService = new MemberProfileService({
+        repository: memberProfileRepositoryFromEngagement(
+          engagementRepository as Required<
+            Pick<
+              EngagementRepository,
+              | 'getMemberProfile'
+              | 'createMemberProfile'
+              | 'updateMemberProfile'
+              | 'setMemberProfileVisibility'
+              | 'deleteMemberProfile'
+            >
+          >,
+        ),
+        introductionReader: {
+          getSuggestedInterests: async (serverId, userId) =>
+            (
+              await engagementRepository!.findActiveIntroductionByOwner(
+                serverId,
+                userId,
+              )
+            )?.interests ?? null,
+        },
+        createId: () => randomUUID(),
+        maxDraftsPerOwner: config.engagement.maxRecordsPerUser,
+      });
+    }
     birthdayService =
       engagementRepository !== undefined &&
       typeof engagementRepository.getBirthday === 'function'
@@ -1175,6 +1207,9 @@ export const createApplication = async (
           ...(triviaService === undefined ? {} : { triviaService }),
           ...(proactiveService === undefined ? {} : { proactiveService }),
           ...(featureFlags === undefined ? {} : { featureFlags }),
+          ...(memberProfileService === undefined
+            ? {}
+            : { memberProfileService }),
           ...(engagementRepository === undefined
             ? {}
             : {
@@ -1239,6 +1274,7 @@ export const createApplication = async (
         }),
       ...(pollController === undefined ? {} : { pollController }),
       ...(introductionService === undefined ? {} : { introductionService }),
+      ...(memberProfileService === undefined ? {} : { memberProfileService }),
       ...(suggestionService === undefined
         ? {}
         : {

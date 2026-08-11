@@ -79,6 +79,36 @@ describe('engagement preview buttons', () => {
         'preview:v1:introduction:' + 'x'.repeat(65) + ':confirm',
       ),
     ).toBeUndefined();
+    expect(parsePreviewCustomId('preview:v1:profile:draft-2:confirm')).toEqual({
+      kind: 'profile',
+      draftId: 'draft-2',
+      action: 'confirm',
+    });
+  });
+
+  it('routes an owner-bound profile confirmation privately', async () => {
+    const interaction = button('preview:v1:profile:draft-2:confirm');
+    const handlers = createDiscordHandlers({
+      ...dependencies(),
+      memberProfileService: {
+        confirm: async (value: unknown) => {
+          expect(value).toEqual({
+            serverId: 'guild-1',
+            ownerUserId: 'owner-1',
+            draftId: 'draft-2',
+          });
+          return { userId: 'owner-1' };
+        },
+        cancel: () => false,
+      } as any,
+    });
+    await handlers.onInteractionCreate(interaction);
+    expect(interaction.edits).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/profile saved/i),
+        allowedMentions: { parse: [], repliedUser: false },
+      }),
+    ]);
   });
 
   it('explains an active introduction instead of hiding the safe duplicate error', async () => {
