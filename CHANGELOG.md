@@ -11,7 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Server-scoped Shipboard Broadcast policies for RSS, approved proactive posts,
-  recaps, event reminders, and birthday mentions, with durable category state,
+  recaps, event reminders, birthday mentions, and trivia result cards, with durable category state,
   quiet hours, cadence, destination enforcement, leased retry, and safe health.
 - Private `/notifications` controls for explicit event-reminder and birthday
   mention preferences, without falsely treating public channel posts as
