@@ -6,6 +6,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-11
+
+### Added
+
+- Server-scoped Shipboard Broadcast policies for RSS, approved proactive posts,
+  recaps, event reminders, and birthday mentions, with durable category state,
+  quiet hours, cadence, destination enforcement, leased retry, and safe health.
+- Private `/notifications` controls for explicit event-reminder and birthday
+  mention preferences, without falsely treating public channel posts as
+  personal notifications.
+- RSS baseline, safe preview, bounded digest, daily capacity, approved
+  proactive prompt catalog, and authenticated confirmed local Command Deck
+  category controls with content-free delivery metrics.
+
+### Security
+
+- Outbound scheduled delivery now rechecks policy immediately before posting,
+  neutralizes uncontrolled mentions, and records only bounded outcome metadata.
+
+### Release status
+
+- This release package awaits independent review, deployment verification,
+  tagging, and GitHub release publication.
+
 ## [0.4.0] - 2026-08-11
 
 ### Added

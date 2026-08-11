@@ -22,6 +22,7 @@ Jarvis is a single Node.js process. It receives Discord gateway events, applies 
 | Disabled extensions     | Declares disabled-by-default, operator-approved extension shapes; it does not implement or wire tools.                                                                                                                                                                                                            | `src/extensions/contracts.ts`                                                                                             |
 | Command registration    | Bulk-registers this application's command definitions in the configured development guild.                                                                                                                                                                                                                        | `scripts/register-commands.ts`                                                                                            |
 | Command analytics       | Phase 0 shared instrumentation boundary for aggregate command usage, delivery outcomes, scheduler health, provider readiness, engagement adoption, and opt-in or opt-out metrics. The contract excludes raw message content and secrets; persistence and Admin Command Deck exposure remain later Phase 0 slices. | `src/platform/contracts.ts`, `src/platform/instrumentation.ts`                                                            |
+| Shipboard broadcasts    | Applies server-scoped policy, destination allowlisting, quiet hours, cadence, member preferences, leased delivery, and content-free health immediately before external scheduled posts.                                                                                                                           | `src/notifications/broadcast-policy.ts`, `src/notifications/sqlite-broadcast-store.ts`                                    |
 
 ## Request flow
 
@@ -111,6 +112,25 @@ Logs contain only safe counts and categories, never reminder content or IDs.
 Startup opens storage before login and starts the scheduler after handlers;
 shutdown stops new work, awaits schedulers plus active command and periodic cleanup work, closes stores,
 then destroys the Discord client.
+
+## Shipboard broadcast lifecycle
+
+`SqliteBroadcastStore` adds `broadcast_schema_migrations`,
+`broadcast_policies`, `member_notification_preferences`, and
+`broadcast_delivery_runs` to the existing SQLite database. Migrations are
+additive and tracked separately from SQLite `user_version`. Policy and
+preference records are keyed by server and never expire through generic
+cleanup. Completed delivery-run rows are the only broadcast rows eligible for
+bounded cleanup; pending and claimed work remains durable for recovery.
+
+Delivery claims use `BEGIN IMMEDIATE`, a random lease token, and a five-minute
+lease. Completion or release must present that current token, so a stale worker
+cannot mark a reclaimed delivery complete. A scheduler evaluates policy before
+preparation and again after claiming, immediately before Discord delivery.
+Failures release the claim with a bounded error category; a completed post is
+never retried. The application stops schedulers, drains active commands and
+periodic work, then closes broadcast SQLite storage before it destroys the
+Discord client.
 
 ## Web-grounding boundary
 

@@ -52,8 +52,11 @@ current sequence is:
 2. **Sprint 2: v0.4.0 Crew Engagement** - shared UX and contracts across
    introductions, suggestions, events, trivia, polls, reminders, birthdays,
    LFG, game nights, and bounded community rewards.
-3. **Sprint 3: v0.5.0 Shipboard Broadcasts** - RSS, proactive posts, recaps,
-   reminders, quiet hours, previews, pause controls, and durable deduplication.
+3. **Sprint 3: v0.5.0 Shipboard Broadcasts** - release package prepared for
+   RSS, approved proactive posts, recaps, event reminders, birthday mentions,
+   quiet hours, previews, authenticated category pause controls, and durable
+   deduplication. It is not released until CI, deployment smoke evidence, tag,
+   and GitHub release publication are complete.
 4. **Sprint 4: v0.6.0 Command Deck** - safe channel selection, audit
    visibility, configuration previews, backup/rollback, mobile polish, and
    authenticated admin broadcasts.

@@ -38,6 +38,7 @@
 ### Task 1: Shared broadcast policy and durable storage
 
 **Files:**
+
 - Create: `src/notifications/broadcast-policy.ts`
 - Create: `src/notifications/broadcast-store.ts`
 - Create: `src/notifications/sqlite-broadcast-store.ts`
@@ -45,6 +46,7 @@
 - Create: `tests/broadcast-storage.test.ts`
 
 **Interfaces:**
+
 - Produces `BroadcastCategory = 'rss' | 'proactive' | 'recap' | 'event_reminder' | 'birthday'`.
 - Produces `BroadcastPolicyService.evaluate(input): Promise<BroadcastDecision>`.
 - Produces `BroadcastStore` methods `getPolicy`, `setPolicy`, `getMemberPreference`, `setMemberPreference`, `claimDelivery`, `completeDelivery`, `releaseDelivery`, `deliveryHealth`, and `cleanup`.
@@ -54,10 +56,14 @@
 ```ts
 it('rejects a destination outside the environment allowlist', async () => {
   const service = new BroadcastPolicyService(store, ['allowed']);
-  await expect(service.evaluate({
-    serverId: 'server', category: 'rss', channelId: 'other',
-    now: new Date('2026-08-11T12:00:00-04:00'),
-  })).resolves.toEqual({ allowed: false, reason: 'destination_not_allowed' });
+  await expect(
+    service.evaluate({
+      serverId: 'server',
+      category: 'rss',
+      channelId: 'other',
+      now: new Date('2026-08-11T12:00:00-04:00'),
+    }),
+  ).resolves.toEqual({ allowed: false, reason: 'destination_not_allowed' });
 });
 
 it('does not pretend a member can disable a public-only category', () => {
@@ -74,13 +80,20 @@ Expected: FAIL because the policy module does not exist.
 
 ```ts
 export type BroadcastCategory =
-  | 'rss' | 'proactive' | 'recap' | 'event_reminder' | 'birthday';
+  'rss' | 'proactive' | 'recap' | 'event_reminder' | 'birthday';
 export type BroadcastDecision =
   | { readonly allowed: true }
-  | { readonly allowed: false; readonly reason:
-      'disabled' | 'paused' | 'globally_paused' |
-      'destination_not_allowed' | 'quiet_hours' |
-      'cadence_limited' | 'member_not_opted_in' };
+  | {
+      readonly allowed: false;
+      readonly reason:
+        | 'disabled'
+        | 'paused'
+        | 'globally_paused'
+        | 'destination_not_allowed'
+        | 'quiet_hours'
+        | 'cadence_limited'
+        | 'member_not_opted_in';
+    };
 export const memberControllable = (category: BroadcastCategory): boolean =>
   category === 'event_reminder' || category === 'birthday';
 ```
@@ -95,15 +108,26 @@ it('isolates durable policy by server and preserves it across reopen', async () 
   await first.setPolicy(policy('server-a', 'rss', 'enabled'));
   await first.close();
   const reopened = new SqliteBroadcastStore(path);
-  expect(await reopened.getPolicy('server-a', 'rss')).toMatchObject({ state: 'enabled' });
+  expect(await reopened.getPolicy('server-a', 'rss')).toMatchObject({
+    state: 'enabled',
+  });
   expect(await reopened.getPolicy('server-b', 'rss')).toBeUndefined();
 });
 
 it('fences stale delivery completion with the active lease token', async () => {
   const a = await store.claimDelivery('server', 'rss', 'item', now);
-  const b = await store.claimDelivery('server', 'rss', 'item', afterLeaseExpiry);
-  expect(await store.completeDelivery('server', 'rss', 'item', a!, now)).toBe(false);
-  expect(await store.completeDelivery('server', 'rss', 'item', b!, now)).toBe(true);
+  const b = await store.claimDelivery(
+    'server',
+    'rss',
+    'item',
+    afterLeaseExpiry,
+  );
+  expect(await store.completeDelivery('server', 'rss', 'item', a!, now)).toBe(
+    false,
+  );
+  expect(await store.completeDelivery('server', 'rss', 'item', b!, now)).toBe(
+    true,
+  );
 });
 ```
 
@@ -134,6 +158,7 @@ git commit -m "feat: add durable broadcast policy foundation"
 ### Task 2: Honest member notification controls
 
 **Files:**
+
 - Create: `src/commands/notifications.ts`
 - Modify: `src/commands/definitions.ts`
 - Modify: `src/commands/handlers.ts`
@@ -144,6 +169,7 @@ git commit -m "feat: add durable broadcast policy foundation"
 - Modify: `tests/application.test.ts`
 
 **Interfaces:**
+
 - Consumes member preference methods and `memberControllable` from Task 1.
 - Produces `/notifications status`, `/notifications enable category:<category>`, and `/notifications disable category:<category>`.
 - Produces private, mention-disabled responses only.
@@ -152,8 +178,14 @@ git commit -m "feat: add durable broadcast policy foundation"
 
 ```ts
 it('registers status enable and disable under notifications', () => {
-  const command = commandDefinitions.find((item) => item.name === 'notifications');
-  expect(command?.options?.map((option) => option.name)).toEqual(['status', 'enable', 'disable']);
+  const command = commandDefinitions.find(
+    (item) => item.name === 'notifications',
+  );
+  expect(command?.options?.map((option) => option.name)).toEqual([
+    'status',
+    'enable',
+    'disable',
+  ]);
 });
 
 it('rejects public RSS as a member preference without persisting', async () => {
@@ -194,6 +226,7 @@ git commit -m "feat: add honest member notification controls"
 ### Task 3: Retry-safe RSS digests and delivery limits
 
 **Files:**
+
 - Modify: `src/notifications/rss-storage.ts`
 - Modify: `src/notifications/rss-scheduler.ts`
 - Modify: `src/notifications/rss-notifications.ts`
@@ -206,6 +239,7 @@ git commit -m "feat: add honest member notification controls"
 - Modify: `tests/admin-console.test.ts`
 
 **Interfaces:**
+
 - Consumes shared policy and delivery leases.
 - Produces feed baseline state, optional digests, five-items-per-cycle and twenty-items-per-day limits, exact previews, and truthful scheduler health.
 
@@ -263,6 +297,7 @@ git commit -m "feat: make RSS delivery bounded and retry safe"
 ### Task 4: Administrator-approved proactive catalog
 
 **Files:**
+
 - Create: `src/notifications/proactive-catalog.ts`
 - Modify: `src/engagement/proactive.ts`
 - Modify: `src/config/config.ts`
@@ -273,6 +308,7 @@ git commit -m "feat: make RSS delivery bounded and retry safe"
 - Modify: `tests/config.test.ts`
 
 **Interfaces:**
+
 - Produces `ProactivePrompt { id, category, text, active, startsAt?, endsAt? }`.
 - Produces `loadProactiveCatalog(path)` with a maximum of 100 entries and 1,000 characters per entry.
 - Consumes shared policy and leased delivery.
@@ -282,12 +318,16 @@ git commit -m "feat: make RSS delivery bounded and retry safe"
 ```ts
 it('rejects mass mentions, duplicate IDs, and more than one hundred prompts', async () => {
   await expect(loadCatalog(fileWith('@everyone'))).rejects.toThrow('mention');
-  await expect(loadCatalog(fileWithDuplicateIds())).rejects.toThrow('duplicate');
+  await expect(loadCatalog(fileWithDuplicateIds())).rejects.toThrow(
+    'duplicate',
+  );
   await expect(loadCatalog(fileWith101Prompts())).rejects.toThrow('100');
 });
 
 it('selects only active prompts inside their date window', () => {
-  expect(selectEligiblePrompts(catalog, now).map((item) => item.id)).toEqual(['ready']);
+  expect(selectEligiblePrompts(catalog, now).map((item) => item.id)).toEqual([
+    'ready',
+  ]);
 });
 ```
 
@@ -319,6 +359,7 @@ git commit -m "feat: add approved proactive broadcast catalog"
 ### Task 5: Migrate recap, event reminder, and birthday delivery
 
 **Files:**
+
 - Modify: `src/engagement/recap.ts`
 - Modify: `src/engagement/event-scheduler.ts`
 - Modify: `src/engagement/birthdays.ts`
@@ -329,6 +370,7 @@ git commit -m "feat: add approved proactive broadcast catalog"
 - Modify: `tests/birthdays.test.ts`
 
 **Interfaces:**
+
 - Consumes `BroadcastPolicyService.evaluate` immediately before all three external deliveries.
 - Consumes member preference for event reminders and birthday mentions.
 - Preserves existing domain state and idempotency.
@@ -337,10 +379,14 @@ git commit -m "feat: add approved proactive broadcast catalog"
 
 ```ts
 it.each(['recap', 'event_reminder', 'birthday'] as const)(
-  'rechecks policy immediately before %s delivery', async (category) => {
-    policy.evaluate.mockResolvedValueOnce({ allowed: true }).mockResolvedValueOnce({
-      allowed: false, reason: 'globally_paused',
-    });
+  'rechecks policy immediately before %s delivery',
+  async (category) => {
+    policy.evaluate
+      .mockResolvedValueOnce({ allowed: true })
+      .mockResolvedValueOnce({
+        allowed: false,
+        reason: 'globally_paused',
+      });
     await runCategory(category);
     expect(gateway.post).not.toHaveBeenCalled();
   },
@@ -385,6 +431,7 @@ git commit -m "feat: apply shared policy to scheduled broadcasts"
 ### Task 6: Command Deck operations and aggregate delivery metrics
 
 **Files:**
+
 - Modify: `src/admin/admin-console.ts`
 - Modify: `src/platform/metrics.ts`
 - Modify: `src/storage/engagement-sqlite.ts`
@@ -394,6 +441,7 @@ git commit -m "feat: apply shared policy to scheduled broadcasts"
 - Create: `tests/broadcast-health.test.ts`
 
 **Interfaces:**
+
 - Consumes policy listing, delivery health, and safe aggregate metrics.
 - Produces category cards and authenticated preview, pause, and resume endpoints.
 - Produces metrics `delivery_attempted`, `delivery_succeeded`, `delivery_failed`, `delivery_suppressed`, and `delivery_retried`.
@@ -412,7 +460,9 @@ it('renders category state, friendly destination, eligibility, and safe health',
 it('requires the local token and confirmation nonce for writes', async () => {
   const response = await request('/api/broadcast/rss/pause', { token: '' });
   expect(response.status).toBe(401);
-  expect(await store.getPolicy('server', 'rss')).toMatchObject({ state: 'enabled' });
+  expect(await store.getPolicy('server', 'rss')).toMatchObject({
+    state: 'enabled',
+  });
 });
 ```
 
@@ -448,6 +498,7 @@ git commit -m "feat: expose broadcast operations in Command Deck"
 ### Task 7: Documentation, rehearsal, deployment, and v0.5.0 release
 
 **Files:**
+
 - Modify: `.env.example`
 - Modify: `README.md`
 - Modify: `docs/ARCHITECTURE.md`
@@ -464,6 +515,7 @@ git commit -m "feat: expose broadcast operations in Command Deck"
 - Modify: `package-lock.json`
 
 **Interfaces:**
+
 - Consumes every completed v0.5.0 slice.
 - Produces operator documentation, release evidence, version 0.5.0, rollback instructions, and a tagged GitHub release.
 
@@ -505,6 +557,13 @@ Expected: every command passes and the audit has zero high or critical findings.
 Review destination bypass, mentions, secrets, content logging, lease races,
 duplicates, shutdown races, retention loss, and misleading success. Fix every
 release blocker by first adding a failing regression test.
+
+The review must include a cross-feature outbound lifecycle matrix for RSS,
+proactive posts, recaps, event reminders, birthday mentions, and trivia result
+cards. For every applicable feature, verify global/category pause at the final
+pre-post boundary, member opt-in, leased retry/dedupe behavior, truthful health,
+mention safety, content-free logs, and shutdown draining before SQLite closes.
+Record evidence for each row rather than inferring safety from shared helpers.
 
 - [ ] **Step 6: Version and commit the release**
 

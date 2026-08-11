@@ -32,7 +32,7 @@ The table is the complete configuration contract from `.env.example` and `src/co
 | `MAX_STORED_MESSAGES`                | Optional integer, at least 1                                                                | `10000`                      | Global SQLite row cap; oldest rows are removed after an append.                                           | `10000`                                | Data retention         |
 | `HISTORY_RETENTION_DAYS`             | Optional integer, at least 1                                                                | `30`                         | Deletes stored rows older than this age during startup and approximately daily cleanup.                   | `30`                                   | Data retention         |
 | `DATABASE_PATH`                      | Optional; non-empty when supplied                                                           | `./data/discord-bot.db`      | SQLite database file path.                                                                                | `./data/discord-bot.db`                | Local data location    |
-| `JARVIS_VERSION`                     | Optional; non-empty when supplied                                                           | Package version              | Trusted release version shown in `/status` and runtime answers.                                           | `0.2.0`                                | Build metadata         |
+| `JARVIS_VERSION`                     | Optional; non-empty when supplied                                                           | Package version              | Trusted release version shown in `/status` and runtime answers.                                           | `0.5.0`                                | Build metadata         |
 | `JARVIS_COMMIT_SHA`                  | Optional; non-empty when supplied                                                           | `development`                | Trusted source revision shown in `/status`; set it from the deployed commit, never from Discord.          | `abc1234`                              | Build metadata         |
 | `JARVIS_BUILD_TIMESTAMP`             | Optional; non-empty when supplied                                                           | `unknown`                    | Trusted UTC build timestamp shown in `/status`.                                                           | `2026-08-09T14:30:00Z`                 | Build metadata         |
 | `JARVIS_ENVIRONMENT`                 | Optional; non-empty when supplied                                                           | `development`                | Deployment label shown in `/status`; it is not host inspection.                                           | `production`                           | Build metadata         |
@@ -61,6 +61,7 @@ The table is the complete configuration contract from `.env.example` and `src/co
 | `ENGAGEMENT_BIRTHDAY_CHANNEL_ID`     | Optional blank or one 17-to-20 digit Discord channel ID                                     | Empty string                 | Sole destination for privacy-safe birthday announcements.                                                 | `12345678901234567`                    | Access boundary        |
 | `ENGAGEMENT_RSS_CHANNEL_ID`          | Optional blank or one 17-to-20 digit Discord channel ID                                     | Empty string                 | Sole destination for approved RSS notifications; blank disables RSS runtime controls.                     | `12345678901234567`                    | Access boundary        |
 | `ENGAGEMENT_RSS_ALLOWED_HOSTS`       | Comma-separated exact hostnames; HTTPS only                                                 | Empty string                 | Allowlist for RSS feed URLs. Private, local, and unlisted hosts are rejected.                             | `news.example.com,updates.example.org` | Security boundary      |
+| `ENGAGEMENT_PROACTIVE_CATALOG_PATH`  | Optional path to an operator-controlled JSON array                                          | Empty string                 | Enables approved proactive posts; blank disables the proactive catalog and scheduler.                     | `./config/proactive-prompts.json`      | Trusted local content  |
 | `ENGAGEMENT_ROLE_MENU_OPTIONS`       | Optional comma-separated `value:label:roleId` entries                                       | Empty string                 | Safe allowlist for `/roles`; Jarvis only assigns these configured roles and never creates or edits roles. | `fortnite:Fortnite:12345678901234567`  | Access boundary        |
 | `ENGAGEMENT_ADMIN_ROLE_IDS`          | Required when engagement is enabled; comma-separated 17-to-20 digit Discord role IDs        | Empty set                    | Role allowlist for engagement management. It does not grant Discord permissions.                          | `12345678901234567,23456789012345678`  | Access boundary        |
 | `ENGAGEMENT_RECAP_SCHEDULE`          | Optional blank or `DAY HH:MM` with an uppercase weekday and 24-hour time                    | Empty string                 | Weekly recap trigger; requires enabled engagement and a recap channel.                                    | `MONDAY 09:30`                         | Operational            |
@@ -69,6 +70,38 @@ The table is the complete configuration contract from `.env.example` and `src/co
 | `ENGAGEMENT_MAX_RECORDS_PER_USER`    | Optional integer from 1 to 25                                                               | `5`                          | Per-user cap for active engagement records of a feature type.                                             | `5`                                    | Abuse control          |
 | `ENGAGEMENT_MAX_PARTICIPANTS`        | Optional integer from 2 to 1000                                                             | `100`                        | Maximum participants accepted for one configured event or activity.                                       | `100`                                  | Abuse control          |
 | `LOG_LEVEL`                          | Optional enum                                                                               | `info`                       | Pino logging level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, or `silent`.                      | `info`                                 | Operational            |
+
+## Shipboard broadcast configuration
+
+`ALLOWED_CHANNEL_IDS` is the non-negotiable delivery destination allowlist for
+scheduled broadcasts other than RSS, whose destination is checked against its
+explicit configured RSS channel. A persisted policy may name only a configured
+destination; it cannot add a new channel. Startup creates a missing policy for
+each configured category. RSS starts enabled in UTC with digest mode on and no
+minimum interval. Proactive starts enabled in UTC with quiet hours from 23:00
+through 08:00 and a six-hour minimum interval. Recap, event-reminder, and
+birthday policies start enabled using `ENGAGEMENT_RECAP_TIMEZONE`, with no
+quiet period or cadence interval. Existing policy rows survive restart.
+
+Quiet hours use the policy's IANA timezone. A start equal to the end means no
+quiet period; a range crossing midnight, such as 23:00 to 08:00, suppresses
+both late-night and early-morning delivery. Policy values are durable operator
+state, not environment variables: change them through the local Command Deck,
+then restart only when changing environment configuration.
+
+`ENGAGEMENT_PROACTIVE_CATALOG_PATH` is read before Discord login. Its JSON must
+be an array of at most 100 strictly shaped prompts. Each prompt has a unique
+lowercase hyphenated ID of at most 64 characters, a category of at most 64
+characters, active boolean, text of 1 through 1,000 characters, and optional
+offset ISO start/end timestamps where start precedes end. `@everyone`,
+`@here`, and role mentions are rejected. The catalog is an administrator-owned
+local file, never a Discord-editable input, and changing it requires restart.
+
+All environment values are validated before login. `ENGAGEMENT_ENABLED=true`
+still requires at least one engagement channel and one administrator role.
+RSS feed URLs still require HTTPS and an exact configured host. Restart after
+any `.env` change; then run command registration when command definitions have
+changed.
 
 ## Sleeper behavior
 

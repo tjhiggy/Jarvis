@@ -653,6 +653,7 @@ export const createApplication = async (
           );
         }
       }
+      rssScheduler?.stop();
       if (rssStorage !== undefined) {
         try {
           rssStorage.close();
@@ -663,8 +664,6 @@ export const createApplication = async (
           );
         }
       }
-      rssScheduler?.stop();
-
       if (pollStore !== undefined) {
         try {
           await pollStore.closeConnection();

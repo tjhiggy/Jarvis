@@ -18,7 +18,7 @@ second, imaginary moderator powers never. It answers questions in Discord,
 keeps bounded conversation history per channel or thread, and can use local or
 hosted AI without pretending an interface is a superpower.
 
-Current release: `0.2.0` | Runtime: Node.js 22+ | License: proprietary, except
+Release package: `0.5.0` | Runtime: Node.js 22+ | License: proprietary, except
 the Code of Conduct under CC BY 4.0
 
 Share the [Jarvis community platform overview](assets/jarvis-admin-overview-infographic-v3.png)
@@ -38,6 +38,7 @@ enhancements.
 | Bounded input, output, retries, rate limits, retention, and stored rows                                                                                                                                                                                                                                                                                              | Single-process controls, not distributed coordination                                                                                                                                                                                          |
 | Local responses for clearly unsupported action requests                                                                                                                                                                                                                                                                                                              | A UX guardrail only; it neither authorizes actions nor replaces permission checks                                                                                                                                                              |
 | Native Node.js and hardened Docker Compose deployment paths                                                                                                                                                                                                                                                                                                          | One active Jarvis process and one SQLite database are the supported topology                                                                                                                                                                   |
+| Shipboard broadcasts: RSS digests, approved proactive posts, recaps, event reminders, and birthday mentions                                                                                                                                                                                                                                                          | Every scheduled category is server-scoped, destination-allowlisted, pauseable, lease-fenced, and observed without message content. Public posts and member preferences are deliberately separate products.                                     |
 
 Jarvis does not moderate Discord, create roles, change channels, or edit content owned
 by others, execute shell commands, access arbitrary files, write to GitHub, or
@@ -392,10 +393,29 @@ Use [Development](docs/DEVELOPMENT.md) for repository layout, watch commands,
 test boundaries, and change expectations. See [Contributing](CONTRIBUTING.md)
 before opening a change.
 
+## Shipboard broadcasts
+
+v0.5.0 adds a common delivery policy immediately before a scheduled post. The
+configured `ALLOWED_CHANNEL_IDS` remains the outer destination allowlist;
+SQLite and the local Command Deck can pause or resume a configured category,
+but cannot widen that list. RSS begins with a baseline, so adding a feed never
+dumps old entries. Proactive text comes only from the approved local catalog,
+which rejects unsafe mentions. Recaps, event reminders, and birthdays recheck
+policy immediately before posting.
+
+`/notifications status`, `enable`, and `disable` are private crew controls for
+event-reminder and birthday mentions only. RSS, proactive, and recap posts are
+public channel broadcasts, so a personal switch would be a lie with a friendly
+button. Jarvis sends no unsolicited direct messages.
+
+Operators should start with the [v0.5.0 release checklist](docs/releases/v0.5.0.md),
+then use [Operations](docs/OPERATIONS.md) and the
+[Engagement runbook](docs/ENGAGEMENT_RUNBOOK.md) for live control and rollback.
+
 ## Release and license
 
-The current package and changelog release is `0.2.0`; the supported line is
-`0.1.x`. Release actions are maintainer-owned and documented in
+The current release package and changelog version is `0.5.0`. Release actions
+are maintainer-owned and documented in
 [Releases](docs/RELEASES.md) and the [Changelog](CHANGELOG.md).
 
 Copyright 2026 Jim Higgins. All rights reserved. Except for the adapted

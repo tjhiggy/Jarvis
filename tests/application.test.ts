@@ -1,5 +1,5 @@
 import { GatewayIntentBits } from 'discord.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Logger } from 'pino';
 import type { AppConfig } from '../src/config/config.js';
 import { loadPersona, type TrustedPersona } from '../src/config/persona.js';
@@ -14,6 +14,8 @@ import type {
 } from '../src/notifications/broadcast-store.js';
 import type { ProactivePrompt } from '../src/notifications/proactive-catalog.js';
 import type { ProactiveEngagementService } from '../src/engagement/proactive.js';
+import { RssScheduler } from '../src/notifications/rss-scheduler.js';
+import { RssStorage } from '../src/notifications/rss-storage.js';
 import { ReminderScheduler } from '../src/reminders/reminder-scheduler.js';
 import type { ReminderStore } from '../src/reminders/reminder-store.js';
 import type { ReminderView } from '../src/reminders/reminder-types.js';
@@ -422,6 +424,50 @@ describe('createApplication', () => {
       'proactive-stop-end',
       'broadcast-store-close',
     ]);
+  });
+
+  it('stops RSS scheduling before closing RSS storage during shutdown', async () => {
+    const events: string[] = [];
+    const stop = vi
+      .spyOn(RssScheduler.prototype, 'stop')
+      .mockImplementation(() => {
+        events.push('rss-stop');
+      });
+    const close = vi
+      .spyOn(RssStorage.prototype, 'close')
+      .mockImplementation(() => {
+        events.push('rss-storage-close');
+      });
+    try {
+      const application = await createTestApplication({
+        loadConfig: () => ({
+          ...config,
+          engagement: {
+            ...config.engagement,
+            enabled: true,
+            channels: { ...config.engagement.channels, rssId: 'channel-id' },
+            rssAllowedHosts: ['news.example.com'],
+            adminRoleIds: new Set(['12345678901234567']),
+          },
+        }),
+        loadPersona: async () => ({}) as TrustedPersona,
+        createStore: () => conversationStore(),
+        createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+        createDiscordClient: () => ({
+          user: { id: 'bot-id' },
+          on: () => undefined,
+          login: async () => undefined,
+          destroy: () => undefined,
+        }),
+        timers: inertTimers(),
+      });
+
+      await application.shutdown();
+      expect(events).toEqual(['rss-stop', 'rss-storage-close']);
+    } finally {
+      stop.mockRestore();
+      close.mockRestore();
+    }
   });
 
   it('loads the configured approved proactive catalog before application startup', async () => {

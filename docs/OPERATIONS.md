@@ -8,6 +8,30 @@ This guide covers routine operation of the deployed Jarvis process. It does
 not authorize Discord administration, repository changes, shell execution, or
 inspection of user message content.
 
+## Shipboard broadcast operations
+
+Use `/notifications status` privately to view your own event-reminder and
+birthday preference. `/notifications enable category:<category>` and
+`disable` change only that crew member's durable preference. RSS, proactive,
+and recap are public channel broadcasts and correctly redirect members to an
+administrator rather than offering a cosmetic no-op.
+
+Open the local Command Deck only from the host. The Shipboard Broadcasts card
+shows category state, friendly destination, quiet hours, cadence, next
+eligible time, last attempt/success, health, and 7/30-day aggregate outcomes.
+To pause or resume, select the category, confirm the operation, enter the
+local token, and use the returned short-lived confirmation. A pause takes
+effect at the final pre-post policy check; it does not delete policy,
+preference, feed baseline, or completed delivery history. Global engagement
+pause remains the broader emergency stop for scheduled engagement delivery.
+
+For RSS, use the Command Deck preview before saving a feed. Preview fetches up
+to five entries and persists nothing. Saving establishes a baseline, so old
+entries are not posted. RSS posts at most five entries in one digest per cycle
+and at most twenty completed items per MuthaShip per UTC day. A Discord failure
+releases the delivery claim for later retry. Do not manually repost a failed
+item: that is how duplicate-notification folklore becomes an incident.
+
 ## Start and stop checks
 
 Before starting, select exactly one deployment path: native Windows or Docker.
@@ -123,6 +147,14 @@ in-memory cache. Equivalent normalized queries are cached for
 it is not a persistent data store.
 
 ## Database health, cleanup, and retention
+
+Broadcast policy, member preference, and delivery state share
+`DATABASE_PATH` with the existing local stores. Back up a stopped database,
+including its WAL state, before upgrades. Generic broadcast cleanup removes
+only terminal completed delivery rows before its cutoff; it never removes
+policies or preferences. A clean shutdown stops new work and all schedulers,
+drains active work, then closes stores. Do not copy, edit, or delete a live
+SQLite main file as a repair strategy.
 
 `/status` uses SQLite's health check (`SELECT 1`). The store configures WAL
 mode, foreign-key enforcement, a five-second busy timeout, and normal

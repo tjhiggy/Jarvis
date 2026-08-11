@@ -127,6 +127,27 @@ makes the completed event eligible for ordinary retention cleanup.
 
 ## Operations
 
+### Shipboard broadcast readiness
+
+Before enabling a category, confirm its configured destination is also in
+`ALLOWED_CHANNEL_IDS` (RSS uses its explicit configured channel), minimum
+Discord permissions, and the expected local timezone. Configure an approved
+proactive catalog only through `ENGAGEMENT_PROACTIVE_CATALOG_PATH`; its text is
+validated before login and cannot contain mass or role mentions. Use preview
+first for RSS and proactive posts. RSS saving establishes a no-history
+baseline, while proactive preview never posts.
+
+Crew controls are intentionally narrow: event reminders and birthday mentions
+require a durable `/notifications enable` preference in addition to the
+existing RSVP or birthday record. Missing preference is disabled. Public RSS,
+proactive, and recap posts cannot be hidden with an individual preference.
+
+The Command Deck provides category pause/resume behind localhost bearer-token
+and confirmation checks. During an unsafe-delivery incident, pause both the
+affected category and global engagement if the scope is unclear. Wait for the
+health card and content-free metrics before resuming; do not fabricate a
+successful delivery by manually reposting it.
+
 ### Pause and resume
 
 For a suspected unsafe delivery, an administrator runs `/engagement pause`,

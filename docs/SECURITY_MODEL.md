@@ -1,5 +1,29 @@
 # Security Model
 
+## Shipboard broadcast boundary
+
+Scheduled broadcasts are not a general-purpose messaging backdoor. Every
+policy is scoped to one MuthaShip and category, and each external post checks
+the configured destination against the immutable environment allowlist at the
+final pre-post boundary. SQLite state and the Command Deck may suppress or
+resume a configured route, but cannot widen `ALLOWED_CHANNEL_IDS`.
+
+RSS, proactive posts, and recaps are public channel products. `/notifications`
+does not pretend a crew member can hide one of them. The only personal controls
+are explicit opt-in preferences for event-reminder and birthday mentions;
+missing preferences mean disabled. Jarvis sends no unsolicited direct
+messages. Outbound payloads disable uncontrolled mentions; administrator
+catalog text rejects mass and role mentions, and a birthday permits only the
+one opted-in crew member mention.
+
+The Command Deck binds only to `localhost` or `127.0.0.1`. Broadcast writes
+require the configured bearer token, a short-lived confirmation nonce, and an
+already configured category. It renders friendly destinations and bounded error
+categories, never raw channel IDs, content, secrets, or tokens. Delivery logs
+and metrics contain category, UTC day, count, duration, and bounded outcome
+only. They never contain message bodies, feed entries, names, lease tokens, or
+credentials.
+
 Jarvis is a proprietary advisory bot. It is not a moderator, administrator,
 automation agent, or general-purpose execution environment. The controls below
 describe implemented source behavior; proposals are labelled as planned.
