@@ -72,6 +72,22 @@ deployment is intentionally not automatic. `CODEOWNERS` identifies the
 maintainer for future review policies. Dependabot security updates, secret
 scanning, and secret push protection are enabled.
 
+### Project automation
+
+`.github/workflows/project-automation.yml` synchronizes the custom Project V2
+fields with normal GitHub activity. New issues enter **Backlog**, opened or
+reopened pull requests enter **In review**, merged pull requests enter **Done**,
+and existing `phase:*` labels map to the matching Phase and Release options.
+
+The workflow never assigns a Sprint, creates a release, or marks an item
+**Released**. Those remain maintainer decisions after deployment verification.
+
+Because the board is user-owned, configure an Actions secret named
+`JARVIS_PROJECT_TOKEN` with a fine-grained token that has project access. The
+repository token remains a fallback where GitHub grants sufficient access. If
+the secret is absent, built-in Project workflows still handle intake and
+closure, while custom field synchronization will report a permission failure.
+
 ## Public repository rules
 
 Forks and pull requests are welcome for review, but they do not grant write or
