@@ -1,4 +1,7 @@
-import type { EngagementRepository } from './storage.js';
+import {
+  eventReminderRetryGraceMs,
+  type EngagementRepository,
+} from './storage.js';
 export { eventReminderRetryGraceMs } from './storage.js';
 import type { BroadcastPolicyService } from '../notifications/broadcast-policy.js';
 import type { BroadcastStore } from '../notifications/broadcast-store.js';
@@ -137,6 +140,28 @@ export class EventScheduler {
               (this.dependencies.now ?? (() => new Date()))(),
             );
             broadcastLeaseToken = undefined;
+            continue;
+          }
+          const deliveryNow = (this.dependencies.now ?? (() => new Date()))();
+          if (
+            deliveryNow.getTime() >
+            reminder.scheduledAt.getTime() + eventReminderRetryGraceMs
+          ) {
+            await this.dependencies.broadcastStore.releaseDelivery(
+              reminder.guildId,
+              'event_reminder',
+              deliveryKey,
+              broadcastLeaseToken,
+              deliveryNow,
+            );
+            broadcastLeaseToken = undefined;
+            await this.dependencies.repository.markEventReminderFailed(
+              reminder.eventId,
+              reminder.guildId,
+              reminder.userId,
+              reminder.leaseToken,
+              deliveryNow,
+            );
             continue;
           }
           await this.dependencies.gateway.deliver({

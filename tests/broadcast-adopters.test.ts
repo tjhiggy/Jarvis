@@ -271,6 +271,58 @@ describe('scheduled broadcast policy adopters', () => {
     }
   });
 
+  it('rechecks the event reminder deadline immediately before delivery', async () => {
+    const dueAt = new Date('2026-08-10T12:00:00.000Z');
+    let current = new Date(dueAt.getTime() + eventReminderRetryGraceMs - 1);
+    const deliver = vi.fn();
+    const markFailed = vi.fn().mockResolvedValue(true);
+    const releaseDelivery = vi.fn().mockResolvedValue(true);
+    await new EventScheduler({
+      repository: {
+        claimDueEventReminders: async () => [
+          {
+            eventId: 'event-deadline',
+            guildId: 'server-1',
+            channelId: 'events',
+            userId: 'crew-1',
+            title: 'Boarding',
+            scheduledAt: dueAt,
+            leaseToken: 'event-lease',
+          },
+        ],
+        markEventReminderDelivered: async () => true,
+        markEventReminderFailed: markFailed,
+      } as any,
+      gateway: { deliver },
+      policy: { evaluate: async () => ({ allowed: true as const }) },
+      broadcastStore: {
+        claimDelivery: async () => {
+          current = new Date(dueAt.getTime() + eventReminderRetryGraceMs + 1);
+          return 'broadcast-lease';
+        },
+        completeDelivery: async () => true,
+        releaseDelivery,
+      },
+      now: () => current,
+    }).tick();
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(releaseDelivery).toHaveBeenCalledWith(
+      'server-1',
+      'event_reminder',
+      'event_reminder:event-deadline:crew-1',
+      'broadcast-lease',
+      current,
+    );
+    expect(markFailed).toHaveBeenCalledWith(
+      'event-deadline',
+      'server-1',
+      'crew-1',
+      'event-lease',
+      current,
+    );
+  });
+
   it('persists recap completion so cadence blocks delivery after a scheduler restart', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'jarvis-recap-cadence-'));
     const path = join(directory, 'broadcast.db');
