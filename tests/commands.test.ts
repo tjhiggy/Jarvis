@@ -69,6 +69,7 @@ describe('command definitions', () => {
       'catch-me-up',
       'channel-summary',
       'server-search',
+      'my-stats',
       'reminder',
       'fantasy',
       'introduce',
@@ -121,7 +122,7 @@ describe('command definitions', () => {
         },
       ],
     });
-    expect(definitions[10]).toEqual({
+    expect(definitions[11]).toEqual({
       type: 1,
       name: 'reminder',
       description: 'Manage your personal reminders.',
@@ -228,6 +229,7 @@ describe('command definitions', () => {
       'catch-me-up',
       'channel-summary',
       'server-search',
+      'my-stats',
       'reminder',
       'fantasy',
       'poll',
@@ -251,7 +253,7 @@ describe('command definitions', () => {
       'notifications',
       'config',
     ]);
-    expect(definitions[12]).toMatchObject({
+    expect(definitions[13]).toMatchObject({
       name: 'poll',
       options: [
         { name: 'question', required: true, max_length: 200 },
@@ -274,7 +276,7 @@ describe('command definitions', () => {
         { name: 'option5', required: false, max_length: 80 },
       ],
     });
-    expect(definitions[13]).toMatchObject({
+    expect(definitions[14]).toMatchObject({
       name: 'poll-close',
       options: [{ name: 'poll_id', required: true, max_length: 12 }],
     });
@@ -1527,6 +1529,58 @@ describe('handleCommand', () => {
       }),
     ]);
   });
+
+  it('keeps opt-in member statistics private and deletes them on disable', async () => {
+    let enabled = false;
+    let commandCount = 4;
+    const memberStatistics = {
+      enable: async () => {
+        enabled = true;
+      },
+      disable: async () => {
+        enabled = false;
+        commandCount = 0;
+      },
+      status: async () => ({ enabled, commandCount }),
+      recordCommand: async () => undefined,
+      cleanup: async () => 0,
+    } as unknown as NonNullable<CommandDependencies['memberStatistics']>;
+
+    const enable = interaction({
+      commandName: 'my-stats',
+      subcommand: 'enable',
+    });
+    await handleCommand(enable.interaction, {
+      ...dependencies(),
+      memberStatistics,
+    });
+    const status = interaction({
+      commandName: 'my-stats',
+      subcommand: 'status',
+    });
+    await handleCommand(status.interaction, {
+      ...dependencies(),
+      memberStatistics,
+    });
+    const disable = interaction({
+      commandName: 'my-stats',
+      subcommand: 'disable',
+    });
+    await handleCommand(disable.interaction, {
+      ...dependencies(),
+      memberStatistics,
+    });
+
+    expect(enable.replies[0]).toMatchObject({ ephemeral: true });
+    expect(status.replies[0]).toMatchObject({
+      content: expect.stringMatching(/enabled[\s\S]*4/i),
+      ephemeral: true,
+    });
+    expect(disable.replies[0]).toMatchObject({
+      content: expect.stringMatching(/disabled[\s\S]*deleted/i),
+      ephemeral: true,
+    });
+  });
 });
 
 function interaction(
@@ -1540,7 +1594,7 @@ function interaction(
     topic: string | null;
     userId: string;
     values: Readonly<Record<string, string | null>>;
-    subcommand: 'set' | 'list' | 'cancel';
+    subcommand: 'set' | 'list' | 'cancel' | 'status' | 'enable' | 'disable';
   }> = {},
 ): {
   readonly interaction: CommandInteraction;

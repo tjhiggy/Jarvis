@@ -22,12 +22,14 @@
 ### Task 1: Approved knowledge relevance and provenance
 
 **Files:**
+
 - Modify: `src/knowledge/approved-knowledge.ts`
 - Modify: `src/commands/handlers.ts`
 - Modify: `tests/approved-knowledge.test.ts`
 - Modify: `docs/APPROVED_KNOWLEDGE.md`
 
 **Interfaces:**
+
 - Produces: `KnowledgeResult` with deterministic relevance and existing source attribution.
 - Consumes: checked-in catalog plus per-server approval overrides.
 
@@ -40,6 +42,7 @@
 ### Task 2: Access-scoped retained-conversation search
 
 **Files:**
+
 - Create: `src/commands/server-search.ts`
 - Modify: `src/commands/definitions.ts`
 - Modify: `src/commands/handlers.ts`
@@ -50,6 +53,7 @@
 - Modify: `docs/SECURITY_MODEL.md`
 
 **Interfaces:**
+
 - Produces: `/server-search query:<text>` returning at most five timestamped matches from the current channel/thread's retained Jarvis conversation only.
 - Consumes: existing `ConversationStore.history()` and current interaction context.
 
@@ -62,29 +66,30 @@
 ### Task 3: Opt-in member command statistics
 
 **Files:**
+
 - Create: `src/community/member-statistics.ts`
-- Modify: `src/storage/engagement-sqlite.ts`
-- Modify: `src/engagement/storage.ts`
 - Modify: `src/commands/definitions.ts`
 - Modify: `src/commands/handlers.ts`
 - Modify: `src/platform/instrumentation.ts`
 - Create: `tests/member-statistics.test.ts`
-- Modify: `tests/engagement-storage.test.ts`
+- Create: `tests/instrumentation-member-statistics.test.ts`
 - Modify: `tests/application.test.ts`
 - Modify: `docs/SECURITY_MODEL.md`
 
 **Interfaces:**
+
 - Produces: `/my-stats status|enable|disable` and server-scoped daily command counters for opted-in members.
 - Consumes: command name, server ID, member ID, and event timestamp only.
 
-- [ ] Write failing storage/service tests for default opt-out, enable, daily counting, server isolation, disable-and-delete, retention, and safe output.
-- [ ] Witness failures before adding migration and repository methods.
-- [ ] Implement migration, service, command, instrumentation hook, and deletion path.
-- [ ] Run focused suites and commit `feat: add opt-in member command statistics`.
+- [x] Write failing storage/service tests for default opt-out, enable, daily counting, server isolation, disable-and-delete, retention, and safe output.
+- [x] Witness failures before adding the isolated SQLite store and service.
+- [x] Implement storage, service, command, instrumentation hook, and deletion path.
+- [x] Run focused suites and commit `feat: add opt-in member command statistics`.
 
 ### Task 4: Controlled image generation
 
 **Files:**
+
 - Create: `src/images/image-generation.ts`
 - Create: `src/openai/openai-image-service.ts`
 - Modify: `src/config/config.ts`
@@ -98,6 +103,7 @@
 - Create: `docs/IMAGE_GENERATION.md`
 
 **Interfaces:**
+
 - Produces: administrator-only `/image generate prompt:<text>` in one configured allowlisted channel, one image per request, disabled by default.
 - Consumes: `ImageGenerationService.generate({prompt})` returning bounded attachment bytes and media type.
 
@@ -110,6 +116,7 @@
 ### Task 5: Model evaluation and routing decision
 
 **Files:**
+
 - Create: `config/evaluations/jarvis-model-eval.json`
 - Create: `scripts/evaluate-models.ts`
 - Create: `src/evaluation/model-evaluation.ts`
@@ -120,6 +127,7 @@
 - Modify: `docs/CONFIGURATION.md`
 
 **Interfaces:**
+
 - Produces: deterministic prompt catalog, content-free aggregate result schema, and documented primary/fallback/cloud routing decision.
 - Consumes: explicit model names supplied to a local evaluation command; never Discord data.
 
@@ -132,6 +140,7 @@
 ### Task 6: Command Deck community intelligence view
 
 **Files:**
+
 - Modify: `src/admin/admin-console.ts`
 - Modify: `src/index.ts`
 - Modify: `tests/admin-console.test.ts`
@@ -139,6 +148,7 @@
 - Modify: `docs/COMMAND_SURFACE_MATRIX.md`
 
 **Interfaces:**
+
 - Produces: read-only intelligence card showing approved-source counts, scoped-search readiness, opt-in statistics totals, image-generation readiness, and active model identity.
 - Consumes: aggregate/status projections only, never member IDs, prompts, source content, or conversation text.
 
@@ -149,6 +159,7 @@
 ### Task 7: Jarvis 0.7.0 release
 
 **Files:**
+
 - Modify: `package.json`
 - Modify: `package-lock.json`
 - Modify: `.env.example`
@@ -159,6 +170,7 @@
 - Modify: `tests/runtime-version.test.ts`
 
 **Interfaces:**
+
 - Produces: tagged, deployed, smoke-tested Jarvis 0.7.0 and closed milestone 5.
 - Consumes: Tasks 1-6 and their migrations/configuration.
 

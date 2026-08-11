@@ -79,6 +79,7 @@ import { handleMemberProfileCommand } from './member-profile.js';
 import type { MemberProfileService } from '../engagement/member-profiles.js';
 import { handleNotificationCommand } from './notifications.js';
 import type { BroadcastStore } from '../notifications/broadcast-store.js';
+import type { MemberStatisticsService } from '../community/member-statistics.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -186,6 +187,7 @@ export interface CommandDependencies {
   readonly faq: FaqCatalog;
   readonly knowledge?: ApprovedKnowledgeCatalog;
   readonly knowledgeStore?: SQLiteKnowledgeApprovalStore;
+  readonly memberStatistics?: MemberStatisticsService;
   readonly sleeper?: Readonly<{ leagueId: string; service: SleeperService }>;
   readonly github?: Readonly<{ service: GitHubReadOnlyService }>;
   readonly rssStorage?: Pick<
@@ -273,6 +275,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/catch-me-up summarizes recent Jarvis conversation in this channel.',
     '/channel-summary summarizes retained Jarvis conversation from the last 24 hours in this channel or thread.',
     '/server-search searches retained Jarvis conversation only in this channel or thread.',
+    '/my-stats status, enable, or disable manages your private opt-in command count.',
     '/reminder set in:<duration> message:<text> creates a private personal reminder request.',
     '/reminder list shows your retained reminders in this server.',
     '/reminder cancel id:<id> cancels one of your reminders.',
@@ -326,6 +329,9 @@ const handleCommandInternal = async (
       return;
     case 'server-search':
       await handleServerSearch(interaction, dependencies);
+      return;
+    case 'my-stats':
+      await handleMemberStatistics(interaction, dependencies);
       return;
     case 'reminder':
       await handleReminder(interaction, dependencies);
@@ -1606,6 +1612,47 @@ const handleChannelSummary = async (
       true,
     );
   }
+};
+
+const handleMemberStatistics = async (
+  interaction: CommandInteraction,
+  dependencies: CommandDependencies,
+): Promise<void> => {
+  if (await rejectDirectMessage(interaction)) return;
+  const service = dependencies.memberStatistics;
+  if (service === undefined || interaction.guildId === null) {
+    await replySafely(
+      interaction,
+      'Private member statistics are unavailable on this MuthaShip.',
+      true,
+    );
+    return;
+  }
+  const subcommand = interaction.options.getSubcommand();
+  if (subcommand === 'enable') {
+    await service.enable(interaction.guildId, interaction.user.id);
+    await replySafely(
+      interaction,
+      'Private command statistics enabled. Jarvis will retain only your command count for up to 30 days. No historical activity was added.',
+      true,
+    );
+    return;
+  }
+  if (subcommand === 'disable') {
+    await service.disable(interaction.guildId, interaction.user.id);
+    await replySafely(
+      interaction,
+      'Private command statistics disabled and your retained command counts were deleted.',
+      true,
+    );
+    return;
+  }
+  const status = await service.status(interaction.guildId, interaction.user.id);
+  await replySafely(
+    interaction,
+    `Your private Jarvis statistics are ${status.enabled ? 'enabled' : 'disabled'}. Commands retained in the last 30 days: ${status.commandCount}.`,
+    true,
+  );
 };
 
 const handleServerSearch = async (

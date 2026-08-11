@@ -330,6 +330,7 @@ export interface CommandDefinition {
     | 'knowledge'
     | 'catch-me-up'
     | 'server-search'
+    | 'my-stats'
     | 'post'
     | 'channel-summary'
     | 'reminder'
@@ -512,6 +513,28 @@ export const createCommandDefinitions = (
           description: 'Words to find in retained Jarvis conversation.',
           required: true,
           max_length: 200,
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'my-stats',
+      description: 'Manage your private, opt-in Jarvis command statistics.',
+      options: [
+        {
+          type: 1,
+          name: 'status',
+          description: 'Show your private 30-day command count.',
+        },
+        {
+          type: 1,
+          name: 'enable',
+          description: 'Opt in to private command-count statistics.',
+        },
+        {
+          type: 1,
+          name: 'disable',
+          description: 'Opt out and delete your retained command counts.',
         },
       ],
     },

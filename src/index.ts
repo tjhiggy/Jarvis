@@ -63,6 +63,10 @@ import { HttpSleeperService } from './sleeper/sleeper-service.js';
 import { randomUUID } from 'node:crypto';
 import { Instrumentation } from './platform/instrumentation.js';
 import {
+  MemberStatisticsService,
+  SQLiteMemberStatisticsStore,
+} from './community/member-statistics.js';
+import {
   IntroductionService,
   type IntroductionGateway,
 } from './engagement/introductions.js';
@@ -506,6 +510,8 @@ export const createApplication = async (
   let broadcastStore: BroadcastPreferenceStore | undefined;
   let engagementRepository: EngagementRepository | undefined;
   let instrumentation: Instrumentation | undefined;
+  let memberStatisticsStore: SQLiteMemberStatisticsStore | undefined;
+  let memberStatistics: MemberStatisticsService | undefined;
   let rssStorage: RssStorage | undefined;
   let rssScheduler: RssScheduler | undefined;
   let delegatedPostService: DelegatedPostService | undefined;
@@ -653,6 +659,17 @@ export const createApplication = async (
             'Engagement storage close failed during shutdown.',
           );
         }
+      }
+      if (memberStatisticsStore !== undefined) {
+        try {
+          memberStatisticsStore.close();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'member_statistics_shutdown'),
+            'Member statistics storage close failed during shutdown.',
+          );
+        }
+        memberStatisticsStore = undefined;
       }
       if (rssScheduler !== undefined) {
         try {
@@ -821,12 +838,19 @@ export const createApplication = async (
         dependencies.createEngagementRepository?.(
           config.storage.databasePath,
         ) ?? new SQLiteEngagementRepository(config.storage.databasePath);
-      instrumentation = new Instrumentation({
-        record: async (event) => {
-          if (event.serverId === 'direct-message') return;
-          await engagementRepository?.recordAnalyticsEvent?.(event);
+      memberStatisticsStore = new SQLiteMemberStatisticsStore(
+        config.storage.databasePath,
+      );
+      memberStatistics = new MemberStatisticsService(memberStatisticsStore);
+      instrumentation = new Instrumentation(
+        {
+          record: async (event) => {
+            if (event.serverId === 'direct-message') return;
+            await engagementRepository?.recordAnalyticsEvent?.(event);
+          },
         },
-      });
+        memberStatistics,
+      );
       featureFlags = new FeatureFlagService(
         engagementRepository as Required<
           Pick<EngagementRepository, 'getFeatureFlags' | 'setFeatureFlag'>
@@ -1159,6 +1183,14 @@ export const createApplication = async (
         } catch (error) {
           logger?.warn({ error }, 'Engagement retention cleanup failed.');
         }
+      }
+      try {
+        await memberStatistics?.cleanup();
+      } catch (error) {
+        logger?.warn(
+          projectOperationalError(error, 'member_statistics_cleanup'),
+          'Member statistics retention cleanup failed.',
+        );
       }
     };
     const handlerState: {
@@ -1559,6 +1591,7 @@ export const createApplication = async (
           },
           faq,
           ...(knowledge === undefined ? {} : { knowledge }),
+          ...(memberStatistics === undefined ? {} : { memberStatistics }),
           ...(introductionService === undefined ? {} : { introductionService }),
           ...(suggestionService === undefined ? {} : { suggestionService }),
           ...(eventService === undefined ? {} : { eventService }),

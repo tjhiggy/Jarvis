@@ -119,6 +119,12 @@ invalid content fails closed with a sanitized error that names
   normal allowlist check. It returns at most five private, timestamped matches,
   neutralizes mentions, and never fetches arbitrary Discord history or searches
   another channel, server, DM, voice session, or deleted row.
+- **Optional member statistics boundary.** `/my-stats` is private and defaults
+  every member to opted out. When explicitly enabled, Jarvis stores only the
+  server ID, member ID, UTC day, command name, and aggregate count for up to 30
+  days. It stores no prompt, response, channel content, or cross-server total.
+  Disabling the feature deletes that member's retained counters in the current
+  server immediately while preserving other servers' independent preferences.
 - **Credential redaction.** Structured logs recursively redact values under
   keys named `token`, `apiKey`, or `authorization` (case-insensitive), including
   those keys in nested headers. This is not a general secret detector for
