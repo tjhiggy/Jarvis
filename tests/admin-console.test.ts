@@ -423,8 +423,11 @@ describe('admin console', () => {
 
     const page = await (await fetch(`${base}/`)).text();
     expect(page).toContain('New broadcast');
+    expect(page).toContain('id="admin-token"');
     expect(page).toContain('jarvis-testing');
     expect(page).not.toContain('channel-1');
+    expect(page).toContain("body.title+'\\n'");
+    expect(page).not.toContain("body.title+'\n'");
 
     expect(
       (
