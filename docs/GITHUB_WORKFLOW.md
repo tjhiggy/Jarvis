@@ -15,7 +15,10 @@ remains proprietary and production authority remains with the maintainer.
 - **Discussions**: design questions, community ideas, administrator guidance,
   and topics that are not yet actionable work.
 - **Projects**: prioritize and group issues into backlog, ready, active,
-  review, deployed, and closed views.
+  review, deployed, and closed views. Use a single Jarvis delivery board with
+  Status, Sprint, Phase, Priority, Area, Effort, and Release fields. The
+  default views are Backlog, Next Sprint, In Progress, Review, Ready to Ship,
+  and Released.
 - **Pull requests**: every source, documentation, workflow, or configuration
   change. Link the issue and include scope, safety impact, tests, and rollout
   notes.
@@ -37,6 +40,29 @@ remains proprietary and production authority remains with the maintainer.
 7. For production-impacting changes, back up SQLite, deploy the merged commit,
    and record the result in the PR or release notes.
 8. Close the Issue and update the Roadmap or Changelog when behavior ships.
+
+## Sprint and release operating model
+
+Use short, named sprints rather than an unbounded “in progress” queue. The
+current sequence is:
+
+1. **Sprint 1: v0.3.0 Platform Core** - Command Deck broadcast workflow,
+   release verification, deployment smoke test, and the v0.3.0 tag/release.
+2. **Sprint 2: Admin Console hardening** - safe channel selection, audit
+   visibility, configuration previews, backup/rollback, and mobile polish.
+3. **Sprint 3: Community engagement** - MuthaShip Coins and ambassador cards,
+   daily rewards, and bounded activity earning rules.
+4. **Sprint 4: Community intelligence** - approved knowledge, summaries,
+   recaps, and administrator analytics.
+5. **Sprint 5: Integrations** - Sleeper enhancements, GitHub read-only tools,
+   RSS/stream improvements, and MCP foundations.
+
+Only move an Issue to **Released** after its pull requests merge, the required
+tests/build/docs/diff gates pass, deployment smoke testing is recorded, and a
+version tag plus GitHub release are published. When the GitHub CLI reports that
+the `project` scope is missing, run `gh auth refresh --hostname github.com -s
+project` interactively, then retry project administration. Do not work around
+the missing scope by writing an unofficial tracker.
 
 ## Protection and automation
 
