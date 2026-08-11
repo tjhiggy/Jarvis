@@ -36,7 +36,7 @@ describe('admin console', () => {
     const console = await startAdminConsole({
       port: 0,
       snapshot: async () => ({ platform: { version: 'x', environment: 'test' }, database: 'healthy', engagement: { enabled: false, features: [] }, providers: { ai: 'ollama', openAiConfigured: false, ollamaConfigured: false, webSearchConfigured: false }, integrations: { rss: true, sleeper: false, github: false }, metrics: null }),
-      rssControl: { token: 'secret', preview: async (url) => { previewedUrl = url; return [{ title: 'Xbox update', url, publishedAt: '2026-08-10T12:00:00Z' }]; } },
+      rssControl: { token: 'secret', setPaused: async () => {}, preview: async (url) => { previewedUrl = url; return [{ title: 'Xbox update', url, publishedAt: '2026-08-10T12:00:00Z' }]; } },
     });
     const address = console.server.address(); const port = typeof address === 'object' && address !== null ? address.port : 0;
     const endpoint = `http://127.0.0.1:${port}/api/rss/preview`;
