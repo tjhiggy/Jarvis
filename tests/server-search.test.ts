@@ -37,11 +37,7 @@ describe('retained conversation search', () => {
   });
 });
 
-const message = (
-  id: number,
-  content: string,
-  role: 'user' | 'assistant',
-) => ({
+const message = (id: number, content: string, role: 'user' | 'assistant') => ({
   id,
   guildId: 'server-1',
   conversationId: 'channel-1',

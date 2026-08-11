@@ -174,7 +174,7 @@
 - Produces: tagged, deployed, smoke-tested Jarvis 0.7.0 and closed milestone 5.
 - Consumes: Tasks 1-6 and their migrations/configuration.
 
-- [ ] Update version metadata, changelog, roadmap, release notes, configuration, migration/backup/rollback instructions, and smoke checklist.
+- [x] Update version metadata, changelog, roadmap, release notes, configuration, migration/backup/rollback instructions, and smoke checklist.
 - [ ] Run `npm test`, build, lint, format check, docs check, high-severity audit, and diff check.
 - [ ] Review the complete release diff and correct every blocker.
 - [ ] Open and merge reviewed PRs, create a stopped production backup, deploy one process, register commands, and run health/Discord/Command Deck smoke tests.

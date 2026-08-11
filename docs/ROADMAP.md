@@ -34,6 +34,10 @@ dates, promises, or claims that an interface declaration is a working feature.
 - A localhost-authenticated Command Deck with safe health and delivery
   visibility, complete Discord/Deck command ownership decisions, and confirmed
   one-off broadcasts to friendly allowlisted destinations.
+- Community Intelligence with ranked approved knowledge, private current-context
+  retained search, opt-in private command totals, optional controlled image
+  generation, a measured local-model decision, and aggregate Command Deck
+  readiness visibility.
 
 ## Implemented, pending the next versioned release
 

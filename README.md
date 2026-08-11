@@ -18,7 +18,7 @@ second, imaginary moderator powers never. It answers questions in Discord,
 keeps bounded conversation history per channel or thread, and can use local or
 hosted AI without pretending an interface is a superpower.
 
-Release package: `0.6.0` | Runtime: Node.js 22+ | License: proprietary, except
+Release package: `0.7.0` | Runtime: Node.js 22+ | License: proprietary, except
 the Code of Conduct under CC BY 4.0
 
 Share the [Jarvis community platform overview](assets/jarvis-admin-overview-infographic-v3.png)
@@ -431,9 +431,21 @@ fallback. See the [command surface matrix](docs/COMMAND_SURFACE_MATRIX.md),
 [Command Deck guide](docs/ADMIN_CONSOLE.md), and
 [v0.6.0 release checklist](docs/releases/v0.6.0.md).
 
+## Community Intelligence
+
+v0.7.0 adds deterministic relevance for administrator-approved knowledge,
+private `/server-search` over only the current channel or thread's retained
+Jarvis conversation, and private opt-in `/my-stats` command totals. Optional
+administrator image generation remains disabled until explicitly configured
+for one allowlisted channel. The Command Deck reports readiness and aggregate
+counts without exposing member identity, prompts, source content, or
+conversation text. A measured local evaluation keeps `gemma3:4b` as the
+default Ollama model on this workstation. See the
+[v0.7.0 release checklist](docs/releases/v0.7.0.md).
+
 ## Release and license
 
-The current release package and changelog version is `0.6.0`. Release actions
+The current release package and changelog version is `0.7.0`. Release actions
 are maintainer-owned and documented in
 [Releases](docs/RELEASES.md) and the [Changelog](CHANGELOG.md).
 
