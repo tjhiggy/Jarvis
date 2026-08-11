@@ -106,7 +106,11 @@ import {
 } from './engagement/member-profiles.js';
 import { RssStorage } from './notifications/rss-storage.js';
 import { RssNotificationClient } from './notifications/rss-notifications.js';
-import { RssScheduler, type RssDigest } from './notifications/rss-scheduler.js';
+import {
+  renderRssDigest,
+  RssScheduler,
+  type RssDigest,
+} from './notifications/rss-scheduler.js';
 import { BroadcastPolicyService } from './notifications/broadcast-policy.js';
 import type { BroadcastStore } from './notifications/broadcast-store.js';
 import { SqliteBroadcastStore } from './notifications/sqlite-broadcast-store.js';
@@ -762,7 +766,7 @@ export const createApplication = async (
             )
               throw new Error('Configured RSS channel is unavailable.');
             await sendable.send({
-              content: formatRssDigest(digest),
+              content: digest.content,
               allowedMentions: { parse: [], repliedUser: false },
             });
           },
@@ -1495,23 +1499,7 @@ export const createApplication = async (
 };
 
 export const formatRssDigest = (digest: RssDigest): string => {
-  const header = '**RSS update**';
-  const entries: string[] = [];
-  let content = header;
-  for (const entry of digest.entries.slice(0, 5)) {
-    const rendered = renderRssDigestEntry(entry);
-    if (
-      rendered === undefined ||
-      content.length + 2 + rendered.length > 1_900
-    ) {
-      continue;
-    }
-    entries.push(rendered);
-    content += `\n\n${rendered}`;
-  }
-  return entries.length === 0
-    ? `${header}\nNo bounded entries available.`
-    : content;
+  return renderRssDigest(digest).content;
 };
 
 export const rssIntegrationHealth = (
@@ -1520,15 +1508,6 @@ export const rssIntegrationHealth = (
 ): 'ready' | 'unavailable' | 'not_configured' => {
   if (rssChannelId === '') return 'not_configured';
   return schedulerAvailable ? 'ready' : 'unavailable';
-};
-
-const boundedRssText = (value: string, limit: number): string =>
-  value.replace(/\s+/g, ' ').trim().slice(0, limit);
-
-const renderRssDigestEntry = (entry: RssDigest['entries'][number]) => {
-  const url = entry.url.trim();
-  if (url === '' || url.length > 400) return undefined;
-  return `**${boundedRssText(entry.sourceLabel, 64)}** · ${boundedRssText(entry.title, 180)}\n${url}\n${boundedRssText(entry.publishedAt, 64)}`;
 };
 
 type MemberProfileCapableRepository = Required<

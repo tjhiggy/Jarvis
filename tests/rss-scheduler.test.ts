@@ -22,11 +22,14 @@ describe('RssScheduler', () => {
       recordCompletedItem: () => true,
     };
     const client = {
-      fetch: vi
-        .fn()
-        .mockResolvedValue([
-          { id: 'a', title: 'Update', url: 'https://news.example.com/a' },
-        ]),
+      fetch: vi.fn().mockResolvedValue([
+        {
+          id: 'a',
+          title: 'Update',
+          url: 'https://news.example.com/a',
+          publishedAt: '2026-08-11T12:00:00Z',
+        },
+      ]),
     };
     const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
     const scheduler = schedulerFor(storage, client, publisher, 's');
@@ -199,12 +202,13 @@ describe('RssScheduler', () => {
       entries: [
         {
           ...item('oversized'),
+          deliveryKey: 'oversized',
           sourceLabel: 's'.repeat(500),
           title: 't'.repeat(1_000),
           url: `https://news.example.com/${'u'.repeat(2_000)}`,
           publishedAt: 'p'.repeat(500),
         },
-        { ...item('retained'), sourceLabel: 'News' },
+        { ...item('retained'), deliveryKey: 'retained', sourceLabel: 'News' },
       ],
     });
 
@@ -219,6 +223,53 @@ describe('RssScheduler', () => {
     expect(rssIntegrationHealth('', false)).toBe('not_configured');
     expect(rssIntegrationHealth('channel-1', false)).toBe('unavailable');
     expect(rssIntegrationHealth('channel-1', true)).toBe('ready');
+  });
+
+  it('releases digest claims omitted by rendering instead of completing them', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore(true);
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockResolvedValue([
+          item('delivered'),
+          {
+            ...item('too-large'),
+            url: `https://news.example.com/${'u'.repeat(500)}`,
+          },
+        ]),
+      },
+      publisher,
+      'server',
+      undefined,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+
+    expect(delivery.completeDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:delivered',
+      'lease:https://news.example.com/feed.xml:delivered',
+      expect.any(Date),
+    );
+    expect(delivery.completeDelivery).not.toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:too-large',
+      expect.anything(),
+      expect.any(Date),
+    );
+    expect(delivery.releaseDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:too-large',
+      'lease:https://news.example.com/feed.xml:too-large',
+      expect.any(Date),
+      undefined,
+    );
   });
 });
 

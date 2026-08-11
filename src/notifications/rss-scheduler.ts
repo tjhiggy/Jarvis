@@ -8,15 +8,47 @@ import type { BroadcastStore } from './broadcast-store.js';
 
 export interface RssDigestEntry extends RssNotification {
   readonly sourceLabel: string;
+  readonly deliveryKey: string;
 }
 
 export interface RssDigest {
   readonly entries: readonly RssDigestEntry[];
 }
 
-export interface RssSchedulerPublisher {
-  publish(channelId: string, digest: RssDigest): Promise<void>;
+export interface RssRenderedDigest {
+  readonly content: string;
+  readonly entries: readonly RssDigestEntry[];
+  readonly deliveryKeys: readonly string[];
 }
+
+export interface RssSchedulerPublisher {
+  publish(channelId: string, digest: RssRenderedDigest): Promise<void>;
+}
+
+export const renderRssDigest = (digest: RssDigest): RssRenderedDigest => {
+  const header = '**RSS update**';
+  const entries: RssDigestEntry[] = [];
+  let content = header;
+  for (const entry of digest.entries.slice(0, 5)) {
+    const rendered = renderRssDigestEntry(entry);
+    if (
+      rendered === undefined ||
+      content.length + 2 + rendered.length > 1_900
+    ) {
+      continue;
+    }
+    entries.push(entry);
+    content += `\n\n${rendered}`;
+  }
+  return {
+    content:
+      entries.length === 0
+        ? `${header}\nNo bounded entries available.`
+        : content,
+    entries,
+    deliveryKeys: entries.map((entry) => entry.deliveryKey),
+  };
+};
 
 export class RssScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -102,7 +134,7 @@ export class RssScheduler {
           claimed.push({
             key,
             lease,
-            entry: { ...item, sourceLabel: feed.label },
+            entry: { ...item, sourceLabel: feed.label, deliveryKey: key },
           });
         }
         if (
@@ -166,14 +198,17 @@ export class RssScheduler {
       if (!digestMode) {
         let published = 0;
         for (const [index, delivery] of claimed.entries()) {
+          const rendered = renderRssDigest({ entries: [delivery.entry] });
+          if (!rendered.deliveryKeys.includes(delivery.key)) {
+            await release([delivery]);
+            continue;
+          }
           if (!(await policyAllowsPost())) {
             await release(claimed.slice(index));
             return published;
           }
           try {
-            await this.publisher.publish(this.channelId, {
-              entries: [delivery.entry],
-            });
+            await this.publisher.publish(this.channelId, rendered);
           } catch {
             await release([delivery], 'network');
             await release(claimed.slice(index + 1));
@@ -184,15 +219,21 @@ export class RssScheduler {
         return published;
       }
 
+      const rendered = renderRssDigest({
+        entries: claimed.map(({ entry }) => entry),
+      });
+      if (rendered.deliveryKeys.length === 0) {
+        await release(claimed);
+        return 0;
+      }
+
       if (!(await policyAllowsPost())) {
         await release(claimed);
         return 0;
       }
 
       try {
-        await this.publisher.publish(this.channelId, {
-          entries: claimed.map(({ entry }) => entry),
-        });
+        await this.publisher.publish(this.channelId, rendered);
       } catch {
         await release(claimed, 'network');
         return 0;
@@ -200,7 +241,11 @@ export class RssScheduler {
 
       let published = 0;
       for (const delivery of claimed) {
-        if (await complete(delivery)) published += 1;
+        if (rendered.deliveryKeys.includes(delivery.key)) {
+          if (await complete(delivery)) published += 1;
+        } else {
+          await release([delivery]);
+        }
       }
       return published;
     } finally {
@@ -218,3 +263,12 @@ export class RssScheduler {
     this.timer = undefined;
   }
 }
+
+const boundedRssText = (value: string, limit: number): string =>
+  value.replace(/\s+/g, ' ').trim().slice(0, limit);
+
+const renderRssDigestEntry = (entry: RssDigestEntry): string | undefined => {
+  const url = entry.url.trim();
+  if (url === '' || url.length > 400) return undefined;
+  return `**${boundedRssText(entry.sourceLabel, 64)}** · ${boundedRssText(entry.title, 180)}\n${url}\n${boundedRssText(entry.publishedAt, 64)}`;
+};
