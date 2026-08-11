@@ -73,6 +73,7 @@ import { formatCommandPermissionRules } from './command-permissions.js';
 import { handleRssCommand } from './rss.js';
 import type { RssStorage } from '../notifications/rss-storage.js';
 import type { Instrumentation } from '../platform/instrumentation.js';
+import type { FeatureFlagService } from '../engagement/feature-flags.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -192,6 +193,7 @@ export interface CommandDependencies {
   readonly birthdayService?: BirthdayService;
   readonly proactiveService?: ProactiveEngagementService;
   readonly delegatedPostService?: DelegatedPostService;
+  readonly featureFlags?: Pick<FeatureFlagService, 'isEnabled' | 'set'>;
   readonly engagementHealth?: Readonly<{
     repository: Required<
       Pick<
@@ -206,7 +208,10 @@ export interface CommandDependencies {
         guildId: string,
         userId: string,
       ): Promise<EngagementDeletionOutcome>;
-      analyticsSummary?(guildId: string, since: Date): Promise<readonly import('../platform/metrics.js').MetricsSummaryRow[]>;
+      analyticsSummary?(
+        guildId: string,
+        since: Date,
+      ): Promise<readonly import('../platform/metrics.js').MetricsSummaryRow[]>;
     };
     schedulers?: Readonly<
       Record<string, EngagementSchedulerHealth | undefined>
@@ -499,17 +504,30 @@ const handleCommandInternal = async (
       await handleEngagementCommand(interaction, {
         enabled: dependencies.config.engagement?.enabled ?? false,
         adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        ...(dependencies.featureFlags === undefined
+          ? {}
+          : { featureFlags: dependencies.featureFlags }),
         platform: {
           version: dependencies.config.runtimeIdentity?.version ?? 'unknown',
-          deployment: dependencies.config.runtimeIdentity?.environment ?? 'unknown',
+          deployment:
+            dependencies.config.runtimeIdentity?.environment ?? 'unknown',
           provider: dependencies.config.ai.provider,
           openaiConfigured: dependencies.config.openai.apiKey.trim() !== '',
           ollamaConfigured: dependencies.config.ollama.baseUrl.trim() !== '',
-          webSearchConfigured: dependencies.config.webSearch.apiKey.trim() !== '',
+          webSearchConfigured:
+            dependencies.config.webSearch.apiKey.trim() !== '',
           integrations: [
-            ...(dependencies.config.engagement?.channels.rssId && dependencies.config.engagement.rssAllowedHosts.length > 0 ? ['RSS ready'] : []),
-            ...(dependencies.config.sleeper?.leagueId ? ['Sleeper Fantasy Football ready'] : []),
-            ...(dependencies.config.github?.owner && dependencies.config.github.repo ? ['GitHub read-only ready'] : []),
+            ...(dependencies.config.engagement?.channels.rssId &&
+            dependencies.config.engagement.rssAllowedHosts.length > 0
+              ? ['RSS ready']
+              : []),
+            ...(dependencies.config.sleeper?.leagueId
+              ? ['Sleeper Fantasy Football ready']
+              : []),
+            ...(dependencies.config.github?.owner &&
+            dependencies.config.github.repo
+              ? ['GitHub read-only ready']
+              : []),
             'SQLite database ready',
           ],
         },

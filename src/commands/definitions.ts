@@ -158,11 +158,18 @@ interface TriviaSubcommandDefinition {
 }
 interface EngagementSubcommandDefinition {
   readonly type: 1;
-  readonly name: 'status' | 'metrics' | 'pause' | 'resume' | 'delete' | 'proactive';
+  readonly name:
+    | 'status'
+    | 'metrics'
+    | 'pause'
+    | 'resume'
+    | 'delete'
+    | 'proactive'
+    | 'feature';
   readonly description: string;
   readonly options?: readonly {
     readonly type: 3;
-    readonly name: 'user_id' | 'action';
+    readonly name: 'user_id' | 'action' | 'name';
     readonly description: string;
     readonly required: boolean;
     readonly max_length: 20;
@@ -394,6 +401,33 @@ export const createCommandDefinitions = (
       name: 'knowledge',
       description: 'Search approved MuthaShip knowledge.',
       options: [
+        {
+          type: 1,
+          name: 'feature',
+          description: 'View or control a reviewed MuthaShip feature.',
+          options: [
+            {
+              type: 3,
+              name: 'action',
+              description: 'Choose a safe feature action.',
+              required: true,
+              max_length: 20,
+              choices: [
+                { name: 'Status', value: 'status' },
+                { name: 'Enable', value: 'enable' },
+                { name: 'Disable', value: 'disable' },
+              ],
+            },
+            {
+              type: 3,
+              name: 'name',
+              description: 'Reviewed feature name.',
+              required: true,
+              max_length: 20,
+              choices: [{ name: 'Member profiles', value: 'profiles' }],
+            },
+          ],
+        },
         {
           type: 1,
           name: 'query',
