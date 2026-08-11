@@ -400,13 +400,13 @@ configured `ALLOWED_CHANNEL_IDS` remains the outer destination allowlist;
 SQLite and the local Command Deck can pause or resume a configured category,
 but cannot widen that list. RSS begins with a baseline, so adding a feed never
 dumps old entries. Proactive text comes only from the approved local catalog,
-which rejects unsafe mentions. Recaps, event reminders, and birthdays recheck
-policy immediately before posting.
+which rejects unsafe mentions. Recaps, event reminders, birthdays, and trivia
+result cards recheck policy immediately before posting.
 
 `/notifications status`, `enable`, and `disable` are private crew controls for
-event-reminder and birthday mentions only. RSS, proactive, and recap posts are
-public channel broadcasts, so a personal switch would be a lie with a friendly
-button. Jarvis sends no unsolicited direct messages.
+event-reminder and birthday mentions only. RSS, proactive, recap, and trivia
+result cards are public channel broadcasts, so a personal switch would be a lie
+with a friendly button. Jarvis sends no unsolicited direct messages.
 
 Operators should start with the [v0.5.0 release checklist](docs/releases/v0.5.0.md),
 then use [Operations](docs/OPERATIONS.md) and the
