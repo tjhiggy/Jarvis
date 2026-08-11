@@ -8,6 +8,7 @@ describe('admin console', () => {
       engagement: { enabled: true, features: ['introductions'] },
       providers: { ai: 'ollama', openAiConfigured: false, ollamaConfigured: true, webSearchConfigured: false },
       integrations: { rss: true, sleeper: false, github: false }, metrics: { events: 2, failures: 0 },
+      rss: { paused: false, feeds: [{ label: 'News', url: 'https://news.example/feed.xml' }] },
     };
     const console = await startAdminConsole({ port: 0, snapshot: async () => snapshot });
     const address = console.server.address();
@@ -17,6 +18,8 @@ describe('admin console', () => {
     expect(await response.json()).toEqual(snapshot);
     const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
     expect(page).toContain('Jarvis Command Deck');
+    expect(page).toContain('controlRss');
+    expect(page).toContain('Pause');
     expect(page).not.toContain('api-key');
     await console.close();
   });
