@@ -20,6 +20,13 @@ import type { PlatformMetricsRepository } from '../platform/metrics.js';
 
 export type EngagementIdempotencyScope = 'interaction' | 'scheduled-job';
 
+/**
+ * A reminder is useful shortly after its due time, not as delayed unsolicited
+ * outreach. This grace covers a brief policy pause or restart before it is
+ * marked terminal without a Discord delivery.
+ */
+export const eventReminderRetryGraceMs = 15 * 60 * 1_000;
+
 export class EngagementRecordConflictError extends Error {}
 export class EngagementOptOutError extends Error {}
 export class EngagementEventClosedError extends Error {}
@@ -311,6 +318,13 @@ export interface EngagementRepository extends Partial<PlatformMetricsRepository>
     now: Date,
   ): Promise<boolean>;
   markEventReminderFailed?(
+    eventId: string,
+    guildId: string,
+    userId: string,
+    leaseToken: string,
+    now: Date,
+  ): Promise<boolean>;
+  releaseEventReminder?(
     eventId: string,
     guildId: string,
     userId: string,

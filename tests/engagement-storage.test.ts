@@ -561,6 +561,35 @@ describe('SQLiteEngagementRepository', () => {
     ).resolves.toMatchObject({ id: 'current-suggestion' });
   });
 
+  it('retains only current content-free delivery metric days', async () => {
+    await repository.recordDeliveryMetric({
+      serverId: 'server-1',
+      category: 'rss',
+      name: 'delivery_succeeded',
+      occurredAt: at(-2 * 24 * 60).toISOString(),
+    });
+    await repository.recordDeliveryMetric({
+      serverId: 'server-1',
+      category: 'rss',
+      name: 'delivery_succeeded',
+      occurredAt: at(20).toISOString(),
+    });
+
+    await repository.cleanup(at(10), 10);
+
+    await expect(
+      repository.deliveryMetricsSummary('server-1', at(-3 * 24 * 60)),
+    ).resolves.toEqual([
+      {
+        serverId: 'server-1',
+        category: 'rss',
+        eventName: 'delivery_succeeded',
+        count: 1,
+        durationMs: 0,
+      },
+    ]);
+  });
+
   it('keeps opt-out markers until an explicit opt-in clears them', async () => {
     await repository.setOptOut({
       guildId: 'guild-1',

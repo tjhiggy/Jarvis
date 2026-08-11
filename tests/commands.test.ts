@@ -19,6 +19,19 @@ import type { ReminderView } from '../src/reminders/reminder-types.js';
 const safeMentions = { parse: [], repliedUser: false };
 
 describe('command definitions', () => {
+  it('registers status enable and disable under notifications', () => {
+    const definitions = createCommandDefinitions(2_000, [
+      faqEntry('capabilities', 'Jarvis capabilities'),
+    ]);
+
+    const command = definitions.find((item) => item.name === 'notifications');
+    expect(command?.options?.map((option) => option.name)).toEqual([
+      'status',
+      'enable',
+      'disable',
+    ]);
+  });
+
   it('registers profile feature control under engagement, not knowledge', () => {
     const definitions = createCommandDefinitions(2_000, [
       {
@@ -73,6 +86,7 @@ describe('command definitions', () => {
       'profile',
       'roles',
       'rss',
+      'notifications',
       'config',
     ]);
     expect(definitions[0]).toMatchObject({
@@ -232,6 +246,7 @@ describe('command definitions', () => {
       'profile',
       'roles',
       'rss',
+      'notifications',
       'config',
     ]);
     expect(definitions[11]).toMatchObject({

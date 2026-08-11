@@ -1,0 +1,14 @@
+[
+  {
+    "id": "crew-check-in",
+    "category": "community",
+    "text": "Crew check-in: what is everyone playing, building, or exploring today?",
+    "active": true
+  },
+  {
+    "id": "weekly-win",
+    "category": "community",
+    "text": "MuthaShip prompt: share one win from this week so the crew can celebrate it.",
+    "active": true
+  }
+]

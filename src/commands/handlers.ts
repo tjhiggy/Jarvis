@@ -76,6 +76,8 @@ import type { Instrumentation } from '../platform/instrumentation.js';
 import type { FeatureFlagService } from '../engagement/feature-flags.js';
 import { handleMemberProfileCommand } from './member-profile.js';
 import type { MemberProfileService } from '../engagement/member-profiles.js';
+import { handleNotificationCommand } from './notifications.js';
+import type { BroadcastStore } from '../notifications/broadcast-store.js';
 
 export type { ReplyPayload } from '../discord/delivery.js';
 
@@ -188,6 +190,10 @@ export interface CommandDependencies {
   readonly rssStorage?: Pick<
     RssStorage,
     'addFeed' | 'listFeeds' | 'removeFeed' | 'setPaused'
+  >;
+  readonly broadcastStore?: Pick<
+    BroadcastStore,
+    'getMemberPreference' | 'setMemberPreference'
   >;
   readonly pollController?: PollController;
   readonly pollHealth?: Readonly<{
@@ -647,6 +653,13 @@ const handleCommandInternal = async (
         storage: dependencies.rssStorage,
         adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
         allowedHosts: dependencies.config.engagement?.rssAllowedHosts ?? [],
+      });
+      return;
+    case 'notifications':
+      await handleNotificationCommand(interaction, {
+        ...(dependencies.broadcastStore === undefined
+          ? {}
+          : { store: dependencies.broadcastStore }),
       });
       return;
     default:

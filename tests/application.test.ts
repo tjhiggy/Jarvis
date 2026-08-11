@@ -1,5 +1,5 @@
 import { GatewayIntentBits } from 'discord.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Logger } from 'pino';
 import type { AppConfig } from '../src/config/config.js';
 import { loadPersona, type TrustedPersona } from '../src/config/persona.js';
@@ -8,11 +8,21 @@ import type { FaqCatalog } from '../src/faq/faq-catalog.js';
 import type { PollController } from '../src/polls/poll-controller.js';
 import type { PollScheduler } from '../src/polls/poll-scheduler.js';
 import type { PollStore } from '../src/polls/poll-store.js';
+import type {
+  BroadcastPolicy,
+  BroadcastStore,
+} from '../src/notifications/broadcast-store.js';
+import type { ProactivePrompt } from '../src/notifications/proactive-catalog.js';
+import type { ProactiveEngagementService } from '../src/engagement/proactive.js';
+import { RssScheduler } from '../src/notifications/rss-scheduler.js';
+import { RssNotificationClient } from '../src/notifications/rss-notifications.js';
+import { RssStorage } from '../src/notifications/rss-storage.js';
 import { ReminderScheduler } from '../src/reminders/reminder-scheduler.js';
 import type { ReminderStore } from '../src/reminders/reminder-store.js';
 import type { ReminderView } from '../src/reminders/reminder-types.js';
 import {
   createApplication,
+  nextBroadcastEligibleAt,
   reportStartupFailure,
   type Application,
   type ApplicationDependencies,
@@ -79,6 +89,7 @@ const config: AppConfig = {
       rssId: '',
     },
     rssAllowedHosts: [],
+    proactiveCatalogPath: '',
     adminRoleIds: new Set(),
     recapSchedule: '',
     recapTimezone: 'UTC',
@@ -158,6 +169,495 @@ describe('reportStartupFailure', () => {
 });
 
 describe('createApplication', () => {
+  it('moves a cadence-eligible broadcast past its configured quiet hours', () => {
+    expect(
+      nextBroadcastEligibleAt(
+        {
+          serverId: 'server',
+          category: 'rss',
+          state: 'enabled',
+          channelId: 'channel',
+          timezone: 'UTC',
+          quietStartMinute: 9 * 60,
+          quietEndMinute: 10 * 60,
+          minimumIntervalSeconds: 0,
+          digestMode: false,
+          updatedAt: new Date('2026-08-11T08:00:00.000Z'),
+        },
+        undefined,
+        new Date('2026-08-11T09:30:00.000Z'),
+      ),
+    ).toEqual(new Date('2026-08-11T10:00:00.000Z'));
+  });
+
+  it('provisions shared policy for recap, event reminders, birthdays, and trivia before starting their schedulers', async () => {
+    const policies: BroadcastPolicy[] = [];
+    const application = await createTestApplication({
+      loadConfig: () => ({
+        ...config,
+        security: {
+          ...config.security,
+          allowedChannelIds: new Set([
+            'recaps',
+            'events',
+            'birthdays',
+            'activity',
+          ]),
+        },
+        engagement: {
+          ...config.engagement,
+          enabled: true,
+          channels: {
+            ...config.engagement.channels,
+            recapId: 'recaps',
+            eventId: 'events',
+            birthdayId: 'birthdays',
+            activityId: 'activity',
+          },
+          recapSchedule: 'MONDAY 12:00',
+        },
+      }),
+      loadPersona: async () => ({}) as TrustedPersona,
+      createEngagementRepository: () =>
+        ({
+          getFeatureFlags: async () => [],
+          setFeatureFlag: async () => undefined,
+          getBirthday: async () => undefined,
+          saveBirthday: async (record: any) => record,
+          deleteBirthday: async () => false,
+          listDueBirthdays: async () => [],
+          claimBirthdayAnnouncement: async () => false,
+          engagementPaused: async () => false,
+          cleanup: async () => 0,
+          closeConnection: async () => undefined,
+        }) as any,
+      createBroadcastStore: () =>
+        broadcastStore({
+          getPolicy: async (_serverId, category) =>
+            policies.find((policy) => policy.category === category),
+          setPolicy: async (policy) => {
+            policies.push(policy);
+          },
+        }),
+      createStore: () => conversationStore(),
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: () => undefined,
+        login: async () => undefined,
+        destroy: () => undefined,
+      }),
+      timers: inertTimers(),
+    });
+
+    expect(policies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: 'recap', channelId: 'recaps' }),
+        expect.objectContaining({
+          category: 'event_reminder',
+          channelId: 'events',
+        }),
+        expect.objectContaining({
+          category: 'birthday',
+          channelId: 'birthdays',
+        }),
+        expect.objectContaining({ category: 'trivia', channelId: 'activity' }),
+      ]),
+    );
+    await application.shutdown();
+  });
+
+  it('rechecks the persisted engagement pause before proactive channel delivery', async () => {
+    let paused = false;
+    let posted = 0;
+    let proactiveService: ProactiveEngagementService | undefined;
+    let policy: BroadcastPolicy | undefined;
+    const application = await createTestApplication({
+      loadConfig: () => ({
+        ...config,
+        security: {
+          ...config.security,
+          allowedChannelIds: new Set(['channel-id']),
+        },
+        engagement: {
+          ...config.engagement,
+          enabled: true,
+          channels: { ...config.engagement.channels, activityId: 'channel-id' },
+          proactiveCatalogPath: './config/approved-prompts.json',
+        },
+      }),
+      loadPersona: async () => ({}) as TrustedPersona,
+      loadProactiveCatalog: async () => [
+        {
+          id: 'crew-check-in',
+          category: 'community',
+          text: 'Crew check-in: what is everyone playing today?',
+          active: true,
+        },
+      ],
+      createEngagementRepository: () =>
+        ({
+          getFeatureFlags: async () => [],
+          setFeatureFlag: async () => undefined,
+          getProactiveState: async () => ({ state: 'enabled' as const }),
+          setProactiveState: async () => undefined,
+          recordProactivePosted: async () => undefined,
+          engagementPaused: async () => paused,
+          cleanup: async () => 0,
+          closeConnection: async () => undefined,
+        }) as any,
+      createBroadcastStore: () =>
+        broadcastStore({
+          getPolicy: async () => policy,
+          setPolicy: async (next) => {
+            policy = next;
+          },
+          claimDelivery: async () => {
+            paused = true;
+            return 'lease-token';
+          },
+          completeDelivery: async () => true,
+          releaseDelivery: async () => true,
+        }),
+      createProactiveScheduler: (service) => {
+        proactiveService = service;
+        return { start: () => undefined, stop: async () => undefined };
+      },
+      createStore: () => conversationStore(),
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        channels: {
+          fetch: async () => ({
+            send: async () => {
+              posted += 1;
+            },
+          }),
+        },
+        on: () => undefined,
+        login: async () => undefined,
+        destroy: () => undefined,
+      }),
+      timers: inertTimers(),
+    });
+
+    await expect(proactiveService!.tick()).resolves.toBe(false);
+    expect(posted).toBe(0);
+    await application.shutdown();
+  });
+
+  it('waits for a blocked proactive scheduler before closing broadcast storage', async () => {
+    const events: string[] = [];
+    let releaseStop = (): void => undefined;
+    let signalStopStarted = (): void => undefined;
+    const stopBlocked = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    const stopStarted = new Promise<void>((resolve) => {
+      signalStopStarted = resolve;
+    });
+    const application = await createTestApplication({
+      loadConfig: () => ({
+        ...config,
+        security: {
+          ...config.security,
+          allowedChannelIds: new Set(['channel-id']),
+        },
+        engagement: {
+          ...config.engagement,
+          enabled: true,
+          channels: { ...config.engagement.channels, activityId: 'channel-id' },
+          proactiveCatalogPath: './config/approved-prompts.json',
+        },
+      }),
+      loadPersona: async () => ({}) as TrustedPersona,
+      loadProactiveCatalog: async () => [
+        {
+          id: 'crew-check-in',
+          category: 'community',
+          text: 'Crew check-in: what is everyone playing today?',
+          active: true,
+        },
+      ],
+      createEngagementRepository: () =>
+        ({
+          getFeatureFlags: async () => [],
+          setFeatureFlag: async () => undefined,
+          getProactiveState: async () => ({ state: 'disabled' as const }),
+          setProactiveState: async () => undefined,
+          recordProactivePosted: async () => undefined,
+          engagementPaused: async () => false,
+          cleanup: async () => 0,
+          closeConnection: async () => undefined,
+        }) as any,
+      createBroadcastStore: () =>
+        broadcastStore({
+          getPolicy: async () => undefined,
+          setPolicy: async () => undefined,
+          close: async () => {
+            events.push('broadcast-store-close');
+          },
+        }),
+      createProactiveScheduler: () => ({
+        start: () => {
+          events.push('proactive-start');
+        },
+        stop: async () => {
+          events.push('proactive-stop-start');
+          signalStopStarted();
+          await stopBlocked;
+          events.push('proactive-stop-end');
+        },
+      }),
+      createStore: () => conversationStore(),
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: () => undefined,
+        login: async () => undefined,
+        destroy: () => undefined,
+      }),
+      timers: inertTimers(),
+    });
+
+    const stopping = application.shutdown();
+    await stopStarted;
+    expect(events).toEqual(['proactive-start', 'proactive-stop-start']);
+
+    releaseStop();
+    await stopping;
+    expect(events).toEqual([
+      'proactive-start',
+      'proactive-stop-start',
+      'proactive-stop-end',
+      'broadcast-store-close',
+    ]);
+  });
+
+  it('stops RSS scheduling before closing RSS storage during shutdown', async () => {
+    const events: string[] = [];
+    const stop = vi
+      .spyOn(RssScheduler.prototype, 'stop')
+      .mockImplementation(async () => {
+        events.push('rss-stop');
+      });
+    const close = vi
+      .spyOn(RssStorage.prototype, 'close')
+      .mockImplementation(() => {
+        events.push('rss-storage-close');
+      });
+    try {
+      const application = await createTestApplication({
+        loadConfig: () => ({
+          ...config,
+          engagement: {
+            ...config.engagement,
+            enabled: true,
+            channels: { ...config.engagement.channels, rssId: 'channel-id' },
+            rssAllowedHosts: ['news.example.com'],
+            adminRoleIds: new Set(['12345678901234567']),
+          },
+        }),
+        loadPersona: async () => ({}) as TrustedPersona,
+        createStore: () => conversationStore(),
+        createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+        createDiscordClient: () => ({
+          user: { id: 'bot-id' },
+          on: () => undefined,
+          login: async () => undefined,
+          destroy: () => undefined,
+        }),
+        timers: inertTimers(),
+      });
+
+      await application.shutdown();
+      expect(events).toEqual(['rss-stop', 'rss-storage-close']);
+    } finally {
+      stop.mockRestore();
+      close.mockRestore();
+    }
+  });
+
+  it('drains an in-flight RSS tick before closing RSS storage during shutdown', async () => {
+    let rssInterval: (() => void) | undefined;
+    let releaseFetch = (): void => undefined;
+    const fetchStarted = deferred<void>();
+    const fetchBlocked = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    const storageClosed = vi.fn();
+    const setIntervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((
+      callback: () => void,
+      delay?: number,
+    ) => {
+      if (delay === 300_000) rssInterval = callback;
+      return 1 as unknown as ReturnType<typeof setInterval>;
+    }) as typeof setInterval);
+    const clearIntervalSpy = vi
+      .spyOn(global, 'clearInterval')
+      .mockImplementation(() => undefined);
+    const listFeeds = vi
+      .spyOn(RssStorage.prototype, 'listFeeds')
+      .mockReturnValue([
+        {
+          serverId: 'guild-id',
+          url: 'https://news.example.com/feed.xml',
+          label: 'News',
+          paused: false,
+          baselined: true,
+        },
+      ]);
+    const fetch = vi
+      .spyOn(RssNotificationClient.prototype, 'fetch')
+      .mockImplementation(async () => {
+        fetchStarted.resolve();
+        await fetchBlocked;
+        return [];
+      });
+    const close = vi
+      .spyOn(RssStorage.prototype, 'close')
+      .mockImplementation(storageClosed);
+    try {
+      const application = await createTestApplication({
+        loadConfig: () => ({
+          ...config,
+          engagement: {
+            ...config.engagement,
+            enabled: true,
+            channels: { ...config.engagement.channels, rssId: 'channel-id' },
+            rssAllowedHosts: ['news.example.com'],
+            adminRoleIds: new Set(['12345678901234567']),
+          },
+        }),
+        loadPersona: async () => ({}) as TrustedPersona,
+        createStore: () => conversationStore(),
+        createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+        createDiscordClient: () => ({
+          user: { id: 'bot-id' },
+          on: () => undefined,
+          login: async () => undefined,
+          destroy: () => undefined,
+        }),
+        timers: inertTimers(),
+      });
+
+      rssInterval?.();
+      await fetchStarted.promise;
+      const stopping = application.shutdown();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(storageClosed).not.toHaveBeenCalled();
+
+      releaseFetch();
+      await stopping;
+      expect(storageClosed).toHaveBeenCalledOnce();
+    } finally {
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+      listFeeds.mockRestore();
+      fetch.mockRestore();
+      close.mockRestore();
+    }
+  });
+
+  it('loads the configured approved proactive catalog before application startup', async () => {
+    const catalogPaths: string[] = [];
+    const application = await createTestApplication({
+      loadConfig: () => ({
+        ...config,
+        engagement: {
+          ...config.engagement,
+          proactiveCatalogPath: './config/approved-prompts.json',
+        },
+      }),
+      loadPersona: async () => ({}) as TrustedPersona,
+      loadProactiveCatalog: async (path) => {
+        catalogPaths.push(path);
+        return [
+          {
+            id: 'crew-check-in',
+            category: 'community',
+            text: 'Crew check-in: what is everyone playing today?',
+            active: true,
+          },
+        ] satisfies readonly ProactivePrompt[];
+      },
+      createStore: () => conversationStore(),
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: () => undefined,
+        login: async () => undefined,
+        destroy: () => undefined,
+      }),
+      timers: inertTimers(),
+    });
+
+    expect(catalogPaths).toEqual(['./config/approved-prompts.json']);
+    await application.shutdown();
+  });
+
+  it('shares the configured database with notification preferences and closes it after active command work drains', async () => {
+    const events: string[] = [];
+    const listeners = new Map<string, (...args: unknown[]) => unknown>();
+    let releaseResponse = (): void => undefined;
+    let signalReplyStarted = (): void => undefined;
+    const responseCompleted = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    const replyStarted = new Promise<void>((resolve) => {
+      signalReplyStarted = () => resolve();
+    });
+    const application = await createTestApplication({
+      loadConfig: () => config,
+      loadPersona: async () => ({}) as TrustedPersona,
+      createStore: () => conversationStore(),
+      createReminderStore: () => reminderStore(),
+      createBroadcastStore: (path) => {
+        events.push(`broadcast-store:${path}`);
+        return broadcastStore({
+          close: async () => {
+            events.push('broadcast-store-close');
+          },
+        });
+      },
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: (event, listener) => {
+          listeners.set(event, listener);
+        },
+        login: async () => undefined,
+        destroy: () => undefined,
+      }),
+    });
+
+    listeners.get('interactionCreate')?.({
+      isChatInputCommand: () => true,
+      id: 'notifications-1',
+      commandName: 'notifications',
+      guildId: 'guild-id',
+      channelId: 'channel-id',
+      channel: { parentId: null, isThread: () => false },
+      user: { id: 'crew-member-1' },
+      options: { getSubcommand: () => 'status', getString: () => null },
+      deferReply: async () => undefined,
+      fetchReply: async () => ({ id: 'reply-id' }),
+      reply: async () => {
+        signalReplyStarted();
+        await responseCompleted;
+      },
+    });
+    await replyStarted;
+    const stopping = application.shutdown();
+    expect(events).toEqual(['broadcast-store::memory:']);
+    releaseResponse();
+    await stopping;
+    expect(events).toEqual([
+      'broadcast-store::memory:',
+      'broadcast-store-close',
+    ]);
+  });
+
   it('opens reminder storage before login and constructs post-login runtime in order', async () => {
     const events: string[] = [];
     const gateway = {
@@ -1443,6 +1943,26 @@ function reminderStore(overrides: Partial<ReminderStore> = {}): ReminderStore {
     }),
     healthCheck: async () => true,
     closeConnection: async () => undefined,
+    ...overrides,
+  };
+}
+
+function broadcastStore(
+  overrides: Partial<BroadcastStore & { close(): Promise<void> }> = {},
+): BroadcastStore & { close(): Promise<void> } {
+  return {
+    getPolicy: async () => undefined,
+    setPolicy: async () => undefined,
+    getMemberPreference: async () => undefined,
+    setMemberPreference: async () => undefined,
+    claimDelivery: async () => undefined,
+    completeDelivery: async () => false,
+    releaseDelivery: async () => false,
+    deliveryHealth: async () => undefined,
+    latestDeliveryHealth: async () => undefined,
+    getLatestCompletedAt: async () => undefined,
+    cleanup: async () => 0,
+    close: async () => undefined,
     ...overrides,
   };
 }

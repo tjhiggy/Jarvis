@@ -80,6 +80,7 @@ describe('registerCommands', () => {
       'profile',
       'roles',
       'rss',
+      'notifications',
       'config',
     ]);
     expect(JSON.stringify(calls[0]?.options.body)).not.toContain(
@@ -150,6 +151,7 @@ describe('registerCommands', () => {
       'profile',
       'roles',
       'rss',
+      'notifications',
       'config',
     ]);
     const payload = JSON.stringify(calls[0]?.options.body);

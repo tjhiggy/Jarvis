@@ -16,11 +16,16 @@ describe('admin console', () => {
         ollamaConfigured: true,
         webSearchConfigured: false,
       },
-      integrations: { rss: true, sleeper: false, github: false },
+      integrations: { rss: 'ready', sleeper: false, github: false },
       metrics: { events: 2, failures: 0 },
       rss: {
         paused: false,
-        feeds: [{ label: 'News', url: 'https://news.example/feed.xml' }],
+        feeds: [
+          {
+            label: 'News',
+            url: 'https://operator:token@news.example/feed.xml?key=secret',
+          },
+        ],
       },
     };
     const console = await startAdminConsole({
@@ -32,11 +37,18 @@ describe('admin console', () => {
       typeof address === 'object' && address !== null ? address.port : 0;
     const response = await fetch(`http://127.0.0.1:${port}/api/status`);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(snapshot);
+    const statusBody = await response.text();
+    expect(JSON.parse(statusBody)).toEqual({
+      ...snapshot,
+      rss: { paused: false },
+    });
+    expect(statusBody).not.toMatch(/operator|token|key=|feed\.xml/);
     const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
     expect(page).toContain('Jarvis Command Deck');
-    expect(page).toContain('controlRss');
-    expect(page).toContain('Pause');
+    expect(page).toContain('controlBroadcast');
+    expect(page).toContain('RSS preview');
+    expect(page).toContain('saving establishes a baseline');
+    expect(page).toContain('body.items.map');
     expect(page).not.toContain('api-key');
     await console.close();
   });
@@ -54,7 +66,7 @@ describe('admin console', () => {
           ollamaConfigured: false,
           webSearchConfigured: false,
         },
-        integrations: { rss: false, sleeper: false, github: false },
+        integrations: { rss: 'not_configured', sleeper: false, github: false },
         metrics: null,
       }),
     });
@@ -81,7 +93,7 @@ describe('admin console', () => {
           ollamaConfigured: false,
           webSearchConfigured: false,
         },
-        integrations: { rss: true, sleeper: false, github: false },
+        integrations: { rss: 'ready', sleeper: false, github: false },
         metrics: null,
       }),
       rssControl: {
@@ -89,9 +101,11 @@ describe('admin console', () => {
         setPaused: async () => {},
         preview: async (url) => {
           previewedUrl = url;
-          return [
-            { title: 'Xbox update', url, publishedAt: '2026-08-10T12:00:00Z' },
-          ];
+          return Array.from({ length: 6 }, (_, index) => ({
+            title: `Xbox update ${index + 1}`,
+            url: `${url}/${index + 1}`,
+            publishedAt: `2026-08-10T12:00:0${index}Z`,
+          }));
         },
       },
     });
@@ -121,13 +135,264 @@ describe('admin console', () => {
       url: 'https://news.example/feed.xml',
       items: [
         {
-          title: 'Xbox update',
-          url: 'https://news.example/feed.xml',
+          title: 'Xbox update 1',
+          url: 'https://news.example/feed.xml/1',
           publishedAt: '2026-08-10T12:00:00Z',
+        },
+        {
+          title: 'Xbox update 2',
+          url: 'https://news.example/feed.xml/2',
+          publishedAt: '2026-08-10T12:00:01Z',
+        },
+        {
+          title: 'Xbox update 3',
+          url: 'https://news.example/feed.xml/3',
+          publishedAt: '2026-08-10T12:00:02Z',
+        },
+        {
+          title: 'Xbox update 4',
+          url: 'https://news.example/feed.xml/4',
+          publishedAt: '2026-08-10T12:00:03Z',
+        },
+        {
+          title: 'Xbox update 5',
+          url: 'https://news.example/feed.xml/5',
+          publishedAt: '2026-08-10T12:00:04Z',
         },
       ],
     });
     expect(previewedUrl).toBe('https://news.example/feed.xml');
     await console.close();
   });
+
+  it('marks RSS unavailable with actionable setup guidance', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () =>
+        ({
+          platform: { version: 'x', environment: 'test' },
+          database: 'healthy',
+          engagement: { enabled: false, features: [] },
+          providers: {
+            ai: 'ollama',
+            openAiConfigured: false,
+            ollamaConfigured: false,
+            webSearchConfigured: false,
+          },
+          integrations: { rss: 'unavailable', sleeper: false, github: false },
+          metrics: null,
+        }) as unknown as AdminConsoleSnapshot,
+    });
+    const address = console.server.address();
+    const port =
+      typeof address === 'object' && address !== null ? address.port : 0;
+    const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+
+    expect(page).toContain('RSS: unavailable (configure approved RSS hosts)');
+    await console.close();
+  });
+
+  it('projects safe shipboard broadcast details without IDs or broadcast content', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () =>
+        ({
+          platform: { version: '0.5.0', environment: 'test' },
+          database: 'healthy',
+          engagement: { enabled: true, features: [] },
+          providers: {
+            ai: 'ollama',
+            openAiConfigured: false,
+            ollamaConfigured: true,
+            webSearchConfigured: false,
+          },
+          integrations: { rss: 'ready', sleeper: false, github: false },
+          metrics: { events: 2, failures: 0 },
+          broadcasts: {
+            categories: [
+              {
+                category: 'rss',
+                label: 'RSS',
+                state: 'enabled',
+                destination: '#jarvis-updates',
+                quietHours: '22:00 to 07:00 America/New_York',
+                cadence: '1 hour',
+                nextEligibleAt: '2026-08-11T17:00:00.000Z',
+                lastAttemptAt: '2026-08-11T16:00:00.000Z',
+                lastSuccessAt: '2026-08-11T16:00:01.000Z',
+                errorCategory: 'network',
+                health: 'ready',
+              },
+            ],
+            last7Days: [
+              { category: 'rss', eventName: 'delivery_succeeded', count: 2 },
+            ],
+            last30Days: [
+              { category: 'rss', eventName: 'delivery_succeeded', count: 3 },
+            ],
+          },
+          rawChannelId: '1536175231373148181',
+          prompt: 'never show this source content',
+        }) as unknown as AdminConsoleSnapshot,
+    });
+    const address = console.server.address();
+    const port =
+      typeof address === 'object' && address !== null ? address.port : 0;
+    const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+
+    expect(page).toContain('#jarvis-updates');
+    expect(page).toContain('Next eligible');
+    expect(page).toContain('Last success');
+    expect(page).toContain('delivery_succeeded');
+    expect(page).not.toContain('1536175231373148181');
+    expect(page).not.toContain('never show this source content');
+    expect(page).not.toContain('guild');
+    await console.close();
+  });
+
+  it('requires a short-lived single-use confirmation for an allowlisted broadcast state change', async () => {
+    const writes: Array<{ category: string; state: string }> = [];
+    let now = new Date('2026-08-11T16:00:00.000Z');
+    const console = await startAdminConsole({
+      port: 0,
+      now: () => now,
+      snapshot: async () => safeSnapshot(),
+      broadcastControl: {
+        token: 'local-token',
+        allowedCategories: ['rss'],
+        setState: async (category, state) => {
+          writes.push({ category, state });
+        },
+      },
+    });
+    const address = console.server.address();
+    const port =
+      typeof address === 'object' && address !== null ? address.port : 0;
+    const base = `http://127.0.0.1:${port}`;
+
+    expect(
+      (
+        await fetch(`${base}/api/broadcast/rss/pause`, {
+          method: 'POST',
+          headers: { authorization: 'Bearer local-token' },
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await fetch(`${base}/api/broadcast/recap/pause`, {
+          method: 'POST',
+          headers: { authorization: 'Bearer local-token' },
+        })
+      ).status,
+    ).toBe(403);
+
+    const confirmation = await fetch(`${base}/api/broadcast/rss/confirmation`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer local-token',
+        'x-broadcast-action': 'pause',
+      },
+    });
+    expect(confirmation.status).toBe(200);
+    const { nonce } = (await confirmation.json()) as { nonce: string };
+    const pause = () =>
+      fetch(`${base}/api/broadcast/rss/pause`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer local-token',
+          'x-confirmation-nonce': nonce,
+        },
+      });
+
+    expect((await pause()).status).toBe(200);
+    expect((await pause()).status).toBe(409);
+    expect(writes).toEqual([{ category: 'rss', state: 'paused' }]);
+
+    const triviaConfirmation = await fetch(
+      `${base}/api/broadcast/trivia/confirmation`,
+      {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer local-token',
+          'x-broadcast-action': 'pause',
+        },
+      },
+    );
+    expect(triviaConfirmation.status).toBe(403);
+
+    const expires = await fetch(`${base}/api/broadcast/rss/confirmation`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer local-token',
+        'x-broadcast-action': 'resume',
+      },
+    });
+    const { nonce: expiredNonce } = (await expires.json()) as { nonce: string };
+    now = new Date(now.getTime() + 61_000);
+    expect(
+      (
+        await fetch(`${base}/api/broadcast/rss/resume`, {
+          method: 'POST',
+          headers: {
+            authorization: 'Bearer local-token',
+            'x-confirmation-nonce': expiredNonce,
+          },
+        })
+      ).status,
+    ).toBe(401);
+    await console.close();
+  });
+
+  it('binds a confirmation nonce to its exact state change', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      broadcastControl: {
+        token: 'local-token',
+        allowedCategories: ['rss'],
+        setState: async () => undefined,
+      },
+    });
+    const address = console.server.address();
+    const port =
+      typeof address === 'object' && address !== null ? address.port : 0;
+    const base = `http://127.0.0.1:${port}`;
+    const confirmation = await fetch(`${base}/api/broadcast/rss/confirmation`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer local-token',
+        'x-broadcast-action': 'pause',
+      },
+    });
+    const { nonce } = (await confirmation.json()) as { nonce: string };
+    expect(
+      (
+        await fetch(`${base}/api/broadcast/rss/resume`, {
+          method: 'POST',
+          headers: {
+            authorization: 'Bearer local-token',
+            'x-confirmation-nonce': nonce,
+          },
+        })
+      ).status,
+    ).toBe(401);
+    await console.close();
+  });
 });
+
+function safeSnapshot(): AdminConsoleSnapshot {
+  return {
+    platform: { version: '0.5.0', environment: 'test' },
+    database: 'healthy',
+    engagement: { enabled: false, features: [] },
+    providers: {
+      ai: 'ollama',
+      openAiConfigured: false,
+      ollamaConfigured: false,
+      webSearchConfigured: false,
+    },
+    integrations: { rss: 'ready', sleeper: false, github: false },
+    metrics: null,
+  };
+}

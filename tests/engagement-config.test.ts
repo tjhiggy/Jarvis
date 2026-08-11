@@ -28,6 +28,7 @@ describe('engagement configuration', () => {
         rssId: '',
       },
       rssAllowedHosts: [],
+      proactiveCatalogPath: '',
       adminRoleIds: expect.anything(),
       recapSchedule: '',
       recapTimezone: 'UTC',

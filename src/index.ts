@@ -97,6 +97,7 @@ import {
 import {
   DurableProactiveScheduler,
   ProactiveEngagementService,
+  type ProactiveScheduler,
 } from './engagement/proactive.js';
 import { DelegatedPostService } from './engagement/delegated-posts.js';
 import { FeatureFlagService } from './engagement/feature-flags.js';
@@ -106,9 +107,31 @@ import {
 } from './engagement/member-profiles.js';
 import { RssStorage } from './notifications/rss-storage.js';
 import { RssNotificationClient } from './notifications/rss-notifications.js';
-import { RssScheduler } from './notifications/rss-scheduler.js';
+import {
+  loadProactiveCatalog,
+  type ProactivePrompt,
+} from './notifications/proactive-catalog.js';
+import {
+  renderRssDigest,
+  RssScheduler,
+  type RssDigest,
+} from './notifications/rss-scheduler.js';
+import {
+  BroadcastPolicyService,
+  type BroadcastCategory,
+} from './notifications/broadcast-policy.js';
+import type {
+  BroadcastDeliveryHealth,
+  BroadcastPolicy,
+  BroadcastStore,
+} from './notifications/broadcast-store.js';
+import { SqliteBroadcastStore } from './notifications/sqlite-broadcast-store.js';
 import { HttpGitHubReadOnlyService } from './github/github-service.js';
-import { startAdminConsole, type AdminConsole } from './admin/admin-console.js';
+import {
+  startAdminConsole,
+  type AdminConsole,
+  type AdminConsoleBroadcastCategory,
+} from './admin/admin-console.js';
 
 const cleanupIntervalMs = 24 * 60 * 60 * 1_000;
 const safeConfigurationError =
@@ -126,6 +149,8 @@ interface RuntimeDiscordClient {
   login(token: string): Promise<unknown>;
   destroy(): void;
 }
+
+type BroadcastPreferenceStore = BroadcastStore & { close(): Promise<void> };
 
 interface IntroductionChannel {
   send(
@@ -244,6 +269,12 @@ export interface ApplicationDependencies {
   readonly loadKnowledgeCatalog?: (
     path: string,
   ) => Promise<ApprovedKnowledgeCatalog>;
+  readonly loadProactiveCatalog?: (
+    path: string,
+  ) => Promise<readonly ProactivePrompt[]>;
+  readonly createProactiveScheduler?: (
+    service: ProactiveEngagementService,
+  ) => ProactiveScheduler;
   readonly createStore?: (
     databasePath: string,
     maxStoredMessages: number,
@@ -269,6 +300,9 @@ export interface ApplicationDependencies {
     }>,
   ) => PollScheduler;
   readonly createReminderStore?: (databasePath: string) => ReminderStore;
+  readonly createBroadcastStore?: (
+    databasePath: string,
+  ) => BroadcastPreferenceStore;
   readonly createEngagementRepository?: (
     databasePath: string,
   ) => EngagementRepository;
@@ -442,6 +476,8 @@ export const createApplication = async (
   const faqCatalogLoader = dependencies.loadFaqCatalog ?? loadFaqCatalog;
   const knowledgeCatalogLoader =
     dependencies.loadKnowledgeCatalog ?? loadKnowledgeCatalog;
+  const proactiveCatalogLoader =
+    dependencies.loadProactiveCatalog ?? loadProactiveCatalog;
   const storeFactory =
     dependencies.createStore ??
     ((path, maxStoredMessages) =>
@@ -466,6 +502,7 @@ export const createApplication = async (
   let pollScheduler: PollScheduler | undefined;
   let reminderStore: ReminderStore | undefined;
   let reminderScheduler: ReminderScheduler | undefined;
+  let broadcastStore: BroadcastPreferenceStore | undefined;
   let engagementRepository: EngagementRepository | undefined;
   let instrumentation: Instrumentation | undefined;
   let rssStorage: RssStorage | undefined;
@@ -476,7 +513,7 @@ export const createApplication = async (
   let triviaService: TriviaService | undefined;
   let birthdayService: BirthdayServiceType | undefined;
   let birthdayScheduler: BirthdayScheduler | undefined;
-  let proactiveScheduler: DurableProactiveScheduler | undefined;
+  let proactiveScheduler: ProactiveScheduler | undefined;
   let proactiveService: ProactiveEngagementService | undefined;
   let memberProfileService: MemberProfileService | undefined;
   let triviaScheduler: TriviaExpiryScheduler | undefined;
@@ -584,6 +621,17 @@ export const createApplication = async (
 
       await drainActiveWork();
 
+      if (broadcastStore !== undefined) {
+        try {
+          await broadcastStore.close();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'broadcast_storage_shutdown'),
+            'Notification preference storage close failed during shutdown.',
+          );
+        }
+      }
+
       if (reminderStore !== undefined) {
         try {
           await reminderStore.closeConnection();
@@ -605,6 +653,16 @@ export const createApplication = async (
           );
         }
       }
+      if (rssScheduler !== undefined) {
+        try {
+          await rssScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'rss_scheduler_shutdown'),
+            'RSS scheduler stop failed during shutdown.',
+          );
+        }
+      }
       if (rssStorage !== undefined) {
         try {
           rssStorage.close();
@@ -615,8 +673,6 @@ export const createApplication = async (
           );
         }
       }
-      rssScheduler?.stop();
-
       if (pollStore !== undefined) {
         try {
           await pollStore.closeConnection();
@@ -654,6 +710,10 @@ export const createApplication = async (
     logger = loggerFactory(config.logging.level);
     const persona = await personaLoader(config.persona.promptPath);
     const faq = await faqCatalogLoader(config.faq.catalogPath);
+    const proactiveCatalog =
+      config.engagement.proactiveCatalogPath === ''
+        ? []
+        : await proactiveCatalogLoader(config.engagement.proactiveCatalogPath);
     let knowledge: ApprovedKnowledgeCatalog | undefined;
     const knowledgePath =
       process.env.KNOWLEDGE_CATALOG_PATH?.trim() || './config/knowledge.json';
@@ -672,6 +732,83 @@ export const createApplication = async (
       dependencies.createReminderStore?.(config.storage.databasePath) ??
       new SQLiteReminderStore(config.storage.databasePath);
     const initializedReminderStore = reminderStore;
+    broadcastStore =
+      dependencies.createBroadcastStore?.(config.storage.databasePath) ??
+      new SqliteBroadcastStore(config.storage.databasePath);
+    const initializedBroadcastStore = broadcastStore;
+    const runBroadcastDelivery = async <T>(
+      category: BroadcastCategory,
+      delivery: () => Promise<T>,
+    ): Promise<T> => {
+      const startedAt = new Date();
+      await engagementRepository?.recordDeliveryMetric?.({
+        serverId: config.discord.guildId,
+        category,
+        name: 'delivery_attempted',
+        occurredAt: startedAt.toISOString(),
+      });
+      try {
+        const result = await delivery();
+        await engagementRepository?.recordDeliveryMetric?.({
+          serverId: config.discord.guildId,
+          category,
+          name: 'delivery_succeeded',
+          occurredAt: new Date().toISOString(),
+          durationMs: Math.max(0, Date.now() - startedAt.getTime()),
+        });
+        return result;
+      } catch (error) {
+        await engagementRepository?.recordDeliveryMetric?.({
+          serverId: config.discord.guildId,
+          category,
+          name: 'delivery_failed',
+          occurredAt: new Date().toISOString(),
+          durationMs: Math.max(0, Date.now() - startedAt.getTime()),
+        });
+        await engagementRepository?.recordDeliveryMetric?.({
+          serverId: config.discord.guildId,
+          category,
+          name: 'delivery_retried',
+          occurredAt: new Date().toISOString(),
+        });
+        throw error;
+      }
+    };
+    const scheduledBroadcastPolicy = new BroadcastPolicyService(
+      initializedBroadcastStore,
+      [...config.security.allowedChannelIds],
+      async ({ serverId, category, occurredAt }) => {
+        await engagementRepository?.recordDeliveryMetric?.({
+          serverId,
+          category,
+          name: 'delivery_suppressed',
+          occurredAt: occurredAt.toISOString(),
+        });
+      },
+    );
+    const ensureScheduledBroadcastPolicy = async (
+      category: BroadcastCategory,
+      channelId: string,
+    ): Promise<void> => {
+      if (channelId === '') return;
+      if (
+        (await initializedBroadcastStore.getPolicy(
+          config.discord.guildId,
+          category,
+        )) !== undefined
+      )
+        return;
+      await initializedBroadcastStore.setPolicy({
+        serverId: config.discord.guildId,
+        category,
+        state: 'enabled',
+        channelId,
+        timezone: config.engagement.recapTimezone,
+        minimumIntervalSeconds: 0,
+        digestMode: false,
+        updatedAt: new Date(),
+      });
+    };
     if (
       config.engagement.channels.rssId !== '' &&
       config.engagement.rssAllowedHosts.length > 0
@@ -698,6 +835,23 @@ export const createApplication = async (
     const ai = aiFactory(config);
     client = discordFactory();
     if (rssStorage !== undefined && config.engagement.channels.rssId !== '') {
+      const rssBroadcastStore = initializedBroadcastStore;
+      const existingRssPolicy = await rssBroadcastStore.getPolicy(
+        config.discord.guildId,
+        'rss',
+      );
+      if (existingRssPolicy === undefined) {
+        await rssBroadcastStore.setPolicy({
+          serverId: config.discord.guildId,
+          category: 'rss',
+          state: 'enabled',
+          channelId: config.engagement.channels.rssId,
+          timezone: 'UTC',
+          minimumIntervalSeconds: 0,
+          digestMode: true,
+          updatedAt: new Date(),
+        });
+      }
       rssScheduler = new RssScheduler(
         rssStorage,
         new RssNotificationClient(
@@ -706,7 +860,7 @@ export const createApplication = async (
           config.engagement.rssAllowedHosts,
         ),
         {
-          publish: async (channelId, item) => {
+          publish: async (channelId, digest) => {
             const channels = client?.channels;
             if (channels === undefined)
               throw new Error('Discord channels are unavailable.');
@@ -720,14 +874,31 @@ export const createApplication = async (
               typeof sendable.send !== 'function'
             )
               throw new Error('Configured RSS channel is unavailable.');
-            await sendable.send({
-              content: `**${item.title}**\n${item.url}`,
-              allowedMentions: { parse: [], repliedUser: false },
-            });
+            await runBroadcastDelivery('rss', () =>
+              sendable.send({
+                content: digest.content,
+                allowedMentions: { parse: [], repliedUser: false },
+              }),
+            );
           },
         },
         config.discord.guildId,
         config.engagement.channels.rssId,
+        new BroadcastPolicyService(
+          rssBroadcastStore,
+          [config.engagement.channels.rssId],
+          async ({ serverId, category, occurredAt }) => {
+            await engagementRepository?.recordDeliveryMetric?.({
+              serverId,
+              category,
+              name: 'delivery_suppressed',
+              occurredAt: occurredAt.toISOString(),
+            });
+          },
+        ),
+        rssBroadcastStore,
+        () => new Date(),
+        { warn: (fields, message) => logger?.warn(fields, message) },
       );
       rssScheduler.start();
     }
@@ -808,8 +979,28 @@ export const createApplication = async (
         : undefined;
     if (
       engagementRepository !== undefined &&
-      config.engagement.channels.activityId !== ''
+      config.engagement.channels.activityId !== '' &&
+      proactiveCatalog.length > 0
     ) {
+      const proactiveChannelId = config.engagement.channels.activityId;
+      const existingProactivePolicy = await initializedBroadcastStore.getPolicy(
+        config.discord.guildId,
+        'proactive',
+      );
+      if (existingProactivePolicy === undefined) {
+        await initializedBroadcastStore.setPolicy({
+          serverId: config.discord.guildId,
+          category: 'proactive',
+          state: 'enabled',
+          channelId: proactiveChannelId,
+          timezone: 'UTC',
+          quietStartMinute: 23 * 60,
+          quietEndMinute: 8 * 60,
+          minimumIntervalSeconds: 6 * 60 * 60,
+          digestMode: false,
+          updatedAt: new Date(),
+        });
+      }
       proactiveService = new ProactiveEngagementService({
         store: {
           get: (guildId) => engagementRepository!.getProactiveState!(guildId),
@@ -817,23 +1008,39 @@ export const createApplication = async (
             engagementRepository!.setProactiveState!(guildId, state, at),
           recordPosted: (guildId, at) =>
             engagementRepository!.recordProactivePosted!(guildId, at),
-          claim: (guildId, key, at) =>
-            engagementRepository!.claimProactive!(guildId, key, at),
         },
         gateway: {
           post: async (channelId, content) => {
             const channel = await client!.channels?.fetch(channelId);
             if (!isEventChannel(channel))
               throw new Error('Configured proactive channel is unavailable.');
-            await channel.send({
-              content,
-              allowedMentions: { parse: [], repliedUser: false },
-            });
+            await runBroadcastDelivery('proactive', () =>
+              channel.send({
+                content,
+                allowedMentions: { parse: [], repliedUser: false },
+              }),
+            );
           },
         },
         channelId: config.engagement.channels.activityId,
         guildId: config.discord.guildId,
-        quietHours: [23, 8],
+        isGloballyPaused: (guildId) =>
+          engagementRepository!.engagementPaused!(guildId),
+        catalog: proactiveCatalog,
+        policy: new BroadcastPolicyService(
+          initializedBroadcastStore,
+          [...config.security.allowedChannelIds],
+          async ({ serverId, category, occurredAt }) => {
+            await engagementRepository?.recordDeliveryMetric?.({
+              serverId,
+              category,
+              name: 'delivery_suppressed',
+              occurredAt: occurredAt.toISOString(),
+            });
+          },
+        ),
+        broadcastStore: initializedBroadcastStore,
+        logger,
       });
     }
     const suggestionService =
@@ -1018,6 +1225,40 @@ export const createApplication = async (
       adminConsole = await startAdminConsole({
         port: config.adminConsole.port,
         host: config.adminConsole.host,
+        broadcastControl:
+          config.adminConsole.token === ''
+            ? undefined
+            : {
+                token: config.adminConsole.token,
+                allowedCategories: configuredBroadcasts(config)
+                  .filter(({ channelId }) =>
+                    config.security.allowedChannelIds.has(channelId),
+                  )
+                  .map(({ category }) => category),
+                setState: async (category, state) => {
+                  const policy = await initializedBroadcastStore.getPolicy(
+                    config.discord.guildId,
+                    category,
+                  );
+                  if (
+                    policy === undefined ||
+                    !config.security.allowedChannelIds.has(policy.channelId)
+                  ) {
+                    throw new Error('Broadcast category is not allowlisted.');
+                  }
+                  await initializedBroadcastStore.setPolicy({
+                    ...policy,
+                    state,
+                    updatedAt: new Date(),
+                  });
+                },
+                audit: async ({ category, operation }) => {
+                  logger?.info(
+                    { operation: `broadcast_${operation}`, category },
+                    'Shipboard broadcast state changed from the Command Deck.',
+                  );
+                },
+              },
         rssControl:
           rssStorage === undefined || config.adminConsole.token === ''
             ? undefined
@@ -1031,9 +1272,10 @@ export const createApplication = async (
                     fetch,
                     8_000,
                     config.engagement.rssAllowedHosts,
-                  ).fetch(url),
+                  ).fetch(url, 5),
               },
         snapshot: async () => {
+          const snapshotNow = new Date();
           const rows =
             engagementRepository?.analyticsSummary === undefined
               ? []
@@ -1041,6 +1283,57 @@ export const createApplication = async (
                   config.discord.guildId,
                   new Date(Date.now() - 7 * 86_400_000),
                 );
+          const deliveryRows7 =
+            engagementRepository?.deliveryMetricsSummary === undefined
+              ? []
+              : await engagementRepository.deliveryMetricsSummary(
+                  config.discord.guildId,
+                  new Date(snapshotNow.getTime() - 7 * 86_400_000),
+                );
+          const deliveryRows30 =
+            engagementRepository?.deliveryMetricsSummary === undefined
+              ? []
+              : await engagementRepository.deliveryMetricsSummary(
+                  config.discord.guildId,
+                  new Date(snapshotNow.getTime() - 30 * 86_400_000),
+                );
+          const broadcasts = await Promise.all(
+            configuredBroadcasts(config).map(async (configured) => {
+              const [policy, delivery, lastSuccess] = await Promise.all([
+                initializedBroadcastStore.getPolicy(
+                  config.discord.guildId,
+                  configured.category,
+                ),
+                initializedBroadcastStore.latestDeliveryHealth(
+                  config.discord.guildId,
+                  configured.category,
+                ),
+                initializedBroadcastStore.getLatestCompletedAt(
+                  config.discord.guildId,
+                  configured.category,
+                ),
+              ]);
+              const runtimeAvailable = broadcastRuntimeAvailable(
+                configured.category,
+                {
+                  rss: rssScheduler !== undefined,
+                  proactive: proactiveScheduler !== undefined,
+                  recap: recapScheduler?.healthy === true,
+                  eventReminder: eventScheduler?.healthy === true,
+                  birthday: birthdayScheduler?.healthy === true,
+                  trivia: triviaScheduler?.healthy === true,
+                },
+              );
+              return broadcastCard(
+                configured,
+                policy,
+                delivery,
+                lastSuccess,
+                runtimeAvailable,
+                snapshotNow,
+              );
+            }),
+          );
           const features = ['introductions', 'suggestions', 'events', 'trivia'];
           return {
             platform: {
@@ -1057,7 +1350,10 @@ export const createApplication = async (
               webSearchConfigured: config.webSearch.apiKey !== '',
             },
             integrations: {
-              rss: config.engagement.channels.rssId !== '',
+              rss: rssIntegrationHealth(
+                config.engagement.channels.rssId,
+                rssScheduler !== undefined,
+              ),
               sleeper: config.sleeper?.leagueId !== '',
               github: config.github !== undefined,
             },
@@ -1079,6 +1375,19 @@ export const createApplication = async (
                       .listFeeds(config.discord.guildId)
                       .map(({ label, url }) => ({ label, url })),
                   },
+            broadcasts: {
+              categories: broadcasts,
+              last7Days: deliveryRows7.map((row) => ({
+                category: row.category,
+                eventName: row.eventName,
+                count: row.count,
+              })),
+              last30Days: deliveryRows30.map((row) => ({
+                category: row.category,
+                eventName: row.eventName,
+                count: row.count,
+              })),
+            },
           };
         },
       });
@@ -1174,6 +1483,7 @@ export const createApplication = async (
               }
             : {}),
           ...(rssStorage === undefined ? {} : { rssStorage }),
+          broadcastStore: initializedBroadcastStore,
           conversationService,
           conversationHistory: initializedStore,
           store: initializedStore,
@@ -1310,8 +1620,15 @@ export const createApplication = async (
     if (schedulerClient === undefined)
       throw new Error('Discord client is unavailable for event scheduling.');
     if (eventService !== undefined)
+      await ensureScheduledBroadcastPolicy(
+        'event_reminder',
+        config.engagement.channels.eventId,
+      );
+    if (eventService !== undefined)
       eventScheduler = new EventScheduler({
         repository: engagementRepository as any,
+        policy: scheduledBroadcastPolicy,
+        broadcastStore: initializedBroadcastStore,
         logger: { warn: (fields, message) => logger?.warn(fields, message) },
         gateway: {
           deliver: async (reminder) => {
@@ -1320,17 +1637,27 @@ export const createApplication = async (
             );
             if (!isEventChannel(channel))
               throw new Error('Configured event channel is unavailable.');
-            await channel.send({
-              content: `<@${reminder.userId}> reminder: ${reminder.title} is due now.`,
-              allowedMentions: {
-                parse: [],
-                users: [reminder.userId],
-                repliedUser: false,
-              },
-            });
+            await runBroadcastDelivery('event_reminder', () =>
+              channel.send({
+                content: `<@${reminder.userId}> reminder: ${reminder.title} is due now.`,
+                allowedMentions: {
+                  parse: [],
+                  repliedUser: false,
+                },
+              }),
+            );
           },
         },
       });
+    if (
+      recapService !== undefined &&
+      config.engagement.channels.recapId !== '' &&
+      config.engagement.recapSchedule !== ''
+    )
+      await ensureScheduledBroadcastPolicy(
+        'recap',
+        config.engagement.channels.recapId,
+      );
     if (
       recapService !== undefined &&
       config.engagement.channels.recapId !== '' &&
@@ -1351,23 +1678,36 @@ export const createApplication = async (
           >
         >,
         logger: { warn: (fields, message) => logger?.warn(fields, message) },
+        policy: scheduledBroadcastPolicy,
+        broadcastStore: initializedBroadcastStore,
         service: recapService,
         gateway: {
           post: async (channelId, content) => {
             const channel = await schedulerClient.channels?.fetch(channelId);
             if (!isEventChannel(channel))
               throw new Error('Configured recap channel is unavailable.');
-            await channel.send({
-              content,
-              allowedMentions: { parse: [], repliedUser: false },
-            });
+            await runBroadcastDelivery('recap', () =>
+              channel.send({
+                content,
+                allowedMentions: { parse: [], repliedUser: false },
+              }),
+            );
           },
         },
       });
 
+    if (
+      triviaService !== undefined &&
+      config.engagement.channels.activityId !== ''
+    )
+      await ensureScheduledBroadcastPolicy(
+        'trivia',
+        config.engagement.channels.activityId,
+      );
     if (triviaService !== undefined)
       triviaScheduler = new TriviaExpiryScheduler({
         service: triviaService,
+        policy: scheduledBroadcastPolicy,
         isPaused: (guildId) =>
           engagementRepository?.engagementPaused?.(guildId) ??
           Promise.resolve(true),
@@ -1378,7 +1718,9 @@ export const createApplication = async (
             );
             if (!isEventChannel(channel))
               throw new Error('Configured activity channel is unavailable.');
-            await channel.send(buildTriviaResultsCard(results));
+            await runBroadcastDelivery('trivia', () =>
+              channel.send(buildTriviaResultsCard(results)),
+            );
           },
         },
         logger: {
@@ -1390,17 +1732,27 @@ export const createApplication = async (
       birthdayService !== undefined &&
       config.engagement.channels.birthdayId !== ''
     ) {
+      await ensureScheduledBroadcastPolicy(
+        'birthday',
+        config.engagement.channels.birthdayId,
+      );
       birthdayScheduler = new BirthdayScheduler({
         store: birthdayStoreFromRepository(engagementRepository as any),
         guildId: config.discord.guildId,
         channelId: config.engagement.channels.birthdayId,
         timezone: config.engagement.recapTimezone,
+        policy: scheduledBroadcastPolicy,
+        broadcastStore: initializedBroadcastStore,
+        isGloballyPaused: (guildId) =>
+          engagementRepository!.engagementPaused!(guildId),
         gateway: {
           announce: async ({ channelId, content, allowedMentions }) => {
             const channel = await schedulerClient.channels?.fetch(channelId);
             if (!isEventChannel(channel))
               throw new Error('Configured birthday channel is unavailable.');
-            await channel.send({ content, allowedMentions });
+            await runBroadcastDelivery('birthday', () =>
+              channel.send({ content, allowedMentions }),
+            );
           },
         },
       });
@@ -1413,7 +1765,9 @@ export const createApplication = async (
     triviaScheduler?.start();
     birthdayScheduler?.start();
     if (proactiveService !== undefined) {
-      proactiveScheduler = new DurableProactiveScheduler(proactiveService);
+      proactiveScheduler =
+        dependencies.createProactiveScheduler?.(proactiveService) ??
+        new DurableProactiveScheduler(proactiveService, 60_000, logger);
       proactiveScheduler.start();
     }
 
@@ -1443,6 +1797,195 @@ export const createApplication = async (
     setExitCode(1);
     throw error;
   }
+};
+
+export const formatRssDigest = (digest: RssDigest): string => {
+  return renderRssDigest(digest).content;
+};
+
+const configuredBroadcasts = (config: AppConfig) =>
+  [
+    {
+      category: 'rss' as const,
+      channelId: config.engagement.channels.rssId,
+      label: 'RSS',
+      destination: '#jarvis-updates',
+    },
+    {
+      category: 'proactive' as const,
+      channelId: config.engagement.channels.activityId,
+      label: 'Crew pulse',
+      destination: '#crew-activity',
+    },
+    {
+      category: 'recap' as const,
+      channelId: config.engagement.channels.recapId,
+      label: 'Crew recap',
+      destination: '#crew-recaps',
+    },
+    {
+      category: 'event_reminder' as const,
+      channelId: config.engagement.channels.eventId,
+      label: 'Event reminders',
+      destination: '#crew-events',
+    },
+    {
+      category: 'birthday' as const,
+      channelId: config.engagement.channels.birthdayId,
+      label: 'Birthday watch',
+      destination: '#crew-birthdays',
+    },
+    {
+      category: 'trivia' as const,
+      channelId: config.engagement.channels.activityId,
+      label: 'Trivia results',
+      destination: '#crew-activity',
+    },
+  ].filter(({ channelId }) => channelId !== '');
+
+const broadcastRuntimeAvailable = (
+  category: BroadcastCategory,
+  runtime: Readonly<{
+    rss: boolean;
+    proactive: boolean;
+    recap: boolean;
+    eventReminder: boolean;
+    birthday: boolean;
+    trivia: boolean;
+  }>,
+): boolean =>
+  ({
+    rss: runtime.rss,
+    proactive: runtime.proactive,
+    recap: runtime.recap,
+    event_reminder: runtime.eventReminder,
+    birthday: runtime.birthday,
+    trivia: runtime.trivia,
+  })[category];
+
+const broadcastCard = (
+  configured: ReturnType<typeof configuredBroadcasts>[number],
+  policy: BroadcastPolicy | undefined,
+  delivery: BroadcastDeliveryHealth | undefined,
+  lastSuccess: Date | undefined,
+  runtimeAvailable: boolean,
+  now: Date,
+): AdminConsoleBroadcastCategory => {
+  const nextEligibleAt =
+    policy === undefined
+      ? undefined
+      : nextBroadcastEligibleAt(policy, lastSuccess, now).toISOString();
+  const health =
+    policy === undefined
+      ? 'unavailable'
+      : runtimeAvailable
+        ? 'ready'
+        : 'degraded';
+  return {
+    category: configured.category,
+    label: configured.label,
+    state: policy?.state ?? 'disabled',
+    destination: configured.destination,
+    quietHours:
+      policy === undefined ? 'not configured' : formatQuietHours(policy),
+    cadence:
+      policy === undefined
+        ? 'not configured'
+        : formatCadence(policy.minimumIntervalSeconds),
+    ...(nextEligibleAt === undefined ? {} : { nextEligibleAt }),
+    ...(delivery?.claimedAt === undefined
+      ? {}
+      : { lastAttemptAt: delivery.claimedAt.toISOString() }),
+    ...(lastSuccess === undefined
+      ? {}
+      : { lastSuccessAt: lastSuccess.toISOString() }),
+    ...(delivery?.errorCategory === undefined
+      ? {}
+      : { errorCategory: delivery.errorCategory }),
+    health,
+    ...(health === 'ready'
+      ? {}
+      : {
+          recovery:
+            policy === undefined
+              ? 'Broadcast policy is not available for this MuthaShip.'
+              : 'Scheduler or provider is unavailable on this MuthaShip.',
+        }),
+  };
+};
+
+export const nextBroadcastEligibleAt = (
+  policy: BroadcastPolicy,
+  lastSuccess: Date | undefined,
+  now: Date,
+): Date => {
+  let candidate = new Date(
+    Math.max(
+      now.getTime(),
+      (lastSuccess?.getTime() ?? now.getTime()) +
+        policy.minimumIntervalSeconds * 1_000,
+    ),
+  );
+  if (
+    policy.quietStartMinute === undefined ||
+    policy.quietEndMinute === undefined ||
+    policy.quietStartMinute === policy.quietEndMinute
+  ) {
+    return candidate;
+  }
+  for (let minute = 0; minute <= 24 * 60; minute += 1) {
+    if (!isBroadcastQuietHour(policy, candidate)) return candidate;
+    candidate = new Date(
+      Math.floor(candidate.getTime() / 60_000) * 60_000 + 60_000,
+    );
+  }
+  return candidate;
+};
+
+const isBroadcastQuietHour = (policy: BroadcastPolicy, now: Date): boolean => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: policy.timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+  const currentMinute = hour * 60 + minute;
+  const start = policy.quietStartMinute;
+  const end = policy.quietEndMinute;
+  if (start === undefined || end === undefined) return false;
+  return start < end
+    ? currentMinute >= start && currentMinute < end
+    : currentMinute >= start || currentMinute < end;
+};
+
+const formatQuietHours = (policy: BroadcastPolicy): string => {
+  if (
+    policy.quietStartMinute === undefined ||
+    policy.quietEndMinute === undefined
+  ) {
+    return 'none';
+  }
+  const display = (minute: number): string =>
+    `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+  return `${display(policy.quietStartMinute)} to ${display(policy.quietEndMinute)} ${policy.timezone}`;
+};
+
+const formatCadence = (seconds: number): string => {
+  if (seconds === 0) return 'no minimum interval';
+  if (seconds % 3_600 === 0)
+    return `${seconds / 3_600} hour${seconds === 3_600 ? '' : 's'}`;
+  if (seconds % 60 === 0) return `${seconds / 60} minutes`;
+  return `${seconds} seconds`;
+};
+
+export const rssIntegrationHealth = (
+  rssChannelId: string,
+  schedulerAvailable: boolean,
+): 'ready' | 'unavailable' | 'not_configured' => {
+  if (rssChannelId === '') return 'not_configured';
+  return schedulerAvailable ? 'ready' : 'unavailable';
 };
 
 type MemberProfileCapableRepository = Required<

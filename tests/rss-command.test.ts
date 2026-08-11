@@ -67,4 +67,23 @@ describe('handleRssCommand', () => {
     });
     expect(addFeed).not.toHaveBeenCalled();
   });
+
+  it('rejects an allowlisted HTTPS feed URL that embeds credentials', async () => {
+    const addFeed = vi.fn();
+    const request = interaction('add', {
+      url: 'https://operator:secret@news.example.com/feed.xml',
+      label: 'News',
+    });
+    await handleRssCommand(request.value, {
+      storage: {
+        addFeed,
+        listFeeds: () => [],
+        removeFeed: () => false,
+        setPaused: () => undefined,
+      },
+      adminRoleIds: new Set(['admin']),
+      allowedHosts: ['news.example.com'],
+    });
+    expect(addFeed).not.toHaveBeenCalled();
+  });
 });

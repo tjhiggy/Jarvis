@@ -1,4 +1,43 @@
-import { createServer, type Server } from 'node:http';
+import { randomUUID } from 'node:crypto';
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
+import type { BroadcastCategory } from '../notifications/broadcast-policy.js';
+import type {
+  BroadcastDeliveryErrorCategory,
+  BroadcastPolicyState,
+} from '../notifications/broadcast-store.js';
+
+type BroadcastRuntimeHealth = 'ready' | 'degraded' | 'unavailable';
+
+export interface AdminConsoleBroadcastCategory {
+  readonly category: BroadcastCategory;
+  readonly label: string;
+  readonly state: BroadcastPolicyState;
+  readonly destination: string;
+  readonly quietHours: string;
+  readonly cadence: string;
+  readonly nextEligibleAt?: string;
+  readonly lastAttemptAt?: string;
+  readonly lastSuccessAt?: string;
+  readonly errorCategory?: BroadcastDeliveryErrorCategory;
+  readonly health: BroadcastRuntimeHealth;
+  readonly recovery?: string;
+}
+
+export interface AdminConsoleDeliverySummary {
+  readonly category: BroadcastCategory;
+  readonly eventName:
+    | 'delivery_attempted'
+    | 'delivery_succeeded'
+    | 'delivery_failed'
+    | 'delivery_suppressed'
+    | 'delivery_retried';
+  readonly count: number;
+}
 
 export interface AdminConsoleSnapshot {
   readonly platform: { readonly version: string; readonly environment: string };
@@ -14,7 +53,7 @@ export interface AdminConsoleSnapshot {
     readonly webSearchConfigured: boolean;
   };
   readonly integrations: {
-    readonly rss: boolean;
+    readonly rss: 'ready' | 'unavailable' | 'not_configured';
     readonly sleeper: boolean;
     readonly github: boolean;
   };
@@ -25,12 +64,17 @@ export interface AdminConsoleSnapshot {
   readonly rss?:
     | {
         readonly paused: boolean;
-        readonly feeds: readonly {
+        readonly feeds?: readonly {
           readonly label: string;
           readonly url: string;
         }[];
       }
     | undefined;
+  readonly broadcasts?: {
+    readonly categories: readonly AdminConsoleBroadcastCategory[];
+    readonly last7Days: readonly AdminConsoleDeliverySummary[];
+    readonly last30Days: readonly AdminConsoleDeliverySummary[];
+  };
 }
 
 export interface AdminConsole {
@@ -50,6 +94,83 @@ export interface AdminConsoleRssControl {
   >;
 }
 
+export interface AdminConsoleBroadcastControl {
+  readonly token: string;
+  readonly allowedCategories: readonly BroadcastCategory[];
+  readonly setState: (
+    category: BroadcastCategory,
+    state: Extract<BroadcastPolicyState, 'enabled' | 'paused'>,
+  ) => Promise<void>;
+  readonly audit?: (entry: {
+    readonly category: BroadcastCategory;
+    readonly operation: 'pause' | 'resume';
+    readonly occurredAt: Date;
+  }) => Promise<void>;
+}
+
+const rssIntegrationStatus = (
+  status: AdminConsoleSnapshot['integrations']['rss'],
+): string => {
+  if (status === 'ready') return 'ready';
+  if (status === 'unavailable')
+    return 'unavailable (configure approved RSS hosts)';
+  return 'not configured';
+};
+
+const escapeHtml = (value: string): string =>
+  value.replace(
+    /[&<>'"]/g,
+    (character) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[
+        character
+      ]!,
+  );
+
+const renderBroadcastCards = (snapshot: AdminConsoleSnapshot): string => {
+  const broadcasts = snapshot.broadcasts;
+  if (broadcasts === undefined || broadcasts.categories.length === 0) {
+    return '<article class="card"><h2>Shipboard Broadcasts</h2><p class="muted">No scheduled broadcasts are configured for this MuthaShip.</p></article>';
+  }
+  const summary = (
+    days: number,
+    rows: readonly AdminConsoleDeliverySummary[],
+  ) =>
+    rows.length === 0
+      ? `<p class="muted">No delivery activity in the last ${days} days.</p>`
+      : `<ul>${rows.map((row) => `<li>${escapeHtml(row.category)}: ${escapeHtml(row.eventName)} (${row.count})</li>`).join('')}</ul>`;
+  return `<article class="card"><h2>Shipboard Broadcasts</h2>${broadcasts.categories
+    .map(
+      (category) =>
+        `<section><h3>${escapeHtml(category.label)}</h3><p>State: ${escapeHtml(category.state)} · Destination: ${escapeHtml(category.destination)}</p><p>Quiet hours: ${escapeHtml(category.quietHours)} · Cadence: ${escapeHtml(category.cadence)}</p><p>Next eligible: ${escapeHtml(category.nextEligibleAt ?? 'not available')}</p><p>Last attempt: ${escapeHtml(category.lastAttemptAt ?? 'not available')} · Last success: ${escapeHtml(category.lastSuccessAt ?? 'not available')}</p><p>Health: ${escapeHtml(category.health)}${category.errorCategory === undefined ? '' : ` · Error: ${escapeHtml(category.errorCategory)}`}</p>${category.recovery === undefined ? '' : `<p class="muted">${escapeHtml(category.recovery)}</p>`}<button onclick="controlBroadcast('${category.category}','pause')">Pause</button><button onclick="controlBroadcast('${category.category}','resume')">Resume</button></section>`,
+    )
+    .join(
+      '',
+    )}<h3>Recent delivery metrics</h3><p>Last 7 days</p>${summary(7, broadcasts.last7Days)}<p>Last 30 days</p>${summary(30, broadcasts.last30Days)}</article>`;
+};
+
+const safeSnapshot = (
+  snapshot: AdminConsoleSnapshot,
+): AdminConsoleSnapshot => ({
+  platform: snapshot.platform,
+  database: snapshot.database,
+  engagement: snapshot.engagement,
+  providers: snapshot.providers,
+  integrations: snapshot.integrations,
+  metrics: snapshot.metrics,
+  ...(snapshot.rss === undefined
+    ? {}
+    : { rss: { paused: snapshot.rss.paused } }),
+  ...(snapshot.broadcasts === undefined
+    ? {}
+    : {
+        broadcasts: {
+          categories: snapshot.broadcasts.categories,
+          last7Days: snapshot.broadcasts.last7Days,
+          last30Days: snapshot.broadcasts.last30Days,
+        },
+      }),
+});
+
 const html = (snapshot: AdminConsoleSnapshot): string => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jarvis Command Deck</title><style>
@@ -58,11 +179,12 @@ const html = (snapshot: AdminConsoleSnapshot): string => `<!doctype html>
 <article class="card"><h2>Platform</h2><p>Jarvis <strong>${snapshot.platform.version}</strong></p><p>${snapshot.platform.environment}</p><p class="ok">Database: ${snapshot.database}</p></article>
 <article class="card"><h2>Community</h2><p>Engagement: <strong>${snapshot.engagement.enabled ? 'enabled' : 'disabled'}</strong></p><ul>${snapshot.engagement.features.map((feature) => `<li>${feature}</li>`).join('')}</ul></article>
 <article class="card"><h2>Providers</h2><p>AI: ${snapshot.providers.ai}</p><p>OpenAI: ${snapshot.providers.openAiConfigured ? 'configured' : 'not configured'}</p><p>Ollama: ${snapshot.providers.ollamaConfigured ? 'configured' : 'not configured'}</p><p>Web search: ${snapshot.providers.webSearchConfigured ? 'configured' : 'not configured'}</p></article>
-<article class="card"><h2>Integrations</h2><p>RSS: ${snapshot.integrations.rss ? 'ready' : 'not configured'}</p><p>Sleeper Fantasy Football: ${snapshot.integrations.sleeper ? 'ready' : 'not configured'}</p><p>GitHub read-only: ${snapshot.integrations.github ? 'ready' : 'not configured'}</p><p>Metrics: ${snapshot.metrics === null ? 'unavailable' : `${snapshot.metrics.events} events, ${snapshot.metrics.failures} failures`}</p></article>
-<article class="card"><h2>Shipboard Broadcasts</h2><p>RSS: ${snapshot.rss?.paused ? 'paused' : snapshot.rss ? 'active' : 'not configured'}</p>${snapshot.rss ? `<ul>${snapshot.rss.feeds.map((feed) => `<li>${feed.label} <small>${feed.url}</small></li>`).join('')}</ul><button onclick="controlRss('pause')">Pause</button><button onclick="controlRss('resume')">Resume</button><p><input id="rss-url" placeholder="Allowlisted HTTPS feed URL"><button onclick="previewRss()">Preview feed</button></p><p id="rss-result" class="muted"></p>` : ''}</article>
+<article class="card"><h2>Integrations</h2><p>RSS: ${rssIntegrationStatus(snapshot.integrations.rss)}</p><p>Sleeper Fantasy Football: ${snapshot.integrations.sleeper ? 'ready' : 'not configured'}</p><p>GitHub read-only: ${snapshot.integrations.github ? 'ready' : 'not configured'}</p><p>Metrics: ${snapshot.metrics === null ? 'unavailable' : `${snapshot.metrics.events} events, ${snapshot.metrics.failures} failures`}</p></article>
+${renderBroadcastCards(snapshot)}
+<article class="card"><h2>RSS preview</h2>${snapshot.rss ? `<p><input id="rss-url" placeholder="Allowlisted HTTPS feed URL"><button onclick="previewRss()">Preview feed</button></p><p id="rss-result" class="muted"></p>` : '<p class="muted">RSS preview is unavailable.</p>'}</article>
 </section><p><small>Bound to localhost. Refresh for a current snapshot.</small></p></main><script>
-async function controlRss(action){if(!confirm('Confirm RSS '+action+' for this MuthaShip?'))return;const token=prompt('Enter the local Admin Console token:');if(!token)return;const result=document.getElementById('rss-result');try{const response=await fetch('/api/rss/'+action,{method:'POST',headers:{Authorization:'Bearer '+token}});const body=await response.json();if(!response.ok)throw new Error(body.error||'Request failed');result.textContent='RSS '+action+'d successfully. Refreshing...';setTimeout(()=>location.reload(),300);}catch(error){result.textContent=error instanceof Error?error.message:'RSS control failed';}}
-async function previewRss(){const token=prompt('Enter the local Admin Console token:');const url=document.getElementById('rss-url').value;if(!token||!url)return;const result=document.getElementById('rss-result');try{const response=await fetch('/api/rss/preview',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({url})});const body=await response.json();if(!response.ok)throw new Error(body.error||'Preview failed');result.textContent=body.items.length+' feed items found. No feed was saved.';}catch(error){result.textContent=error instanceof Error?error.message:'RSS preview failed';}}
+async function controlBroadcast(category,action){if(!confirm('Confirm '+category+' '+action+' for this MuthaShip?'))return;const token=prompt('Enter the local Admin Console token:');if(!token)return;const result=document.getElementById('rss-result');try{const confirmation=await fetch('/api/broadcast/'+category+'/confirmation',{method:'POST',headers:{Authorization:'Bearer '+token,'X-Broadcast-Action':action}});const confirmationBody=await confirmation.json();if(!confirmation.ok)throw new Error(confirmationBody.error||'Confirmation failed');const response=await fetch('/api/broadcast/'+category+'/'+action,{method:'POST',headers:{Authorization:'Bearer '+token,'X-Confirmation-Nonce':confirmationBody.nonce}});const body=await response.json();if(!response.ok)throw new Error(body.error||'Request failed');if(result)result.textContent=category+' '+action+'d successfully. Refreshing...';setTimeout(()=>location.reload(),300);}catch(error){if(result)result.textContent=error instanceof Error?error.message:'Broadcast control failed';}}
+async function previewRss(){const token=prompt('Enter the local Admin Console token:');const url=document.getElementById('rss-url').value;if(!token||!url)return;const result=document.getElementById('rss-result');try{const response=await fetch('/api/rss/preview',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({url})});const body=await response.json();if(!response.ok)throw new Error(body.error||'Preview failed');const entries=body.items.map((item)=>[item.title,item.url,item.publishedAt].join('\n')).join('\n\n');result.textContent=body.items.length+' feed items found. No feed was saved; saving establishes a baseline, so historical entries are not posted.\n\n'+entries;}catch(error){result.textContent=error instanceof Error?error.message:'RSS preview failed';}}
 </script></body></html>`;
 
 export const startAdminConsole = (options: {
@@ -70,13 +192,118 @@ export const startAdminConsole = (options: {
   readonly host?: string;
   readonly snapshot: () => Promise<AdminConsoleSnapshot>;
   readonly rssControl?: AdminConsoleRssControl | undefined;
+  readonly broadcastControl?: AdminConsoleBroadcastControl | undefined;
+  readonly now?: () => Date;
 }): Promise<AdminConsole> => {
   const host = options.host ?? '127.0.0.1';
+  const now = options.now ?? (() => new Date());
+  const confirmations = new Map<
+    string,
+    {
+      readonly category: BroadcastCategory;
+      readonly action: 'pause' | 'resume';
+      readonly expiresAt: number;
+      used: boolean;
+    }
+  >();
+  const writeAuthorized = (request: IncomingMessage, token: string): boolean =>
+    isLocalRequest(request) &&
+    request.headers.authorization === `Bearer ${token}`;
+  const writeJson = (
+    response: ServerResponse,
+    status: number,
+    body: Record<string, unknown>,
+  ): void => {
+    response.writeHead(status, {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    });
+    response.end(JSON.stringify(body));
+  };
   const server = createServer(async (request, response) => {
+    const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    const broadcastMatch =
+      /^\/api\/broadcast\/(rss|proactive|recap|event_reminder|birthday|trivia)\/(confirmation|pause|resume)$/.exec(
+        path,
+      );
+    if (request.method === 'POST' && broadcastMatch !== null) {
+      const [, category, action] = broadcastMatch as unknown as [
+        string,
+        BroadcastCategory,
+        'confirmation' | 'pause' | 'resume',
+      ];
+      const control = options.broadcastControl;
+      if (control === undefined || !writeAuthorized(request, control.token)) {
+        writeJson(response, 401, { error: 'Unauthorized' });
+        return;
+      }
+      if (!control.allowedCategories.includes(category)) {
+        writeJson(response, 403, {
+          error: 'Category is not configured for this MuthaShip.',
+        });
+        return;
+      }
+      if (action === 'confirmation') {
+        const requestedAction = request.headers['x-broadcast-action'];
+        if (requestedAction !== 'pause' && requestedAction !== 'resume') {
+          writeJson(response, 400, {
+            error: 'Confirmation action is required.',
+          });
+          return;
+        }
+        const nonce = randomUUID();
+        confirmations.set(nonce, {
+          category,
+          action: requestedAction,
+          expiresAt: now().getTime() + 60_000,
+          used: false,
+        });
+        writeJson(response, 200, { nonce });
+        return;
+      }
+      const nonce = request.headers['x-confirmation-nonce'];
+      const confirmation =
+        typeof nonce === 'string' ? confirmations.get(nonce) : undefined;
+      if (
+        confirmation === undefined ||
+        confirmation.category !== category ||
+        confirmation.action !== action ||
+        confirmation.expiresAt < now().getTime()
+      ) {
+        writeJson(response, 401, { error: 'Confirmation required.' });
+        return;
+      }
+      if (confirmation.used) {
+        writeJson(response, 409, {
+          error: 'Confirmation has already been used.',
+        });
+        return;
+      }
+      confirmation.used = true;
+      try {
+        await control.setState(
+          category,
+          action === 'pause' ? 'paused' : 'enabled',
+        );
+        await control.audit?.({
+          category,
+          operation: action,
+          occurredAt: now(),
+        });
+        writeJson(response, 200, {
+          ok: true,
+          category,
+          state: action === 'pause' ? 'paused' : 'enabled',
+        });
+      } catch {
+        writeJson(response, 503, { error: 'Broadcast control unavailable.' });
+      }
+      return;
+    }
     if (request.method === 'POST' && request.url === '/api/rss/preview') {
       if (
         options.rssControl?.preview === undefined ||
-        request.headers.authorization !== `Bearer ${options.rssControl.token}`
+        !writeAuthorized(request, options.rssControl.token)
       ) {
         response.writeHead(401, {
           'content-type': 'application/json; charset=utf-8',
@@ -112,37 +339,6 @@ export const startAdminConsole = (options: {
       return;
     }
     if (
-      request.method === 'POST' &&
-      (request.url === '/api/rss/pause' || request.url === '/api/rss/resume')
-    ) {
-      if (
-        options.rssControl === undefined ||
-        request.headers.authorization !== `Bearer ${options.rssControl.token}`
-      ) {
-        response.writeHead(401, {
-          'content-type': 'application/json; charset=utf-8',
-        });
-        response.end(JSON.stringify({ error: 'Unauthorized' }));
-        return;
-      }
-      try {
-        await options.rssControl.setPaused(request.url.endsWith('/pause'));
-        response.writeHead(200, {
-          'content-type': 'application/json; charset=utf-8',
-          'cache-control': 'no-store',
-        });
-        response.end(
-          JSON.stringify({ ok: true, paused: request.url.endsWith('/pause') }),
-        );
-      } catch {
-        response.writeHead(503, {
-          'content-type': 'application/json; charset=utf-8',
-        });
-        response.end(JSON.stringify({ error: 'RSS control unavailable' }));
-      }
-      return;
-    }
-    if (
       request.method !== 'GET' ||
       (request.url !== '/' && request.url !== '/api/status')
     ) {
@@ -151,7 +347,7 @@ export const startAdminConsole = (options: {
       return;
     }
     try {
-      const snapshot = await options.snapshot();
+      const snapshot = safeSnapshot(await options.snapshot());
       if (request.url === '/api/status') {
         response.writeHead(200, {
           'content-type': 'application/json; charset=utf-8',
@@ -190,3 +386,8 @@ export const startAdminConsole = (options: {
     server.listen(options.port, host);
   });
 };
+
+const isLocalRequest = (request: IncomingMessage): boolean =>
+  request.socket.remoteAddress === '127.0.0.1' ||
+  request.socket.remoteAddress === '::1' ||
+  request.socket.remoteAddress === '::ffff:127.0.0.1';

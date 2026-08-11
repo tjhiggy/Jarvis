@@ -23,6 +23,7 @@ import {
   EngagementOptOutError,
   EngagementEventClosedError,
   EngagementRecordConflictError,
+  eventReminderRetryGraceMs,
   type EngagementCardDeletion,
   type EngagementIdempotencyScope,
   type EngagementRepository,
@@ -35,8 +36,20 @@ import type {
   FeatureFlagRecord,
 } from '../engagement/feature-flags.js';
 import type { AnalyticsEvent } from '../platform/contracts.js';
-import type { MetricsSummaryRow } from '../platform/metrics.js';
+import type {
+  DeliveryMetricEvent,
+  DeliveryMetricsSummaryRow,
+  MetricsSummaryRow,
+} from '../platform/metrics.js';
 import type { MemberProfile } from '../engagement/member-profiles.js';
+
+const deliveryMetricNames = [
+  'delivery_attempted',
+  'delivery_succeeded',
+  'delivery_failed',
+  'delivery_suppressed',
+  'delivery_retried',
+] as const;
 
 interface IntroductionRow {
   id: string;
@@ -348,6 +361,75 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       serverId: row.server_id,
       feature: row.feature,
       command: row.command,
+      eventName: row.event_name,
+      count: row.event_count,
+      durationMs: row.duration_ms,
+    }));
+  }
+
+  async recordDeliveryMetric(event: DeliveryMetricEvent): Promise<void> {
+    this.ensureOpen();
+    if (!deliveryMetricNames.includes(event.name)) {
+      throw new RangeError('Unsupported delivery metric name.');
+    }
+    const occurredAt = new Date(event.occurredAt);
+    if (!Number.isFinite(occurredAt.getTime())) {
+      throw new RangeError('Delivery metric time must be valid.');
+    }
+    const durationMs = event.durationMs ?? 0;
+    if (!Number.isSafeInteger(durationMs) || durationMs < 0) {
+      throw new RangeError(
+        'Delivery metric duration must be a non-negative integer.',
+      );
+    }
+    this.database
+      .prepare(
+        `
+      INSERT INTO platform_metrics_daily
+        (server_id, metric_day, feature, command, event_name, event_count, duration_ms)
+      VALUES (?, ?, 'broadcast', ?, ?, 1, ?)
+      ON CONFLICT(server_id, metric_day, feature, command, event_name)
+      DO UPDATE SET event_count = event_count + 1,
+        duration_ms = duration_ms + excluded.duration_ms
+    `,
+      )
+      .run(
+        event.serverId,
+        occurredAt.toISOString().slice(0, 10),
+        event.category,
+        event.name,
+        durationMs,
+      );
+  }
+
+  async deliveryMetricsSummary(
+    serverId: string,
+    since: Date,
+  ): Promise<readonly DeliveryMetricsSummaryRow[]> {
+    this.ensureOpen();
+    const sinceDay = since.toISOString().slice(0, 10);
+    return (
+      this.database
+        .prepare(
+          `
+        SELECT server_id, command, event_name, SUM(event_count) AS event_count,
+          SUM(duration_ms) AS duration_ms
+        FROM platform_metrics_daily
+        WHERE server_id = ? AND metric_day >= ? AND feature = 'broadcast'
+        GROUP BY server_id, command, event_name
+        ORDER BY command, event_name
+      `,
+        )
+        .all(serverId, sinceDay) as Array<{
+        server_id: string;
+        command: DeliveryMetricsSummaryRow['category'];
+        event_name: DeliveryMetricsSummaryRow['eventName'];
+        event_count: number;
+        duration_ms: number;
+      }>
+    ).map((row) => ({
+      serverId: row.server_id,
+      category: row.command,
       eventName: row.event_name,
       count: row.event_count,
       durationMs: row.duration_ms,
@@ -1374,12 +1456,18 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     this.ensureOpen();
     const claimedAt = milliseconds(now);
     const staleBefore = claimedAt - 5 * 60 * 1_000;
+    const retryDeadline = claimedAt - eventReminderRetryGraceMs;
     return this.database.transaction(() => {
+      this.database
+        .prepare(
+          "UPDATE engagement_rsvps SET reminder_state = 'failed', reminder_claimed_at = NULL, reminder_lease_token = NULL, updated_at = ? WHERE response = 'yes' AND reminder_opt_in = 1 AND reminder_state = 'pending' AND (reminder_claimed_at IS NULL OR reminder_claimed_at < ?) AND EXISTS (SELECT 1 FROM engagement_events e WHERE e.guild_id = engagement_rsvps.guild_id AND e.id = engagement_rsvps.event_id AND e.status IN ('scheduled', 'completed') AND e.scheduled_at <= ?)",
+        )
+        .run(claimedAt, staleBefore, retryDeadline);
       const candidates = this.database
         .prepare(
-          "SELECT r.event_id, r.guild_id, r.user_id, e.channel_id, e.title, e.scheduled_at FROM engagement_rsvps r JOIN engagement_events e ON e.guild_id = r.guild_id AND e.id = r.event_id LEFT JOIN engagement_preferences p ON p.guild_id = r.guild_id WHERE e.status = 'scheduled' AND r.response = 'yes' AND r.reminder_opt_in = 1 AND r.reminder_state = 'pending' AND coalesce(p.paused, 0) = 0 AND e.scheduled_at <= ? AND (r.reminder_claimed_at IS NULL OR r.reminder_claimed_at < ?) ORDER BY e.scheduled_at ASC, r.updated_at ASC, r.user_id ASC LIMIT ?",
+          "SELECT r.event_id, r.guild_id, r.user_id, e.channel_id, e.title, e.scheduled_at FROM engagement_rsvps r JOIN engagement_events e ON e.guild_id = r.guild_id AND e.id = r.event_id LEFT JOIN engagement_preferences p ON p.guild_id = r.guild_id WHERE e.status IN ('scheduled', 'completed') AND r.response = 'yes' AND r.reminder_opt_in = 1 AND r.reminder_state = 'pending' AND coalesce(p.paused, 0) = 0 AND e.scheduled_at <= ? AND e.scheduled_at > ? AND (r.reminder_claimed_at IS NULL OR r.reminder_claimed_at < ?) ORDER BY e.scheduled_at ASC, r.updated_at ASC, r.user_id ASC LIMIT ?",
         )
-        .all(claimedAt, staleBefore, limit) as Array<{
+        .all(claimedAt, retryDeadline, staleBefore, limit) as Array<{
         event_id: string;
         guild_id: string;
         channel_id: string;
@@ -1445,6 +1533,23 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       leaseToken,
       'failed',
       now,
+    );
+  }
+  async releaseEventReminder(
+    eventId: string,
+    guildId: string,
+    userId: string,
+    leaseToken: string,
+    now: Date,
+  ): Promise<boolean> {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          "UPDATE engagement_rsvps SET reminder_claimed_at = NULL, reminder_lease_token = NULL, updated_at = ? WHERE event_id = ? AND guild_id = ? AND user_id = ? AND reminder_state = 'pending' AND reminder_lease_token = ?",
+        )
+        .run(milliseconds(now), eventId, guildId, userId, leaseToken)
+        .changes === 1
     );
   }
   private async markReminder(
@@ -1773,6 +1878,19 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           .run(cutoffMilliseconds, remaining);
         changes += result.changes;
         remaining -= result.changes;
+      }
+      if (remaining > 0) {
+        const result = this.database
+          .prepare(
+            `DELETE FROM platform_metrics_daily WHERE rowid IN (
+              SELECT rowid FROM platform_metrics_daily
+              WHERE metric_day < ?
+              ORDER BY metric_day ASC, server_id ASC, feature ASC, command ASC, event_name ASC
+              LIMIT ?
+            )`,
+          )
+          .run(cutoff.toISOString().slice(0, 10), remaining);
+        changes += result.changes;
       }
       return changes;
     })();

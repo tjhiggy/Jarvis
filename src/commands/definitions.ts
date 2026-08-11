@@ -272,6 +272,21 @@ interface RssSubcommandDefinition {
     readonly max_length: number;
   }[];
 }
+interface NotificationSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'status' | 'enable' | 'disable';
+  readonly description: string;
+  readonly options?: readonly {
+    readonly type: 3;
+    readonly name: 'category';
+    readonly description: string;
+    readonly required: true;
+    readonly choices: readonly {
+      readonly name: string;
+      readonly value: 'event_reminder' | 'birthday';
+    }[];
+  }[];
+}
 
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
@@ -298,7 +313,8 @@ export type CommandOptionDefinition =
   | ProactiveSubcommandDefinition
   | BirthdaySubcommandDefinition
   | GitHubSubcommandDefinition
-  | RssSubcommandDefinition;
+  | RssSubcommandDefinition
+  | NotificationSubcommandDefinition;
 // GitHub is intentionally read-only and repository-scoped.
 
 export interface CommandDefinition {
@@ -333,7 +349,8 @@ export interface CommandDefinition {
     | 'roles'
     | 'profile'
     | 'github'
-    | 'rss';
+    | 'rss'
+    | 'notifications';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -1406,6 +1423,52 @@ export const createCommandDefinitions = (
         },
         { type: 1, name: 'pause', description: 'Pause RSS monitoring.' },
         { type: 1, name: 'resume', description: 'Resume RSS monitoring.' },
+      ],
+    },
+    {
+      type: 1,
+      name: 'notifications',
+      description: 'Manage your personal MuthaShip notification preferences.',
+      options: [
+        {
+          type: 1,
+          name: 'status',
+          description: 'Show your private notification preferences.',
+        },
+        {
+          type: 1,
+          name: 'enable',
+          description: 'Enable one personal notification category.',
+          options: [
+            {
+              type: 3,
+              name: 'category',
+              description: 'Personal notification category.',
+              required: true,
+              choices: [
+                { name: 'Event reminders', value: 'event_reminder' },
+                { name: 'Birthday mentions', value: 'birthday' },
+              ],
+            },
+          ],
+        },
+        {
+          type: 1,
+          name: 'disable',
+          description: 'Disable one personal notification category.',
+          options: [
+            {
+              type: 3,
+              name: 'category',
+              description: 'Personal notification category.',
+              required: true,
+              choices: [
+                { name: 'Event reminders', value: 'event_reminder' },
+                { name: 'Birthday mentions', value: 'birthday' },
+              ],
+            },
+          ],
+        },
       ],
     },
     {

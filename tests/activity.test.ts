@@ -144,6 +144,7 @@ describe('bounded trivia activity', () => {
           );
         },
       },
+      policy: allowingPolicy(),
     });
     await scheduler.tick();
     expect(calls).toEqual(['post:2/3', 'complete']);
@@ -175,15 +176,60 @@ describe('bounded trivia activity', () => {
           await posted;
         },
       },
+      policy: allowingPolicy(),
     });
     const first = scheduler.tick();
     const second = scheduler.tick();
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise(setImmediate);
     expect(posts).toBe(1);
     releasePost();
     await Promise.all([first, second]);
     expect(posts).toBe(1);
+  });
+
+  it('rechecks shared broadcast policy after a trivia result claim and releases a suppressed card', async () => {
+    const calls: string[] = [];
+    let globallyPaused = false;
+    const scheduler = new TriviaExpiryScheduler({
+      service: {
+        claimResultCards: async () => [
+          {
+            id: 'round-paused',
+            guildId: 'guild-a',
+            channelId: 'channel-a',
+            leaseToken: 'lease-paused',
+          },
+        ],
+        results: async () => {
+          globallyPaused = true;
+          calls.push('results');
+          return { participantCount: 2, correctCount: 1 };
+        },
+        completeResultCard: async () => calls.push('complete'),
+        releaseResultCard: async () => calls.push('release'),
+      } as any,
+      policy: {
+        evaluate: async (input: any) => {
+          calls.push(
+            `policy:${input.category}:${String(input.globallyPaused)}`,
+          );
+          return input.globallyPaused
+            ? { allowed: false, reason: 'globally_paused' }
+            : { allowed: true };
+        },
+      },
+      isPaused: async () => globallyPaused,
+      gateway: {
+        post: async () => {
+          calls.push('post');
+        },
+      },
+    });
+
+    await scheduler.tick();
+
+    expect(calls).toEqual(['results', 'policy:trivia:true', 'release']);
+    expect(scheduler.lastRun?.status).toBe('success');
   });
 
   it('safe-logs a failed round, reports degraded health, and avoids false success', async () => {
@@ -205,6 +251,7 @@ describe('bounded trivia activity', () => {
         releaseResultCard: async () => true,
       } as any,
       gateway: { post: async () => undefined },
+      policy: allowingPolicy(),
       logger: { warn: (fields) => warnings.push(fields) },
     });
 
@@ -246,6 +293,7 @@ describe('bounded trivia activity', () => {
           calls.push('post');
         },
       },
+      policy: allowingPolicy(),
       logger: { warn: (fields) => calls.push(`warn:${fields.operation}`) },
     });
 
@@ -255,6 +303,10 @@ describe('bounded trivia activity', () => {
     expect(calls).toEqual(['post', 'warn:trivia_result_card', 'release']);
   });
 });
+
+function allowingPolicy() {
+  return { evaluate: async () => ({ allowed: true as const }) };
+}
 
 function repository(rounds: any[] = []) {
   return {

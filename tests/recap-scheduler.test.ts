@@ -14,6 +14,7 @@ describe('recap scheduler', () => {
         engagementPaused: vi
           .fn()
           .mockResolvedValueOnce(false)
+          .mockResolvedValueOnce(false)
           .mockResolvedValueOnce(true),
         recapEnabled: async () => true,
         claimRecapRun: async () => 'lease-1',
@@ -24,6 +25,8 @@ describe('recap scheduler', () => {
         preview: async () => ({ status: 'ready', content: 'safe recap' }),
       } as any,
       gateway: { post },
+      policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-07T12:05:00Z'),
     }).tick();
     expect(post).not.toHaveBeenCalled();
@@ -50,6 +53,8 @@ describe('recap scheduler', () => {
         preview: async () => ({ status: 'ready', content: 'safe recap' }),
       } as any,
       gateway: { post },
+      policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-07T12:05:00Z'),
     });
     await scheduler.tick();
@@ -73,6 +78,8 @@ describe('recap scheduler', () => {
       } as any,
       service: { preview: async () => ({ status: 'unavailable' }) } as any,
       gateway: { post: vi.fn() },
+      policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-07T12:05:00Z'),
     });
     await scheduler.tick();
@@ -117,6 +124,8 @@ describe('recap scheduler', () => {
           throw new Error('Discord unavailable');
         },
       },
+      policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-07T12:05:00Z'),
     });
     await scheduler.tick();
@@ -131,6 +140,8 @@ describe('recap scheduler', () => {
         preview: async () => ({ status: 'ready', content: 'safe recap' }),
       } as any,
       gateway: { post },
+      policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-07T12:05:00Z'),
     }).tick();
     expect(post).toHaveBeenCalledOnce();
@@ -154,6 +165,8 @@ describe('recap scheduler', () => {
         preview: async () => ({ status: 'ready', content: 'safe recap' }),
       } as any,
       gateway: { post: vi.fn() },
+      policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
       now: () => new Date('2026-08-08T06:35:00.000Z'),
     }).tick();
 
@@ -163,4 +176,14 @@ describe('recap scheduler', () => {
       new Date('2026-08-08T06:35:00.000Z'),
     );
   });
+});
+
+const allowPolicy = () => ({
+  evaluate: async () => ({ allowed: true as const }),
+});
+
+const deliveryStore = () => ({
+  claimDelivery: async () => 'broadcast-lease',
+  completeDelivery: async () => true,
+  releaseDelivery: async () => true,
 });

@@ -217,6 +217,27 @@ restore the minimum channel or SQLite access, then `/engagement resume` and
 verify status. Do not manually repost a recap/result or edit SQLite rows. For a
 restore or rollback, follow the [Engagement runbook](ENGAGEMENT_RUNBOOK.md).
 
+## Shipboard broadcast is suppressed, duplicated, or unavailable
+
+**Likely cause.** The category is disabled or paused, global engagement is
+paused, its destination no longer matches the environment allowlist, quiet
+hours or cadence applies, an opted-in member requirement is unmet, or a prior
+claim is still within its five-minute lease.
+
+**Safe diagnosis.** Open the host-local Command Deck and inspect category
+state, next eligible time, last attempt/success, health, and aggregate metrics.
+For personal delivery, run `/notifications status` as the affected crew member.
+For RSS, use preview rather than re-adding a feed. Read only bounded failure
+categories from logs. Do not copy feed entries, names, message text, raw IDs,
+lease tokens, or database rows into a ticket.
+
+**Resolution.** Correct the operator-owned configuration or minimum channel
+permission, then resume the affected category only after the cause is clear.
+Leave the lease and scheduler to retry a failed item. If a restart is needed,
+stop Jarvis cleanly and start exactly one process. For a bad migration or
+release, restore the approved stopped backup and prior application revision as
+described in the [v0.5.0 release notes](releases/v0.5.0.md).
+
 ## Engagement feature or command is unavailable
 
 **Likely cause.** `ENGAGEMENT_ENABLED` is false, the feature's own destination

@@ -113,7 +113,7 @@ export async function handleRssCommand(
     deps.storage.addFeed(serverId, url, label);
     await respond(
       interaction,
-      'RSS feed added. Jarvis will monitor it after scheduling is enabled.',
+      'RSS feed added. Saving establishes a baseline, so historical entries will not post to this MuthaShip channel.',
     );
     return;
   }

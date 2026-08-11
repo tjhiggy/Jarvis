@@ -398,6 +398,10 @@ export class TriviaExpiryScheduler {
       };
       readonly intervalMs?: number;
       readonly isPaused?: (guildId: string) => Promise<boolean>;
+      readonly policy: Pick<
+        import('../notifications/broadcast-policy.js').BroadcastPolicyService,
+        'evaluate'
+      >;
       readonly logger?: {
         warn(fields: Record<string, string>, message: string): void;
       };
@@ -466,6 +470,18 @@ export class TriviaExpiryScheduler {
           round.guildId,
           round.id,
         );
+        const decision = await this.dependencies.policy.evaluate({
+          serverId: round.guildId,
+          category: 'trivia',
+          channelId: round.channelId,
+          now: new Date(),
+          globallyPaused:
+            (await this.dependencies.isPaused?.(round.guildId)) ?? false,
+        });
+        if (!decision.allowed) {
+          await this.dependencies.service.releaseResultCard(round);
+          continue;
+        }
         await this.dependencies.gateway.post(round, results);
         if (!(await this.dependencies.service.completeResultCard(round)))
           throw new Error('Trivia result completion lease was not owned.');
