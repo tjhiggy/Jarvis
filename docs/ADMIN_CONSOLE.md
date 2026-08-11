@@ -21,3 +21,8 @@ The preview endpoint is `POST /api/rss/preview` with
 only feeds allowed by `ENGAGEMENT_RSS_ALLOWED_HOSTS`; it returns at most five
 items and never persists the feed. `POST /api/rss/pause` and
 `POST /api/rss/resume` control delivery for the configured MuthaShip.
+
+Command ownership is tracked in the [command surface matrix](COMMAND_SURFACE_MATRIX.md).
+That matrix is the v0.6 source of truth for deciding whether a workflow belongs
+in Discord, the Command Deck, or both. New controls must update the matrix,
+metrics contract, audit behavior, and smoke-test checklist together.
