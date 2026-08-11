@@ -75,7 +75,6 @@ import {
 import {
   toDiscordEngagementCard,
   type DiscordEngagementCard,
-  type EngagementCard,
 } from './engagement/discord-ui.js';
 import { EventService, type EventGateway } from './engagement/events.js';
 import { EventScheduler } from './engagement/event-scheduler.js';
@@ -781,20 +780,12 @@ export const createApplication = async (
             ),
             createId: () => randomUUID(),
           });
-    if (engagementRepository !== undefined) {
+    if (
+      engagementRepository !== undefined &&
+      supportsMemberProfiles(engagementRepository)
+    ) {
       memberProfileService = new MemberProfileService({
-        repository: memberProfileRepositoryFromEngagement(
-          engagementRepository as Required<
-            Pick<
-              EngagementRepository,
-              | 'getMemberProfile'
-              | 'createMemberProfile'
-              | 'updateMemberProfile'
-              | 'setMemberProfileVisibility'
-              | 'deleteMemberProfile'
-            >
-          >,
-        ),
+        repository: memberProfileRepositoryFromEngagement(engagementRepository),
         introductionReader: {
           getSuggestedInterests: async (serverId, userId) =>
             (
@@ -1447,6 +1438,26 @@ export const createApplication = async (
     throw error;
   }
 };
+
+type MemberProfileCapableRepository = Required<
+  Pick<
+    EngagementRepository,
+    | 'getMemberProfile'
+    | 'createMemberProfile'
+    | 'updateMemberProfile'
+    | 'setMemberProfileVisibility'
+    | 'deleteMemberProfile'
+  >
+>;
+
+const supportsMemberProfiles = (
+  repository: EngagementRepository,
+): repository is EngagementRepository & MemberProfileCapableRepository =>
+  typeof repository.getMemberProfile === 'function' &&
+  typeof repository.createMemberProfile === 'function' &&
+  typeof repository.updateMemberProfile === 'function' &&
+  typeof repository.setMemberProfileVisibility === 'function' &&
+  typeof repository.deleteMemberProfile === 'function';
 
 const elapsedMilliseconds = (startedAt: number, finishedAt: number): number => {
   const elapsed = finishedAt - startedAt;

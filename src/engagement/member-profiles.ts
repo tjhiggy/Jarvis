@@ -126,23 +126,24 @@ export class MemberProfileService {
     input: Readonly<{
       serverId: string;
       ownerUserId: string;
-      bio: string;
-      interests: string;
+      bio: string | null;
+      interests: string | null;
     }>,
   ): Promise<MemberProfileDraft> {
     const identity = this.identity(input.serverId, input.ownerUserId);
-    if (
-      !(await this.dependencies.repository.get(
-        identity.serverId,
-        identity.ownerUserId,
-      ))
-    )
-      throw new MemberProfileServiceError('not-found');
+    const current = await this.dependencies.repository.get(
+      identity.serverId,
+      identity.ownerUserId,
+    );
+    if (!current) throw new MemberProfileServiceError('not-found');
     return this.addDraft({
       ...identity,
       operation: 'edit',
-      bio: bounded(input.bio, bioLimit),
-      interests: bounded(input.interests, interestsLimit),
+      bio: input.bio === null ? current.bio : bounded(input.bio, bioLimit),
+      interests:
+        input.interests === null
+          ? current.interests
+          : bounded(input.interests, interestsLimit),
       interestsSuggested: false,
     });
   }

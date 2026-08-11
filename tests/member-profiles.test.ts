@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   MemberProfileService,
-  MemberProfileServiceError,
   type MemberProfile,
   type MemberProfileRepository,
 } from '../src/engagement/member-profiles.js';
@@ -106,6 +105,26 @@ describe('MemberProfileService', () => {
       visibility: 'hidden',
     });
     await expect(service.show('ship-1', 'user-1')).resolves.toBe(true);
+  });
+
+  it('preserves profile fields omitted from an edit preview', async () => {
+    const repository = new MemoryProfiles();
+    const service = createService(repository);
+    const create = await service.previewCreate(input());
+    await service.confirm({
+      serverId: 'ship-1',
+      ownerUserId: 'user-1',
+      draftId: create.id,
+    });
+
+    const edit = await service.previewEdit({
+      serverId: 'ship-1',
+      ownerUserId: 'user-1',
+      bio: 'Updated',
+      interests: null,
+    });
+
+    expect(edit).toMatchObject({ bio: 'Updated', interests: 'Games' });
   });
 
   it('uses a destructive draft and deletes only after confirmation', async () => {

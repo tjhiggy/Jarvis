@@ -4,6 +4,7 @@ import {
   parsePreviewCustomId,
 } from '../src/discord/handlers.js';
 import { IntroductionServiceError } from '../src/engagement/introductions.js';
+import { MemberProfileServiceError } from '../src/engagement/member-profiles.js';
 
 describe('engagement preview buttons', () => {
   it('routes an owner-bound introduction confirmation once and replies privately', async () => {
@@ -109,6 +110,30 @@ describe('engagement preview buttons', () => {
         allowedMentions: { parse: [], repliedUser: false },
       }),
     ]);
+  });
+
+  it('maps profile preview failures without suggesting a UUID fallback', async () => {
+    const interaction = button('preview:v1:profile:draft-2:confirm');
+    const handlers = createDiscordHandlers({
+      ...dependencies(),
+      memberProfileService: {
+        confirm: async () => {
+          throw new MemberProfileServiceError('expired');
+        },
+        cancel: () => false,
+      } as any,
+    });
+
+    await handlers.onInteractionCreate(interaction);
+
+    expect(interaction.edits[0]).toEqual(
+      expect.objectContaining({
+        content: expect.stringMatching(/unavailable or expired/i),
+      }),
+    );
+    expect((interaction.edits[0] as { content: string }).content).not.toMatch(
+      /UUID/i,
+    );
   });
 
   it('explains an active introduction instead of hiding the safe duplicate error', async () => {

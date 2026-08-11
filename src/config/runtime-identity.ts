@@ -5,7 +5,8 @@ const require = createRequire(import.meta.url);
 const packageVersion = (): string => {
   try {
     const metadata = require('../../package.json') as { version?: unknown };
-    return typeof metadata.version === 'string' && metadata.version.trim() !== ''
+    return typeof metadata.version === 'string' &&
+      metadata.version.trim() !== ''
       ? metadata.version.trim()
       : '0.0.0-development';
   } catch {
@@ -23,6 +24,7 @@ export interface RuntimeIdentity {
 const safeValue = (value: string | undefined, fallback: string): string => {
   const trimmed = value?.trim() ?? '';
   if (trimmed === '' || trimmed.length > 128) return fallback;
+  // eslint-disable-next-line no-control-regex -- Reject control bytes in operator-supplied release metadata.
   const sanitized = trimmed.replace(/[\u0000-\u001f\u007f]/g, '');
   return sanitized === '' ? fallback : sanitized;
 };

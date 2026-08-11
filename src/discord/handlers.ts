@@ -370,7 +370,9 @@ const handlePreviewButton = async (
       (error instanceof IntroductionServiceError &&
         error.code === 'invalid-input') ||
       (error instanceof SuggestionServiceError &&
-        error.code === 'invalid-input');
+        error.code === 'invalid-input') ||
+      (error instanceof MemberProfileServiceError &&
+        ['invalid-input', 'expired', 'duplicate-action'].includes(error.code));
     await interaction.editReply({
       content: unavailable
         ? 'This preview is unavailable or expired.'
@@ -380,7 +382,12 @@ const handlePreviewButton = async (
           : error instanceof SuggestionServiceError &&
               error.code === 'duplicate'
             ? 'That suggestion is already awaiting triage.'
-            : 'This preview could not be completed. Please retry with its UUID command.',
+            : error instanceof MemberProfileServiceError &&
+                error.code === 'duplicate'
+              ? 'You already have a member profile. Use /profile edit, hide, or delete.'
+              : error instanceof MemberProfileServiceError
+                ? 'This profile preview could not be completed. Create a new private preview and try again.'
+                : 'This preview could not be completed. Please retry with its UUID command.',
       allowedMentions: { parse: [], repliedUser: false },
     });
   }

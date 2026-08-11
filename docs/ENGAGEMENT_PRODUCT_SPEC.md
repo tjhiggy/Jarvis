@@ -26,6 +26,7 @@ It does not silently collect or summarize every channel's conversation.
 | Browse and RSVP to an event | I can list configured events, read details, and choose yes, maybe, or no through a bounded bot-owned control.                                       | RSVPs are event-scoped, capacity-aware, and never trigger role or server changes.                                                       |
 | View a recap                | I can read a concise recap of configured engagement activity for its stated source window.                                                          | It uses only configured engagement records and bot-owned activity, observes minimum-group thresholds, and says when data is incomplete. |
 | Join one activity           | I can opt into one lightweight activity, initially trivia unless the product owner explicitly selects community challenges.                         | The activity uses curated local content or an approved provider interface, has no XP, streak, economy, or public profile.               |
+| Create a crew profile       | I can explicitly create, preview, hide, show, edit, view, or delete one profile on this MuthaShip.                                                  | Jarvis uses current Discord identity at render time and never infers a profile from chat, voice, reactions, or browsing history.        |
 
 ## Scope, consent, and access
 
@@ -62,14 +63,14 @@ safe operational metadata, never contribution text or tokens.
 Retention is administrator-configured within documented safe bounds and must
 be enforced by scheduled cleanup. The initial product contract is:
 
-| Record class                             | Retention rule                                                                                                           |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Introductions and suggestions            | Retain according to `ENGAGEMENT_RETENTION_DAYS` (1 through 90 days); owner deletion removes the SQLite record and bot-owned card where possible. |
+| Record class                             | Retention rule                                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Introductions and suggestions            | Retain according to `ENGAGEMENT_RETENTION_DAYS` (1 through 90 days); owner deletion removes the SQLite record and bot-owned card where possible.                               |
 | Events and RSVPs                         | A completed or cancelled event older than `ENGAGEMENT_RETENTION_DAYS` is deleted with its RSVPs by SQLite cascade. Orphaned RSVP rows older than that cutoff are also removed. |
-| Activity participation and round results | Retain according to `ENGAGEMENT_RETENTION_DAYS`; answer text is never stored.                                             |
-| Recap preferences and run leases         | Recap preferences and completed or abandoned run leases older than `ENGAGEMENT_RETENTION_DAYS` are removed.                |
-| Engagement preferences and audit markers | Guild pause preference and metadata-only pause/resume audit rows older than `ENGAGEMENT_RETENTION_DAYS` are removed.       |
-| Opt-out and idempotency markers          | Opt-out and idempotency rows older than `ENGAGEMENT_RETENTION_DAYS` are removed.                                           |
+| Activity participation and round results | Retain according to `ENGAGEMENT_RETENTION_DAYS`; answer text is never stored.                                                                                                  |
+| Recap preferences and run leases         | Recap preferences and completed or abandoned run leases older than `ENGAGEMENT_RETENTION_DAYS` are removed.                                                                    |
+| Engagement preferences and audit markers | Guild pause preference and metadata-only pause/resume audit rows older than `ENGAGEMENT_RETENTION_DAYS` are removed.                                                           |
+| Opt-out and idempotency markers          | Opt-out and idempotency rows older than `ENGAGEMENT_RETENTION_DAYS` are removed.                                                                                               |
 
 The implementation must provide explicit owner deletion and authorized
 administrator cleanup controls. Backups are operational copies of SQLite and
@@ -108,6 +109,7 @@ and role boundary:
 - `/lfg`
 - `/birthday set`, `/birthday show`, `/birthday delete`
 - `/roles`
+- `/profile create`, `/profile view`, `/profile edit`, `/profile hide`, `/profile show`, `/profile delete`
 - `/recap preview`
 - `/trivia start`
 
@@ -131,7 +133,7 @@ different settings. An optional end time remains available for longer events.
 V1 excludes:
 
 - XP, leaderboards, streaks, economy, and reputation scoring.
-- Public member profiles or cross-channel and cross-guild profiling.
+- Automatically inferred profiles, global profiles, or cross-server profiling.
 - Voice-state, voice-content, or passive activity tracking.
 - Automated role assignment, role changes, or server-setting changes.
 - Moderation actions, member discipline, or edits to content Jarvis does not own.

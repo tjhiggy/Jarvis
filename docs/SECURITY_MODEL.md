@@ -197,6 +197,14 @@ and trivia controls do not grant server-setting, role, moderation, webhook,
 or external-write authority. Backup copies remain protected historical data
 until their approved retention period expires.
 
+Member profiles are explicit, optional, and scoped by server and user ID.
+Create, edit, and delete require an owner-bound private confirmation. Profiles
+store only a bounded bio, bounded interests, visibility, and timestamps. Jarvis
+uses the member's current Discord display identity and avatar at render time,
+does not persist avatar URLs, and does not infer profile claims from messages,
+voice, reactions, or external browsing. Hidden and missing third-party profiles
+return the same neutral response to prevent visibility probing.
+
 ## External-service risks
 
 OpenAI and Tavily may be unavailable, rate limited, or incur charges. Model

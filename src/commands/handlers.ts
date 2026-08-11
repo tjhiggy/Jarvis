@@ -276,6 +276,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/status reports safe service configuration and database health.',
     '/config shows administrators safe, non-secret Jarvis configuration.',
     '/engagement status, pause, resume, or delete provides scoped engagement operations.',
+    '/profile create, view, edit, hide, show, or delete manages your optional crew profile.',
     ...(pollsEnabled
       ? [
           '/poll creates an anonymous 2-to-5-option poll for configured administrators.',

@@ -836,6 +836,7 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     leaseToken: string,
     _now: Date,
   ): Promise<boolean> {
+    void _now;
     this.ensureOpen();
     return (
       this.database

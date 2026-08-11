@@ -42,8 +42,15 @@ dates, promises, or claims that an interface declaration is a working feature.
 Engagement V1 remains disabled by default and limited to configured channels,
 bot-owned messages, and local SQLite records. See the
 [Engagement runbook](ENGAGEMENT_RUNBOOK.md) for the operational contract. XP,
-public profiles, voice tracking, automated role assignment, moderation,
+automatically inferred or cross-server profiles, voice tracking, automated role assignment, moderation,
 Discord-setting changes, and external writes remain out of scope.
+
+## Implemented, pending release 0.4.0
+
+- Opt-in, server-scoped member profiles with private create/edit/delete
+  confirmation, visible/hidden controls, current Discord identity rendering,
+  member and administrator deletion, and a disabled-by-default feature flag.
+- Profiles are never learned from chat, voice, reactions, or browsing activity.
 
 ## Next
 

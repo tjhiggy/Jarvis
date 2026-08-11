@@ -37,6 +37,9 @@ describe('/profile', () => {
     ]);
     expect(JSON.stringify(interaction.replies[0])).toMatch(/Current Crew Name/);
     expect(JSON.stringify(interaction.replies[0])).toMatch(/Builder/);
+    expect(JSON.stringify(interaction.replies[0])).toMatch(
+      /https:\/\/cdn\.discordapp\.com\/avatar\.png/,
+    );
   });
 
   it('uses one neutral private response for hidden and missing third-party profiles', async () => {

@@ -88,8 +88,8 @@ export const handleMemberProfileCommand = async (
           ? await dependencies.service.previewEdit({
               serverId: interaction.guildId,
               ownerUserId: interaction.user.id,
-              bio: interaction.options.getString('bio') ?? '',
-              interests: interaction.options.getString('interests') ?? '',
+              bio: interaction.options.getString('bio'),
+              interests: interaction.options.getString('interests'),
             })
           : await dependencies.service.previewDelete(
               interaction.guildId,
@@ -120,6 +120,7 @@ const view = async (
   const card = profileCard(
     profile,
     name,
+    target.displayAvatarURL?.(),
     ownerView ? interaction.member?.joinedAt : undefined,
   );
   await interaction.reply({
@@ -133,12 +134,14 @@ const unavailable = 'That member profile is not available on this MuthaShip.';
 const profileCard = (
   profile: MemberProfile,
   name: string,
+  avatarUrl?: string,
   joinedAt?: Date | null,
 ) =>
   toDiscordEngagementCard(
     buildEngagementCard({
       title: `Crew profile: ${name}`,
       description: profile.bio ?? 'No bio provided.',
+      ...(avatarUrl === undefined ? {} : { thumbnailUrl: avatarUrl }),
       fields: [
         ...(profile.interests
           ? [{ name: 'Interests', value: profile.interests }]

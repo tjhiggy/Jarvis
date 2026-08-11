@@ -274,19 +274,12 @@ export class SuggestionService {
         this.now(),
       );
     if (value === undefined) return false;
-    try {
-      if (value.messageId?.trim())
-        await this.dependencies.gateway.delete(
-          value.channelId,
-          value.messageId,
-        );
-      return await this.dependencies.repository.deleteSuggestionRecord(
-        value.guildId,
-        value.id,
-      );
-    } catch (error) {
-      throw error;
-    }
+    if (value.messageId?.trim())
+      await this.dependencies.gateway.delete(value.channelId, value.messageId);
+    return this.dependencies.repository.deleteSuggestionRecord(
+      value.guildId,
+      value.id,
+    );
   }
 
   async moderate(
