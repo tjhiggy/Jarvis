@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-11
+
+- Shipped daily MuthaShip Coin rewards, participation streaks, privacy-aware profiles, and allowlisted crew roles.
+- Deferred persistent teams and ambassador-card economy to v1.0 for dedicated design and safety work.
+
 No changes yet.
 
 ## [0.8.0] - 2026-08-11
