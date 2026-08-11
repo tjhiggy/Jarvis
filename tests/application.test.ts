@@ -1,4 +1,8 @@
 import { GatewayIntentBits } from 'discord.js';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { describe, expect, it, vi } from 'vitest';
 import type { Logger } from 'pino';
 import type { AppConfig } from '../src/config/config.js';
@@ -175,6 +179,45 @@ describe('reportStartupFailure', () => {
 });
 
 describe('createApplication', () => {
+  it('initializes private member statistics when engagement is disabled', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'jarvis-member-stats-'));
+    const databasePath = join(directory, 'jarvis.db');
+    try {
+      const application = await createTestApplication({
+        loadConfig: () => ({
+          ...config,
+          storage: { ...config.storage, databasePath },
+          engagement: { ...config.engagement, enabled: false },
+        }),
+        loadPersona: async () => ({}) as TrustedPersona,
+        createStore: () => conversationStore(),
+        createBroadcastStore: () => broadcastStore(),
+        createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+        createDiscordClient: () => ({
+          user: { id: 'bot-id' },
+          on: () => undefined,
+          login: async () => undefined,
+          destroy: () => undefined,
+        }),
+        timers: inertTimers(),
+      });
+      const database = new Database(databasePath, { readonly: true });
+      const tables = database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'member_statistics_%' ORDER BY name",
+        )
+        .all() as { name: string }[];
+      database.close();
+      expect(tables.map(({ name }) => name)).toEqual([
+        'member_statistics_daily',
+        'member_statistics_preferences',
+      ]);
+      await application.shutdown();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('moves a cadence-eligible broadcast past its configured quiet hours', () => {
     expect(
       nextBroadcastEligibleAt(

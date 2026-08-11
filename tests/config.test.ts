@@ -47,11 +47,19 @@ describe('loadConfig', () => {
         IMAGE_GENERATION_ENABLED: 'true',
       }),
     ).toThrow(/IMAGE_GENERATION_ENABLED/);
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        IMAGE_GENERATION_ENABLED: 'true',
+        IMAGE_GENERATION_CHANNEL_ID: '1536175231373148181',
+      }),
+    ).toThrow(/ENGAGEMENT_ADMIN_ROLE_IDS/);
     expect(
       loadConfig({
         ...validEnv,
         IMAGE_GENERATION_ENABLED: 'true',
         IMAGE_GENERATION_CHANNEL_ID: '1536175231373148181',
+        ENGAGEMENT_ADMIN_ROLE_IDS: '1147945394039435316',
       }).imageGeneration,
     ).toMatchObject({ enabled: true, channelId: '1536175231373148181' });
   });

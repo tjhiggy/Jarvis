@@ -49,14 +49,16 @@ describe('opt-in member command statistics', () => {
 
   it('removes daily counters outside the 30-day retention window', async () => {
     const service = createService();
-    const old = new Date('2026-06-01T00:00:00.000Z');
-    await service.enable('server-1', 'crew-1', old);
-    await service.recordCommand('server-1', 'crew-1', 'ask', old);
+    const expired = new Date('2026-07-12T00:00:00.000Z');
+    const retained = new Date('2026-07-13T00:00:00.000Z');
+    await service.enable('server-1', 'crew-1', expired);
+    await service.recordCommand('server-1', 'crew-1', 'ask', expired);
+    await service.recordCommand('server-1', 'crew-1', 'ask', retained);
 
     expect(await service.cleanup(new Date('2026-08-11T00:00:00.000Z'))).toBe(1);
     expect(await service.status('server-1', 'crew-1', now)).toEqual({
       enabled: true,
-      commandCount: 0,
+      commandCount: 1,
     });
   });
 

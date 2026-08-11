@@ -853,30 +853,30 @@ export const createApplication = async (
     ) {
       rssStorage = new RssStorage(config.storage.databasePath);
     }
+    memberStatisticsStore = new SQLiteMemberStatisticsStore(
+      config.storage.databasePath,
+    );
+    memberStatistics = new MemberStatisticsService(memberStatisticsStore);
     if (config.engagement.enabled) {
       engagementRepository =
         dependencies.createEngagementRepository?.(
           config.storage.databasePath,
         ) ?? new SQLiteEngagementRepository(config.storage.databasePath);
-      memberStatisticsStore = new SQLiteMemberStatisticsStore(
-        config.storage.databasePath,
-      );
-      memberStatistics = new MemberStatisticsService(memberStatisticsStore);
-      instrumentation = new Instrumentation(
-        {
-          record: async (event) => {
-            if (event.serverId === 'direct-message') return;
-            await engagementRepository?.recordAnalyticsEvent?.(event);
-          },
-        },
-        memberStatistics,
-      );
       featureFlags = new FeatureFlagService(
         engagementRepository as Required<
           Pick<EngagementRepository, 'getFeatureFlags' | 'setFeatureFlag'>
         >,
       );
     }
+    instrumentation = new Instrumentation(
+      {
+        record: async (event) => {
+          if (event.serverId === 'direct-message') return;
+          await engagementRepository?.recordAnalyticsEvent?.(event);
+        },
+      },
+      memberStatistics,
+    );
     const ai = aiFactory(config);
     if (config.imageGeneration.enabled) {
       imageGeneration = new ImageGenerationService(

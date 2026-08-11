@@ -186,7 +186,7 @@ export class MemberStatisticsService {
 
   async cleanup(now = new Date()): Promise<number> {
     const cutoff = new Date(now);
-    cutoff.setUTCDate(cutoff.getUTCDate() - RETENTION_DAYS);
+    cutoff.setUTCDate(cutoff.getUTCDate() - (RETENTION_DAYS - 1));
     return this.store.cleanup(day(cutoff));
   }
 

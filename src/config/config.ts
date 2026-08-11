@@ -421,6 +421,17 @@ const environmentSchema = baseEnvironmentSchema.superRefine(
           'Enabled image generation requires OPENAI_API_KEY and IMAGE_GENERATION_CHANNEL_ID.',
       });
     }
+    if (
+      value.IMAGE_GENERATION_ENABLED === 'true' &&
+      value.ENGAGEMENT_ADMIN_ROLE_IDS.length === 0
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ENGAGEMENT_ADMIN_ROLE_IDS'],
+        message:
+          'Enabled image generation requires at least one configured administrator role.',
+      });
+    }
 
     validatePollConfiguration(value, context);
     validateEngagementConfiguration(value, context);
