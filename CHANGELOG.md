@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-11
+
+### Added
+
+- A complete ownership matrix for every registered Discord command, with
+  explicit Discord, Command Deck, or dual-surface decisions and shared QA,
+  metrics, audit, and rollback requirements.
+- A localhost-authenticated Command Deck workflow for one-off MuthaShip
+  broadcasts with friendly allowlisted channel selection, bounded composition,
+  exact preview, cancel, and single-use confirmation.
+
+### Security
+
+- Command Deck broadcast delivery reuses the existing delegated-post boundary,
+  neutralizes uncontrolled mentions, prevents duplicate confirmation, retains
+  failed drafts for retry, and logs content-free operation metadata only.
+
 ## [0.5.0] - 2026-08-11
 
 ### Added
