@@ -8,8 +8,12 @@ import type { FaqCatalog } from '../src/faq/faq-catalog.js';
 import type { PollController } from '../src/polls/poll-controller.js';
 import type { PollScheduler } from '../src/polls/poll-scheduler.js';
 import type { PollStore } from '../src/polls/poll-store.js';
-import type { BroadcastStore } from '../src/notifications/broadcast-store.js';
+import type {
+  BroadcastPolicy,
+  BroadcastStore,
+} from '../src/notifications/broadcast-store.js';
 import type { ProactivePrompt } from '../src/notifications/proactive-catalog.js';
+import type { ProactiveEngagementService } from '../src/engagement/proactive.js';
 import { ReminderScheduler } from '../src/reminders/reminder-scheduler.js';
 import type { ReminderStore } from '../src/reminders/reminder-store.js';
 import type { ReminderView } from '../src/reminders/reminder-types.js';
@@ -161,6 +165,173 @@ describe('reportStartupFailure', () => {
 });
 
 describe('createApplication', () => {
+  it('rechecks the persisted engagement pause before proactive channel delivery', async () => {
+    let paused = false;
+    let posted = 0;
+    let proactiveService: ProactiveEngagementService | undefined;
+    let policy: BroadcastPolicy | undefined;
+    const application = await createTestApplication({
+      loadConfig: () => ({
+        ...config,
+        security: {
+          ...config.security,
+          allowedChannelIds: new Set(['channel-id']),
+        },
+        engagement: {
+          ...config.engagement,
+          enabled: true,
+          channels: { ...config.engagement.channels, activityId: 'channel-id' },
+          proactiveCatalogPath: './config/approved-prompts.json',
+        },
+      }),
+      loadPersona: async () => ({}) as TrustedPersona,
+      loadProactiveCatalog: async () => [
+        {
+          id: 'crew-check-in',
+          category: 'community',
+          text: 'Crew check-in: what is everyone playing today?',
+          active: true,
+        },
+      ],
+      createEngagementRepository: () =>
+        ({
+          getFeatureFlags: async () => [],
+          setFeatureFlag: async () => undefined,
+          getProactiveState: async () => ({ state: 'enabled' as const }),
+          setProactiveState: async () => undefined,
+          recordProactivePosted: async () => undefined,
+          engagementPaused: async () => paused,
+          cleanup: async () => 0,
+          closeConnection: async () => undefined,
+        }) as any,
+      createBroadcastStore: () =>
+        broadcastStore({
+          getPolicy: async () => policy,
+          setPolicy: async (next) => {
+            policy = next;
+          },
+          claimDelivery: async () => {
+            paused = true;
+            return 'lease-token';
+          },
+          completeDelivery: async () => true,
+          releaseDelivery: async () => true,
+        }),
+      createProactiveScheduler: (service) => {
+        proactiveService = service;
+        return { start: () => undefined, stop: async () => undefined };
+      },
+      createStore: () => conversationStore(),
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        channels: {
+          fetch: async () => ({
+            send: async () => {
+              posted += 1;
+            },
+          }),
+        },
+        on: () => undefined,
+        login: async () => undefined,
+        destroy: () => undefined,
+      }),
+      timers: inertTimers(),
+    });
+
+    await expect(proactiveService!.tick()).resolves.toBe(false);
+    expect(posted).toBe(0);
+    await application.shutdown();
+  });
+
+  it('waits for a blocked proactive scheduler before closing broadcast storage', async () => {
+    const events: string[] = [];
+    let releaseStop = (): void => undefined;
+    let signalStopStarted = (): void => undefined;
+    const stopBlocked = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    const stopStarted = new Promise<void>((resolve) => {
+      signalStopStarted = resolve;
+    });
+    const application = await createTestApplication({
+      loadConfig: () => ({
+        ...config,
+        security: {
+          ...config.security,
+          allowedChannelIds: new Set(['channel-id']),
+        },
+        engagement: {
+          ...config.engagement,
+          enabled: true,
+          channels: { ...config.engagement.channels, activityId: 'channel-id' },
+          proactiveCatalogPath: './config/approved-prompts.json',
+        },
+      }),
+      loadPersona: async () => ({}) as TrustedPersona,
+      loadProactiveCatalog: async () => [
+        {
+          id: 'crew-check-in',
+          category: 'community',
+          text: 'Crew check-in: what is everyone playing today?',
+          active: true,
+        },
+      ],
+      createEngagementRepository: () =>
+        ({
+          getFeatureFlags: async () => [],
+          setFeatureFlag: async () => undefined,
+          getProactiveState: async () => ({ state: 'disabled' as const }),
+          setProactiveState: async () => undefined,
+          recordProactivePosted: async () => undefined,
+          engagementPaused: async () => false,
+          cleanup: async () => 0,
+          closeConnection: async () => undefined,
+        }) as any,
+      createBroadcastStore: () =>
+        broadcastStore({
+          getPolicy: async () => undefined,
+          setPolicy: async () => undefined,
+          close: async () => {
+            events.push('broadcast-store-close');
+          },
+        }),
+      createProactiveScheduler: () => ({
+        start: () => {
+          events.push('proactive-start');
+        },
+        stop: async () => {
+          events.push('proactive-stop-start');
+          signalStopStarted();
+          await stopBlocked;
+          events.push('proactive-stop-end');
+        },
+      }),
+      createStore: () => conversationStore(),
+      createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+      createDiscordClient: () => ({
+        user: { id: 'bot-id' },
+        on: () => undefined,
+        login: async () => undefined,
+        destroy: () => undefined,
+      }),
+      timers: inertTimers(),
+    });
+
+    const stopping = application.shutdown();
+    await stopStarted;
+    expect(events).toEqual(['proactive-start', 'proactive-stop-start']);
+
+    releaseStop();
+    await stopping;
+    expect(events).toEqual([
+      'proactive-start',
+      'proactive-stop-start',
+      'proactive-stop-end',
+      'broadcast-store-close',
+    ]);
+  });
+
   it('loads the configured approved proactive catalog before application startup', async () => {
     const catalogPaths: string[] = [];
     const application = await createTestApplication({

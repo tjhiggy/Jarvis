@@ -97,6 +97,7 @@ import {
 import {
   DurableProactiveScheduler,
   ProactiveEngagementService,
+  type ProactiveScheduler,
 } from './engagement/proactive.js';
 import { DelegatedPostService } from './engagement/delegated-posts.js';
 import { FeatureFlagService } from './engagement/feature-flags.js';
@@ -260,6 +261,9 @@ export interface ApplicationDependencies {
   readonly loadProactiveCatalog?: (
     path: string,
   ) => Promise<readonly ProactivePrompt[]>;
+  readonly createProactiveScheduler?: (
+    service: ProactiveEngagementService,
+  ) => ProactiveScheduler;
   readonly createStore?: (
     databasePath: string,
     maxStoredMessages: number,
@@ -498,7 +502,7 @@ export const createApplication = async (
   let triviaService: TriviaService | undefined;
   let birthdayService: BirthdayServiceType | undefined;
   let birthdayScheduler: BirthdayScheduler | undefined;
-  let proactiveScheduler: DurableProactiveScheduler | undefined;
+  let proactiveScheduler: ProactiveScheduler | undefined;
   let proactiveService: ProactiveEngagementService | undefined;
   let memberProfileService: MemberProfileService | undefined;
   let triviaScheduler: TriviaExpiryScheduler | undefined;
@@ -913,12 +917,13 @@ export const createApplication = async (
         },
         channelId: config.engagement.channels.activityId,
         guildId: config.discord.guildId,
+        isGloballyPaused: (guildId) =>
+          engagementRepository!.engagementPaused!(guildId),
         catalog: proactiveCatalog,
         policy: new BroadcastPolicyService(initializedBroadcastStore, [
           ...config.security.allowedChannelIds,
         ]),
         broadcastStore: initializedBroadcastStore,
-        quietHours: [23, 8],
         logger,
       });
     }
@@ -1503,7 +1508,9 @@ export const createApplication = async (
     triviaScheduler?.start();
     birthdayScheduler?.start();
     if (proactiveService !== undefined) {
-      proactiveScheduler = new DurableProactiveScheduler(proactiveService);
+      proactiveScheduler =
+        dependencies.createProactiveScheduler?.(proactiveService) ??
+        new DurableProactiveScheduler(proactiveService, 60_000, logger);
       proactiveScheduler.start();
     }
 

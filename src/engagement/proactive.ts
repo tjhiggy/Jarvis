@@ -4,6 +4,7 @@ import {
   selectEligiblePrompts,
   type ProactivePrompt,
 } from '../notifications/proactive-catalog.js';
+import { projectOperationalError } from '../utils/logger.js';
 import { neutralizeDiscordMentions } from '../utils/mentions.js';
 
 export type ProactiveState = 'disabled' | 'enabled' | 'paused';
@@ -42,9 +43,8 @@ export class ProactiveEngagementService {
       catalog: readonly ProactivePrompt[];
       channelId: string;
       guildId: string;
+      isGloballyPaused: (guildId: string) => Promise<boolean>;
       now?: () => Date;
-      quietHours?: readonly [number, number];
-      minIntervalMs?: number;
       logger?: ProactiveLogger;
     }>,
   ) {}
@@ -84,15 +84,6 @@ export class ProactiveEngagementService {
     }
 
     const now = this.clock();
-    if (
-      this.inQuietHours(now) ||
-      (current.lastPostedAt !== undefined &&
-        now.getTime() - current.lastPostedAt.getTime() <
-          (this.dependencies.minIntervalMs ?? 6 * 60 * 60_000))
-    ) {
-      return false;
-    }
-
     const prompt = selectEligiblePrompts(this.dependencies.catalog, now)[0];
     if (prompt === undefined) return false;
     if (!(await this.allowsDelivery(now))) return false;
@@ -168,20 +159,15 @@ export class ProactiveEngagementService {
         category: 'proactive',
         channelId: this.dependencies.channelId,
         now,
+        globallyPaused: await this.dependencies.isGloballyPaused(
+          this.dependencies.guildId,
+        ),
       })
     ).allowed;
   }
 
   private clock(): Date {
     return (this.dependencies.now ?? (() => new Date()))();
-  }
-
-  private inQuietHours(now: Date): boolean {
-    const [start, end] = this.dependencies.quietHours ?? [23, 8];
-    const hour = now.getHours();
-    return start > end
-      ? hour >= start || hour < end
-      : hour >= start && hour < end;
   }
 }
 
@@ -204,24 +190,49 @@ export interface ProactiveScheduler {
   stop(): Promise<void>;
 }
 
+type ProactiveTickService = Pick<ProactiveEngagementService, 'tick'>;
+
 export class DurableProactiveScheduler implements ProactiveScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
+  private stopped = true;
+  private readonly inFlight = new Set<Promise<void>>();
 
   constructor(
-    private readonly service: ProactiveEngagementService,
+    private readonly service: ProactiveTickService,
     private readonly intervalMs = 60_000,
+    private readonly logger?: ProactiveLogger,
   ) {}
 
   start(): void {
     if (!this.timer) {
-      this.timer = setInterval(() => void this.service.tick(), this.intervalMs);
+      this.stopped = false;
+      this.timer = setInterval(() => this.runTick(), this.intervalMs);
     }
   }
 
   async stop(): Promise<void> {
+    this.stopped = true;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = undefined;
     }
+    await Promise.allSettled([...this.inFlight]);
+  }
+
+  private runTick(): void {
+    if (this.stopped) return;
+    const active = this.service
+      .tick()
+      .catch((error: unknown) => {
+        this.logger?.warn(
+          projectOperationalError(error, 'proactive_scheduler'),
+          'Proactive scheduler tick failed.',
+        );
+      })
+      .then(() => undefined)
+      .finally(() => {
+        this.inFlight.delete(active);
+      });
+    this.inFlight.add(active);
   }
 }
