@@ -4,6 +4,8 @@ This is the v0.7 Command Deck baseline. Discord remains the fast, contextual
 surface for crew interactions. The local Command Deck is the safer home for
 configuration, diagnostics, bulk administration, previews, and audit history.
 Both surfaces share the same services and storage contracts.
+External adapters follow the shared [provider contract](PROVIDER_CONTRACT.md)
+and expose health without credentials or response content.
 
 ## Decision rules
 
