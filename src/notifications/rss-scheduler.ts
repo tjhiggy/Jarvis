@@ -220,10 +220,6 @@ export class RssScheduler {
             await release([delivery]);
             continue;
           }
-          if (!(await policyAllowsPost())) {
-            await release(claimed.slice(index));
-            return published;
-          }
           if (
             !this.storage.rolloverDailyDeliveryReservation(
               this.serverId,
@@ -234,6 +230,10 @@ export class RssScheduler {
           ) {
             await release([delivery]);
             continue;
+          }
+          if (!(await policyAllowsPost())) {
+            await release(claimed.slice(index));
+            return published;
           }
           try {
             await this.publisher.publish(this.channelId, rendered);
@@ -251,11 +251,6 @@ export class RssScheduler {
         entries: claimed.map(({ entry }) => entry),
       });
       if (rendered.deliveryKeys.length === 0) {
-        await release(claimed);
-        return 0;
-      }
-
-      if (!(await policyAllowsPost())) {
         await release(claimed);
         return 0;
       }
@@ -281,6 +276,10 @@ export class RssScheduler {
         entries: postable.map(({ entry }) => entry),
       });
       if (postableRendered.deliveryKeys.length === 0) {
+        await release(postable);
+        return 0;
+      }
+      if (!(await policyAllowsPost())) {
         await release(postable);
         return 0;
       }

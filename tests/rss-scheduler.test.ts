@@ -200,6 +200,78 @@ describe('RssScheduler', () => {
     expect(policy.evaluate).toHaveBeenCalledTimes(5);
   });
 
+  it('rechecks policy after non-digest reservation rollover before posting', async () => {
+    const storage = readyStorage();
+    let denied = false;
+    const rollover = vi.spyOn(storage, 'rolloverDailyDeliveryReservation');
+    rollover.mockImplementation(() => {
+      denied = true;
+      return true;
+    });
+    const policy = {
+      evaluate: vi.fn().mockImplementation(async () => ({ allowed: !denied })),
+    };
+    const delivery = deliveryStore(false);
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      { fetch: vi.fn().mockResolvedValue([item('policy-race')]) },
+      publisher,
+      'server',
+      policy,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(delivery.completeDelivery).not.toHaveBeenCalled();
+    expect(delivery.releaseDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:policy-race',
+      'lease:https://news.example.com/feed.xml:policy-race',
+      expect.any(Date),
+      undefined,
+    );
+  });
+
+  it('rechecks policy after digest reservation rollover and rendering before posting', async () => {
+    const storage = readyStorage();
+    let denied = false;
+    const rollover = vi.spyOn(storage, 'rolloverDailyDeliveryReservation');
+    rollover.mockImplementation(() => {
+      denied = true;
+      return true;
+    });
+    const policy = {
+      evaluate: vi.fn().mockImplementation(async () => ({ allowed: !denied })),
+    };
+    const delivery = deliveryStore(true);
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      { fetch: vi.fn().mockResolvedValue([item('digest-policy-race')]) },
+      publisher,
+      'server',
+      policy,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(delivery.completeDelivery).not.toHaveBeenCalled();
+    expect(delivery.releaseDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:digest-policy-race',
+      'lease:https://news.example.com/feed.xml:digest-policy-race',
+      expect.any(Date),
+      undefined,
+    );
+  });
+
   it('keeps every rendered digest entry complete within the payload bound', () => {
     const digest = formatRssDigest({
       entries: [
@@ -316,11 +388,13 @@ describe('RssScheduler', () => {
     const storage = readyStorage();
     const beforeMidnight = new Date('2026-08-11T23:59:59.900Z');
     const afterMidnight = new Date('2026-08-12T00:00:01.000Z');
-    let evaluationCount = 0;
-    const policy = {
-      evaluate: vi.fn().mockImplementation(async () => {
-        evaluationCount += 1;
-        if (evaluationCount === 2) {
+    let nowCalls = 0;
+    let rolloverCount = 0;
+    const originalRollover =
+      storage.rolloverDailyDeliveryReservation.bind(storage);
+    vi.spyOn(storage, 'rolloverDailyDeliveryReservation').mockImplementation(
+      (...args) => {
+        if (rolloverCount === 0) {
           for (let index = 0; index < 20; index += 1) {
             storage.recordCompletedItem(
               'server',
@@ -329,9 +403,11 @@ describe('RssScheduler', () => {
             );
           }
         }
-        return { allowed: true };
-      }),
-    };
+        rolloverCount += 1;
+        return originalRollover(...args);
+      },
+    );
+    const policy = { evaluate: vi.fn().mockResolvedValue({ allowed: true }) };
     const delivery = deliveryStore(true);
     const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
     const scheduler = schedulerFor(
@@ -347,10 +423,10 @@ describe('RssScheduler', () => {
       'server',
       policy,
       delivery,
-      () =>
-        evaluationCount === 0 || evaluationCount === 1
-          ? beforeMidnight
-          : afterMidnight,
+      () => {
+        nowCalls += 1;
+        return nowCalls === 1 ? beforeMidnight : afterMidnight;
+      },
     );
 
     await expect(scheduler.tick()).resolves.toBe(0);
