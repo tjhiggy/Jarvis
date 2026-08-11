@@ -19,6 +19,26 @@ import type { ReminderView } from '../src/reminders/reminder-types.js';
 const safeMentions = { parse: [], repliedUser: false };
 
 describe('command definitions', () => {
+  it('registers profile feature control under engagement, not knowledge', () => {
+    const definitions = createCommandDefinitions(2_000, [
+      {
+        id: 'about',
+        label: 'About',
+        question: 'What is Jarvis?',
+        answer: 'Jarvis',
+      },
+    ]);
+    const engagement = definitions.find(({ name }) => name === 'engagement');
+    const knowledge = definitions.find(({ name }) => name === 'knowledge');
+
+    expect(engagement?.options?.some(({ name }) => name === 'feature')).toBe(
+      true,
+    );
+    expect(knowledge?.options?.some(({ name }) => name === 'feature')).toBe(
+      false,
+    );
+  });
+
   it('always registers the exact personal reminder subcommands', () => {
     const definitions = createCommandDefinitions(123, [
       faqEntry('capabilities', 'Jarvis capabilities'),

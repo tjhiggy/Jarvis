@@ -112,6 +112,29 @@ describe('engagement preview buttons', () => {
     ]);
   });
 
+  it('blocks an existing profile confirmation after profiles are disabled', async () => {
+    const confirms: unknown[] = [];
+    const interaction = button('preview:v1:profile:draft-2:confirm');
+    const handlers = createDiscordHandlers({
+      ...dependencies(),
+      isMemberProfileEnabled: async () => false,
+      memberProfileService: {
+        confirm: async (value: unknown) => {
+          confirms.push(value);
+          return { userId: 'owner-1' };
+        },
+        cancel: () => false,
+      } as any,
+    });
+
+    await handlers.onInteractionCreate(interaction);
+
+    expect(confirms).toEqual([]);
+    expect(interaction.edits).toEqual([
+      expect.objectContaining({ content: expect.stringMatching(/disabled/i) }),
+    ]);
+  });
+
   it('maps profile preview failures without suggesting a UUID fallback', async () => {
     const interaction = button('preview:v1:profile:draft-2:confirm');
     const handlers = createDiscordHandlers({

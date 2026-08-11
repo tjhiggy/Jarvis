@@ -1266,6 +1266,12 @@ export const createApplication = async (
       ...(pollController === undefined ? {} : { pollController }),
       ...(introductionService === undefined ? {} : { introductionService }),
       ...(memberProfileService === undefined ? {} : { memberProfileService }),
+      ...(memberProfileService === undefined || featureFlags === undefined
+        ? {}
+        : {
+            isMemberProfileEnabled: (serverId: string) =>
+              featureFlags.isEnabled(serverId, 'profiles'),
+          }),
       ...(suggestionService === undefined
         ? {}
         : {

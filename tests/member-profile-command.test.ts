@@ -27,7 +27,10 @@ describe('/profile', () => {
   });
 
   it('shows visible member profiles publicly using current Discord identity', async () => {
-    const interaction = command('view', {}, target());
+    const interaction = command('view', {}, target(), {
+      displayName: 'Server Crew Nickname',
+      joinedAt: new Date('2025-07-04T12:00:00Z'),
+    });
     await handleMemberProfileCommand(interaction as any, {
       enabled: true,
       service: service({ get: async () => profile() }),
@@ -35,7 +38,10 @@ describe('/profile', () => {
     expect(interaction.replies).toEqual([
       expect.objectContaining({ ephemeral: false }),
     ]);
-    expect(JSON.stringify(interaction.replies[0])).toMatch(/Current Crew Name/);
+    expect(JSON.stringify(interaction.replies[0])).toMatch(
+      /Server Crew Nickname/,
+    );
+    expect(JSON.stringify(interaction.replies[0])).toMatch(/7\/4\/2025/);
     expect(JSON.stringify(interaction.replies[0])).toMatch(/Builder/);
     expect(JSON.stringify(interaction.replies[0])).toMatch(
       /https:\/\/cdn\.discordapp\.com\/avatar\.png/,
@@ -126,6 +132,7 @@ function command(
   subcommand: string,
   strings: Record<string, string> = {},
   member?: unknown,
+  serverMember?: unknown,
 ) {
   const replies: any[] = [];
   return {
@@ -139,6 +146,7 @@ function command(
       getSubcommand: () => subcommand,
       getString: (name: string) => strings[name] ?? null,
       getUser: () => member ?? null,
+      getMember: () => serverMember ?? null,
     },
     replies,
     reply: async (payload: any) => void replies.push(payload),

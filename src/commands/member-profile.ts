@@ -19,17 +19,21 @@ interface DiscordUser {
   displayAvatarURL?(): string;
 }
 
+interface DiscordMember {
+  readonly displayName?: string | null;
+  readonly joinedAt?: Date | null;
+  readonly user?: DiscordUser;
+}
+
 export interface MemberProfileCommandInteraction extends ReplyTarget {
   readonly guildId: string | null;
   readonly user: DiscordUser;
-  readonly member?: Readonly<{
-    displayName?: string | null;
-    joinedAt?: Date | null;
-  }> | null;
+  readonly member?: Readonly<DiscordMember> | null;
   readonly options: Readonly<{
     getSubcommand(): string;
     getString(name: string): string | null;
     getUser?(name: string): DiscordUser | null;
+    getMember?(name: string): Readonly<DiscordMember> | null;
   }>;
 }
 
@@ -107,21 +111,23 @@ const view = async (
 ): Promise<void> => {
   const target = interaction.options.getUser?.('member') ?? interaction.user;
   const ownerView = target.id === interaction.user.id;
+  const targetMember = ownerView
+    ? interaction.member
+    : interaction.options.getMember?.('member');
   if (target.bot) return replySafely(interaction, unavailable, true);
   const profile = await service.get(interaction.guildId!, target.id);
   if (profile === undefined || (!ownerView && profile.visibility === 'hidden'))
     return replySafely(interaction, unavailable, true);
-  const name = ownerView
-    ? interaction.member?.displayName ||
-      interaction.user.globalName ||
-      interaction.user.username ||
-      'Crew Member'
-    : target.globalName || target.username || 'Crew Member';
+  const name =
+    targetMember?.displayName ||
+    target.globalName ||
+    target.username ||
+    'Crew Member';
   const card = profileCard(
     profile,
     name,
-    target.displayAvatarURL?.(),
-    ownerView ? interaction.member?.joinedAt : undefined,
+    targetMember?.user?.displayAvatarURL?.() ?? target.displayAvatarURL?.(),
+    targetMember?.joinedAt,
   );
   await interaction.reply({
     ...card,

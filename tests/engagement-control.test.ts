@@ -93,6 +93,57 @@ describe('engagement controls', () => {
     expect(replies[0]?.content).not.toMatch(/^Removed 3/i);
   });
 
+  it('routes owner and authorized administrator deletion to the intended member', async () => {
+    const replies: Array<{ content?: string; ephemeral?: boolean }> = [];
+    const targets: string[] = [];
+    const dependencies = {
+      enabled: true,
+      adminRoleIds: new Set(['admin-role']),
+      repository: {
+        ...repository(),
+        deleteOwnerData: async (_serverId: string, userId: string) => {
+          targets.push(userId);
+          return { completed: 0, pending: 0 };
+        },
+      },
+    };
+
+    await handleEngagementCommand(interaction(replies, 'delete'), dependencies);
+    await handleEngagementCommand(
+      interaction(replies, 'delete', ['admin-role'], {
+        user_id: 'crew-member-2',
+      }),
+      dependencies,
+    );
+
+    expect(targets).toEqual(['admin-1', 'crew-member-2']);
+  });
+
+  it('returns a safe private error when owner-data storage fails', async () => {
+    const replies: Array<{ content?: string; ephemeral?: boolean }> = [];
+
+    await expect(
+      handleEngagementCommand(interaction(replies, 'delete'), {
+        enabled: true,
+        adminRoleIds: new Set(['admin-role']),
+        repository: {
+          ...repository(),
+          deleteOwnerData: async () => {
+            throw new Error('database path and profile content');
+          },
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/could not be completed/i),
+        ephemeral: true,
+      }),
+    ]);
+    expect(replies[0]?.content).not.toMatch(/database path|profile content/i);
+  });
+
   it('allows an administrator to enable and inspect the profiles feature', async () => {
     const replies: Array<{ content?: string; ephemeral?: boolean }> = [];
     const changes: unknown[][] = [];

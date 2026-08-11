@@ -93,10 +93,19 @@ export const handleEngagementCommand = async (
         "Deleting another member's engagement records is restricted to configured MuthaShip administrators.",
         true,
       );
-    const deletion = await dependencies.repository.deleteOwnerData(
-      interaction.guildId,
-      target,
-    );
+    let deletion: EngagementDeletionOutcome;
+    try {
+      deletion = await dependencies.repository.deleteOwnerData(
+        interaction.guildId,
+        target,
+      );
+    } catch {
+      return replySafely(
+        interaction,
+        'The retained-data deletion could not be completed. Please retry later.',
+        true,
+      );
+    }
     const content =
       deletion.completed === 0 && deletion.pending === 0
         ? 'No retained engagement records were found for that member on this MuthaShip.'

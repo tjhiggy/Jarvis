@@ -110,6 +110,7 @@ export interface MessageHandlerDependencies {
     MemberProfileService,
     'confirm' | 'cancel'
   >;
+  readonly isMemberProfileEnabled?: (serverId: string) => Promise<boolean>;
   readonly engagementAdminRoleIds?: ReadonlySet<string>;
   readonly suggestionChannelId?: string;
   readonly eventService?: EventService;
@@ -310,6 +311,17 @@ const handlePreviewButton = async (
   }
   await interaction.deferReply({ ephemeral: true });
   try {
+    if (
+      parsed.kind === 'profile' &&
+      dependencies.isMemberProfileEnabled !== undefined &&
+      !(await dependencies.isMemberProfileEnabled(guildId))
+    ) {
+      await interaction.editReply({
+        content: 'Member profiles are disabled on this MuthaShip.',
+        allowedMentions: { parse: [], repliedUser: false },
+      });
+      return;
+    }
     if (parsed.action === 'cancel') {
       const cancelled =
         parsed.kind === 'profile'

@@ -426,33 +426,6 @@ export const createCommandDefinitions = (
       options: [
         {
           type: 1,
-          name: 'feature',
-          description: 'View or control a reviewed MuthaShip feature.',
-          options: [
-            {
-              type: 3,
-              name: 'action',
-              description: 'Choose a safe feature action.',
-              required: true,
-              max_length: 20,
-              choices: [
-                { name: 'Status', value: 'status' },
-                { name: 'Enable', value: 'enable' },
-                { name: 'Disable', value: 'disable' },
-              ],
-            },
-            {
-              type: 3,
-              name: 'name',
-              description: 'Reviewed feature name.',
-              required: true,
-              max_length: 20,
-              choices: [{ name: 'Member profiles', value: 'profiles' }],
-            },
-          ],
-        },
-        {
-          type: 1,
           name: 'query',
           description: 'Search approved knowledge.',
           options: [
@@ -1196,6 +1169,33 @@ export const createCommandDefinitions = (
       name: 'engagement',
       description: 'View or control engagement scheduling as an administrator.',
       options: [
+        {
+          type: 1,
+          name: 'feature',
+          description: 'View or control a reviewed MuthaShip feature.',
+          options: [
+            {
+              type: 3,
+              name: 'action',
+              description: 'Choose a safe feature action.',
+              required: true,
+              max_length: 20,
+              choices: [
+                { name: 'Status', value: 'status' },
+                { name: 'Enable', value: 'enable' },
+                { name: 'Disable', value: 'disable' },
+              ],
+            },
+            {
+              type: 3,
+              name: 'name',
+              description: 'Reviewed feature name.',
+              required: true,
+              max_length: 20,
+              choices: [{ name: 'Member profiles', value: 'profiles' }],
+            },
+          ],
+        },
         {
           type: 1,
           name: 'status',
