@@ -486,9 +486,20 @@ const handleCommandInternal = async (
     }
     case 'streak': {
       if (!interaction.guildId || !dependencies.participationStreakService)
-        return replySafely(interaction, 'Participation streaks are not configured on this MuthaShip.', true);
-      const result = await dependencies.participationStreakService.record(interaction.guildId, interaction.user.id);
-      return replySafely(interaction, `Participation streak: ${result.current} day${result.current === 1 ? '' : 's'} (best ${result.longest}).`, true);
+        return replySafely(
+          interaction,
+          'Participation streaks are not configured on this MuthaShip.',
+          true,
+        );
+      const result = await dependencies.participationStreakService.record(
+        interaction.guildId,
+        interaction.user.id,
+      );
+      return replySafely(
+        interaction,
+        `Participation streak: ${result.current} day${result.current === 1 ? '' : 's'} (best ${result.longest}).`,
+        true,
+      );
     }
     case 'birthday': {
       if (!interaction.guildId || !dependencies.birthdayService)

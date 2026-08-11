@@ -6,7 +6,12 @@ export interface DailyRewardStore {
     claimedAt: Date,
   ): Promise<boolean>;
   optedOut(serverId: string, userId: string): Promise<boolean>;
-  recordParticipation?(serverId: string, userId: string, day: string, at: Date): Promise<{ current: number; longest: number }>;
+  recordParticipation?(
+    serverId: string,
+    userId: string,
+    day: string,
+    at: Date,
+  ): Promise<{ current: number; longest: number }>;
 }
 
 export const dailyRewardStoreFromRepository = (repository: {
@@ -17,11 +22,21 @@ export const dailyRewardStoreFromRepository = (repository: {
     claimedAt: Date,
   ): Promise<boolean>;
   isEngagementOptedOut(serverId: string, userId: string): Promise<boolean>;
-  recordParticipationStreak?: (serverId: string, userId: string, day: string, at: Date) => Promise<{ current: number; longest: number }>;
+  recordParticipationStreak?: (
+    serverId: string,
+    userId: string,
+    day: string,
+    at: Date,
+  ) => Promise<{ current: number; longest: number }>;
 }): DailyRewardStore => ({
   claim: repository.claimDailyReward.bind(repository),
   optedOut: repository.isEngagementOptedOut.bind(repository),
-  ...(repository.recordParticipationStreak === undefined ? {} : { recordParticipation: repository.recordParticipationStreak.bind(repository) }),
+  ...(repository.recordParticipationStreak === undefined
+    ? {}
+    : {
+        recordParticipation:
+          repository.recordParticipationStreak.bind(repository),
+      }),
 });
 
 export interface DailyRewardResult {
@@ -47,7 +62,8 @@ export class DailyRewardService {
     if (await this.store.optedOut(serverId, userId))
       return { awarded: false, amount: 0, day };
     const awarded = await this.store.claim(serverId, userId, day, now);
-    if (awarded) await this.store.recordParticipation?.(serverId, userId, day, now);
+    if (awarded)
+      await this.store.recordParticipation?.(serverId, userId, day, now);
     return { awarded, amount: awarded ? 10 : 0, day };
   }
 }
