@@ -14,7 +14,7 @@ $documentExtensions = @('.md', '.yml', '.yaml')
 $unfinishedPatterns = @(
   '(?i)\b(?:TODO|TBD|FIXME)\b'
   '(?i)\bCHANGEME\b'
-  '(?i)\{\{[^}\r\n]+\}\}'
+  '(?i)(?<!\$)\{\{[^}\r\n]+\}\}'
   '(?i)<\s*(?:add|insert|replace)\b[^>\r\n]*>'
 )
 $dummyContactPatterns = @(

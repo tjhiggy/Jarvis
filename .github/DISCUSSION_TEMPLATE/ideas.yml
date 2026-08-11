@@ -1,0 +1,36 @@
+name: Ideas & Feedback
+description: Suggest a Jarvis capability or improvement for discussion.
+title: "[Idea] "
+labels:
+  - discussion:new
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share the problem and the outcome you want. This is a conversation first, not a commitment to build.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What should improve?
+      description: Describe the problem or opportunity in plain language.
+      placeholder: Members or admins currently...
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should Jarvis do differently?
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Example use
+      description: Show how an admin or member would use this.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or screenshots
+      description: Attach sanitized screenshots or examples. Never include tokens, passwords, or private member data.

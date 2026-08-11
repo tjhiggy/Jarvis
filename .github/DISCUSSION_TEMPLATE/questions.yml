@@ -1,0 +1,19 @@
+name: Questions & Help
+description: Ask how Jarvis works or how an admin should use it.
+title: "[Question] "
+labels:
+  - discussion:new
+  - question
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need to know?
+      description: Ask one clear question and include the command or workflow involved.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Include what you tried and what you expected. Remove secrets and private data.
