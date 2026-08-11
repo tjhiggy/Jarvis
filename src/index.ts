@@ -18,6 +18,7 @@ import {
   loadKnowledgeCatalog,
   type ApprovedKnowledgeCatalog,
 } from './knowledge/approved-knowledge.js';
+import { SQLiteKnowledgeApprovalStore } from './knowledge/knowledge-store.js';
 import {
   OpenAIResponsesService,
   type AIService,
@@ -514,6 +515,7 @@ export const createApplication = async (
   let instrumentation: Instrumentation | undefined;
   let memberStatisticsStore: SQLiteMemberStatisticsStore | undefined;
   let memberStatistics: MemberStatisticsService | undefined;
+  let knowledgeStore: SQLiteKnowledgeApprovalStore | undefined;
   let imageGeneration: ImageGenerationService | undefined;
   let rssStorage: RssStorage | undefined;
   let rssScheduler: RssScheduler | undefined;
@@ -674,6 +676,17 @@ export const createApplication = async (
         }
         memberStatisticsStore = undefined;
       }
+      if (knowledgeStore !== undefined) {
+        try {
+          knowledgeStore.close();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'knowledge_storage_shutdown'),
+            'Approved knowledge storage close failed during shutdown.',
+          );
+        }
+        knowledgeStore = undefined;
+      }
       if (rssScheduler !== undefined) {
         try {
           await rssScheduler.stop();
@@ -748,6 +761,10 @@ export const createApplication = async (
       config.storage.maxStoredMessages,
     );
     const initializedStore = store;
+    if (knowledge !== undefined)
+      knowledgeStore = new SQLiteKnowledgeApprovalStore(
+        config.storage.databasePath,
+      );
     let featureFlags: FeatureFlagService | undefined;
     reminderStore =
       dependencies.createReminderStore?.(config.storage.databasePath) ??
@@ -1444,6 +1461,17 @@ export const createApplication = async (
             }),
           );
           const features = ['introductions', 'suggestions', 'events', 'trivia'];
+          const approvedSources =
+            knowledge === undefined
+              ? 0
+              : knowledgeStore === undefined
+                ? knowledge.entries.filter((entry) => entry.approved).length
+                : (
+                    await knowledgeStore.listForAdmin(
+                      config.discord.guildId,
+                      knowledge,
+                    )
+                  ).filter((entry) => entry.active).length;
           return {
             platform: {
               version: config.runtimeIdentity?.version ?? 'unknown',
@@ -1475,6 +1503,20 @@ export const createApplication = async (
                       .filter((row) => row.eventName === 'command_failed')
                       .reduce((sum, row) => sum + row.count, 0),
                   },
+            intelligence: {
+              approvedSources,
+              retainedSearch: store === undefined ? 'unavailable' : 'ready',
+              optedInMembers:
+                (await memberStatistics?.optedInCount(
+                  config.discord.guildId,
+                )) ?? 0,
+              imageGeneration: config.imageGeneration.enabled
+                ? imageGeneration === undefined
+                  ? 'unavailable'
+                  : 'ready'
+                : 'disabled',
+              localModel: config.ollama.model,
+            },
             rss:
               rssStorage === undefined
                 ? undefined
@@ -1603,6 +1645,7 @@ export const createApplication = async (
           },
           faq,
           ...(knowledge === undefined ? {} : { knowledge }),
+          ...(knowledgeStore === undefined ? {} : { knowledgeStore }),
           ...(memberStatistics === undefined ? {} : { memberStatistics }),
           ...(imageGeneration === undefined ? {} : { imageGeneration }),
           ...(introductionService === undefined ? {} : { introductionService }),

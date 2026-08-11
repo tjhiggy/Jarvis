@@ -29,10 +29,14 @@ describe('opt-in member command statistics', () => {
     const service = createService();
     await service.enable('server-1', 'crew-1', now);
     await service.enable('server-2', 'crew-1', now);
+    expect(await service.optedInCount('server-1')).toBe(1);
+    expect(await service.optedInCount('server-2')).toBe(1);
     await service.recordCommand('server-1', 'crew-1', 'ask', now);
     await service.recordCommand('server-2', 'crew-1', 'ask', now);
 
     await service.disable('server-1', 'crew-1');
+    expect(await service.optedInCount('server-1')).toBe(0);
+    expect(await service.optedInCount('server-2')).toBe(1);
     expect(await service.status('server-1', 'crew-1', now)).toEqual({
       enabled: false,
       commandCount: 0,

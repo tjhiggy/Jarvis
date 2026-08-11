@@ -106,6 +106,17 @@ export class SQLiteMemberStatisticsStore {
     return row.count;
   }
 
+  optedInCount(serverId: string): number {
+    validateId(serverId, 'serverId');
+    const row = this.database
+      .prepare(
+        `SELECT COUNT(*) AS count FROM member_statistics_preferences
+         WHERE server_id = ? AND enabled = 1`,
+      )
+      .get(serverId) as { count: number };
+    return row.count;
+  }
+
   disableAndDelete(serverId: string, userId: string, updatedAt: number): void {
     validateId(serverId, 'serverId');
     validateId(userId, 'userId');
@@ -177,6 +188,10 @@ export class MemberStatisticsService {
     const cutoff = new Date(now);
     cutoff.setUTCDate(cutoff.getUTCDate() - RETENTION_DAYS);
     return this.store.cleanup(day(cutoff));
+  }
+
+  async optedInCount(serverId: string): Promise<number> {
+    return this.store.optedInCount(serverId);
   }
 }
 

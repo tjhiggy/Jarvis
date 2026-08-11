@@ -152,9 +152,9 @@
 - Produces: read-only intelligence card showing approved-source counts, scoped-search readiness, opt-in statistics totals, image-generation readiness, and active model identity.
 - Consumes: aggregate/status projections only, never member IDs, prompts, source content, or conversation text.
 
-- [ ] Write failing snapshot/HTML tests for healthy, disabled, and unavailable states with secret/content exclusion.
-- [ ] Implement bounded projections and production wiring.
-- [ ] Run focused tests and commit `feat: add community intelligence status to Command Deck`.
+- [x] Write failing snapshot/HTML tests for healthy, disabled, and unavailable states with secret/content exclusion.
+- [x] Implement bounded projections and production wiring.
+- [x] Run focused tests and commit `feat: add community intelligence status to Command Deck`.
 
 ### Task 7: Jarvis 0.7.0 release
 

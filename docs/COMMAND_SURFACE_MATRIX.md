@@ -1,6 +1,6 @@
 # Jarvis command surface matrix
 
-This is the v0.6 Command Deck baseline. Discord remains the fast, contextual
+This is the v0.7 Command Deck baseline. Discord remains the fast, contextual
 surface for crew interactions. The local Command Deck is the safer home for
 configuration, diagnostics, bulk administration, previews, and audit history.
 Both surfaces share the same services and storage contracts.
@@ -21,6 +21,9 @@ Both surfaces share the same services and storage contracts.
 | `/forget`                                                                                                   | Member                 | Data deletion, quick                | Both                                   | Keep Discord for current-context deletion; Deck gets scoped deletion and audit visibility.             |
 | `/status`                                                                                                   | Member / operator      | Read-only, quick                    | Both                                   | Keep Discord summary; Deck owns detailed health and deployment identity.                               |
 | `/knowledge query`                                                                                          | Member                 | Read-only, bounded                  | Discord                                | Keep.                                                                                                  |
+| `/server-search`                                                                                            | Member                 | Read-only, current channel/thread   | Discord                                | Keep. Search only already-retained Jarvis conversation data in the current context.                    |
+| `/my-stats status`, `enable`, `disable`                                                                     | Member                 | Private opt-in metrics              | Discord                                | Keep. Deck shows aggregate opt-in totals only, never member identity or command history.               |
+| `/image generate`                                                                                           | Administrator          | Paid external generation            | Discord                                | Keep disabled by default and restricted to one configured channel; Deck shows readiness only.          |
 | `/knowledge list`, `/knowledge approve`, `/knowledge revoke`                                                | Administrator          | Persistent approval mutation        | Command Deck primary, Discord fallback | Keep fallback with confirmation; Deck shows source status and audit.                                   |
 | `/catch-me-up`, `/channel-summary`                                                                          | Member / moderator     | Read-only, contextual               | Discord                                | Keep. Track aggregate usage only.                                                                      |
 | `/reminder set`, `/reminder list`, `/reminder cancel`                                                       | Member                 | Personal mutation, guided           | Discord                                | Keep mobile flow; Deck may expose personal delivery health, never private content.                     |
@@ -44,6 +47,9 @@ Both surfaces share the same services and storage contracts.
 
 - **Overview:** version, database, providers, integrations, schedulers, and
   aggregate delivery metrics.
+- **Community Intelligence:** approved-source totals, retained-search
+  readiness, aggregate statistics opt-ins, image-generation readiness, and
+  local model identity.
 - **Community:** introductions, suggestions, events, trivia, profiles, roles,
   and member-safe moderation queues.
 - **Broadcasts:** RSS, proactive posts, recaps, event reminders, trivia
