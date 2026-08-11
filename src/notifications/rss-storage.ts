@@ -172,22 +172,53 @@ export class RssStorage {
     return this.db.transaction(() => {
       const reservation = this.db
         .prepare(
-          'SELECT 1 FROM rss_daily_delivery_reservations WHERE server_id=? AND item_key=? AND lease_token=? AND reserved_at>?',
+          'SELECT delivery_day FROM rss_daily_delivery_reservations WHERE server_id=? AND item_key=? AND lease_token=? AND reserved_at>?',
         )
-        .get(serverId, itemKey, leaseToken, reservationCutoff(now));
+        .get(serverId, itemKey, leaseToken, reservationCutoff(now)) as
+        { delivery_day: string } | undefined;
       if (reservation === undefined) return false;
       const inserted =
         this.db
           .prepare(
             'INSERT OR IGNORE INTO rss_completed_items (server_id,item_key,completed_day,completed_at) VALUES (?,?,?,?)',
           )
-          .run(serverId, itemKey, utcDay(now), completedAt).changes === 1;
+          .run(serverId, itemKey, reservation.delivery_day, completedAt)
+          .changes === 1;
       this.db
         .prepare(
           'DELETE FROM rss_daily_delivery_reservations WHERE server_id=? AND item_key=? AND lease_token=?',
         )
         .run(serverId, itemKey, leaseToken);
       return inserted;
+    })();
+  }
+  rolloverDailyDeliveryReservation(
+    serverId: string,
+    itemKey: string,
+    leaseToken: string,
+    now: Date,
+  ): boolean {
+    const targetDay = utcDay(now);
+    return this.db.transaction(() => {
+      const reservation = this.db
+        .prepare(
+          'SELECT delivery_day FROM rss_daily_delivery_reservations WHERE server_id=? AND item_key=? AND lease_token=? AND reserved_at>?',
+        )
+        .get(serverId, itemKey, leaseToken, reservationCutoff(now)) as
+        { delivery_day: string } | undefined;
+      if (reservation === undefined) return false;
+      if (reservation.delivery_day === targetDay) return true;
+      if (this.remainingDailyDeliveryCapacity(serverId, now) === 0) {
+        return false;
+      }
+      return (
+        this.db
+          .prepare(
+            'UPDATE rss_daily_delivery_reservations SET delivery_day=?, reserved_at=? WHERE server_id=? AND item_key=? AND lease_token=?',
+          )
+          .run(targetDay, now.getTime(), serverId, itemKey, leaseToken)
+          .changes === 1
+      );
     })();
   }
   releaseDailyDelivery(

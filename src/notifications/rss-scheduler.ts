@@ -64,6 +64,7 @@ export class RssScheduler {
       | 'reserveDailyDelivery'
       | 'completeDailyDelivery'
       | 'releaseDailyDelivery'
+      | 'rolloverDailyDeliveryReservation'
     >,
     private readonly client: Pick<RssNotificationClient, 'fetch'>,
     private readonly publisher: RssSchedulerPublisher,
@@ -223,6 +224,17 @@ export class RssScheduler {
             await release(claimed.slice(index));
             return published;
           }
+          if (
+            !this.storage.rolloverDailyDeliveryReservation(
+              this.serverId,
+              delivery.key,
+              delivery.lease,
+              this.now(),
+            )
+          ) {
+            await release([delivery]);
+            continue;
+          }
           try {
             await this.publisher.publish(this.channelId, rendered);
           } catch {
@@ -248,16 +260,41 @@ export class RssScheduler {
         return 0;
       }
 
+      const postable = [] as (typeof claimed)[number][];
+      for (const delivery of claimed) {
+        if (
+          this.storage.rolloverDailyDeliveryReservation(
+            this.serverId,
+            delivery.key,
+            delivery.lease,
+            this.now(),
+          )
+        ) {
+          postable.push(delivery);
+        } else {
+          await release([delivery]);
+        }
+      }
+      if (postable.length === 0) return 0;
+
+      const postableRendered = renderRssDigest({
+        entries: postable.map(({ entry }) => entry),
+      });
+      if (postableRendered.deliveryKeys.length === 0) {
+        await release(postable);
+        return 0;
+      }
+
       try {
-        await this.publisher.publish(this.channelId, rendered);
+        await this.publisher.publish(this.channelId, postableRendered);
       } catch {
-        await release(claimed, 'network');
+        await release(postable, 'network');
         return 0;
       }
 
       let published = 0;
-      for (const delivery of claimed) {
-        if (rendered.deliveryKeys.includes(delivery.key)) {
+      for (const delivery of postable) {
+        if (postableRendered.deliveryKeys.includes(delivery.key)) {
           if (await complete(delivery)) published += 1;
         } else {
           await release([delivery]);

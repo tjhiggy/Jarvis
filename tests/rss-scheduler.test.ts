@@ -22,6 +22,7 @@ describe('RssScheduler', () => {
       reserveDailyDelivery: () => true,
       completeDailyDelivery: () => true,
       releaseDailyDelivery: () => true,
+      rolloverDailyDeliveryReservation: () => true,
     };
     const client = {
       fetch: vi.fn().mockResolvedValue([
@@ -310,6 +311,54 @@ describe('RssScheduler', () => {
       }),
     );
   });
+
+  it('re-reserves pre-midnight claims against the actual post day before sending', async () => {
+    const storage = readyStorage();
+    const beforeMidnight = new Date('2026-08-11T23:59:59.900Z');
+    const afterMidnight = new Date('2026-08-12T00:00:01.000Z');
+    let evaluationCount = 0;
+    const policy = {
+      evaluate: vi.fn().mockImplementation(async () => {
+        evaluationCount += 1;
+        if (evaluationCount === 2) {
+          for (let index = 0; index < 20; index += 1) {
+            storage.recordCompletedItem(
+              'server',
+              `after-midnight-${index}`,
+              afterMidnight,
+            );
+          }
+        }
+        return { allowed: true };
+      }),
+    };
+    const delivery = deliveryStore(true);
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue(
+            Array.from({ length: 5 }, (_, index) => item(`midnight-${index}`)),
+          ),
+      },
+      publisher,
+      'server',
+      policy,
+      delivery,
+      () =>
+        evaluationCount === 0 || evaluationCount === 1
+          ? beforeMidnight
+          : afterMidnight,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(delivery.completeDelivery).not.toHaveBeenCalled();
+    expect(delivery.releaseDelivery).toHaveBeenCalledTimes(5);
+  });
 });
 
 function schedulerFor(
@@ -319,6 +368,7 @@ function schedulerFor(
   serverId: string,
   policy: object = { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
   delivery = deliveryStore(),
+  now: () => Date = () => new Date('2026-08-11T12:00:00Z'),
 ): RssScheduler {
   return new RssScheduler(
     storage as never,
@@ -328,7 +378,7 @@ function schedulerFor(
     'channel-1',
     policy as never,
     delivery as never,
-    () => new Date('2026-08-11T12:00:00Z'),
+    now,
   );
 }
 
