@@ -107,6 +107,10 @@ import {
   type ProactiveScheduler,
 } from './engagement/proactive.js';
 import { DelegatedPostService } from './engagement/delegated-posts.js';
+import {
+  DailyRewardService,
+  dailyRewardStoreFromRepository,
+} from './engagement/daily-rewards.js';
 import { FeatureFlagService } from './engagement/feature-flags.js';
 import {
   MemberProfileService,
@@ -532,6 +536,7 @@ export const createApplication = async (
   let proactiveScheduler: ProactiveScheduler | undefined;
   let proactiveService: ProactiveEngagementService | undefined;
   let memberProfileService: MemberProfileService | undefined;
+  let dailyRewardService: DailyRewardService | undefined;
   let triviaScheduler: TriviaExpiryScheduler | undefined;
   let engagementDeletionService: EngagementDeletionService | undefined;
   let client: RuntimeDiscordClient | undefined;
@@ -1033,6 +1038,21 @@ export const createApplication = async (
       typeof engagementRepository.getBirthday === 'function'
         ? new BirthdayService(
             birthdayStoreFromRepository(engagementRepository as any),
+          )
+        : undefined;
+    dailyRewardService =
+      engagementRepository !== undefined &&
+      typeof engagementRepository.claimDailyReward === 'function' &&
+      typeof engagementRepository.isEngagementOptedOut === 'function'
+        ? new DailyRewardService(
+            dailyRewardStoreFromRepository(
+              engagementRepository as Required<
+                Pick<
+                  EngagementRepository,
+                  'claimDailyReward' | 'isEngagementOptedOut'
+                >
+              >,
+            ),
           )
         : undefined;
     if (
@@ -1771,6 +1791,7 @@ export const createApplication = async (
             activityChannelId: config.engagement.channels.activityId,
           }),
       ...(birthdayService === undefined ? {} : { birthdayService }),
+      ...(dailyRewardService === undefined ? {} : { dailyRewardService }),
       ...(config.engagement.roleMenuChoices === undefined
         ? {}
         : { roleMenuChoices: config.engagement.roleMenuChoices }),

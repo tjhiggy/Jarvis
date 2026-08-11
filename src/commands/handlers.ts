@@ -55,6 +55,7 @@ import type { TriviaService } from '../engagement/activity.js';
 import { handleEngagementCommand } from './engagement.js';
 import type { EngagementSchedulerHealth } from '../engagement/health.js';
 import type { BirthdayService } from '../engagement/birthdays.js';
+import type { DailyRewardService } from '../engagement/daily-rewards.js';
 import {
   buildEngagementCard,
   buildEngagementSelectMenu,
@@ -221,6 +222,7 @@ export interface CommandDependencies {
   >;
   readonly triviaService?: TriviaService;
   readonly birthdayService?: BirthdayService;
+  readonly dailyRewardService?: DailyRewardService;
   readonly proactiveService?: ProactiveEngagementService;
   readonly delegatedPostService?: DelegatedPostService;
   readonly featureFlags?: Pick<FeatureFlagService, 'isEnabled' | 'set'>;
@@ -299,6 +301,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/config shows administrators safe, non-secret Jarvis configuration.',
     '/engagement status, pause, resume, or delete provides scoped engagement operations.',
     '/profile create, view, edit, hide, show, or delete manages your optional crew profile.',
+    '/daily claims one bounded daily MuthaShip Coin reward; engagement opt-out is honored.',
     ...(pollsEnabled
       ? [
           '/poll creates an anonymous 2-to-5-option poll for configured administrators.',
@@ -460,6 +463,25 @@ const handleCommandInternal = async (
         channelId: dependencies.config.engagement?.channels.activityId ?? '',
       });
       return;
+    case 'daily': {
+      if (!interaction.guildId || !dependencies.dailyRewardService)
+        return replySafely(
+          interaction,
+          'Daily rewards are not configured on this MuthaShip.',
+          true,
+        );
+      const result = await dependencies.dailyRewardService.claim(
+        interaction.guildId,
+        interaction.user.id,
+      );
+      return replySafely(
+        interaction,
+        result.awarded
+          ? `Daily reward claimed: ${result.amount} MuthaShip Coins.`
+          : 'Your daily reward has already been claimed, or participation is opted out.',
+        true,
+      );
+    }
     case 'birthday': {
       if (!interaction.guildId || !dependencies.birthdayService)
         return replySafely(
