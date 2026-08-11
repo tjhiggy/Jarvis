@@ -7,7 +7,7 @@ type LogLevel =
   'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent';
 
 export interface AppConfig {
-  readonly adminConsole?: Readonly<{ enabled: boolean; port: number; host: string }>;
+  readonly adminConsole?: Readonly<{ enabled: boolean; port: number; host: string; token: string }>;
   readonly runtimeIdentity?: RuntimeIdentity;
   readonly ai: Readonly<{
     provider: 'openai' | 'ollama';
@@ -190,6 +190,7 @@ const baseEnvironmentSchema = z.object({
   ADMIN_CONSOLE_ENABLED: z.preprocess((value) => typeof value === 'string' && value.trim() === '' ? undefined : value, z.enum(['true', 'false']).default('false')),
   ADMIN_CONSOLE_PORT: integer(8787, 0, 65535),
   ADMIN_CONSOLE_HOST: z.string().trim().regex(/^(?:127\.0\.0\.1|localhost)$/).default('127.0.0.1'),
+  ADMIN_CONSOLE_TOKEN: z.string().trim().default(''),
   DISCORD_TOKEN: requiredString,
   DISCORD_CLIENT_ID: requiredString,
   DISCORD_GUILD_ID: requiredString,
@@ -370,6 +371,9 @@ const environmentSchema = baseEnvironmentSchema.superRefine(
 
     validatePollConfiguration(value, context);
     validateEngagementConfiguration(value, context);
+    if (value.ADMIN_CONSOLE_ENABLED === 'true' && value.ADMIN_CONSOLE_TOKEN.trim() === '') {
+      context.addIssue({ code: 'custom', path: ['ADMIN_CONSOLE_TOKEN'], message: 'ADMIN_CONSOLE_TOKEN is required when ADMIN_CONSOLE_ENABLED=true.' });
+    }
   },
 );
 
@@ -409,7 +413,7 @@ const readonlySet = (values: string[]): ReadonlySet<string> => {
 export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
   const parsed = parseEnvironment(environmentSchema, env);
   return Object.freeze({
-    adminConsole: Object.freeze({ enabled: parsed.ADMIN_CONSOLE_ENABLED === 'true', port: parsed.ADMIN_CONSOLE_PORT, host: parsed.ADMIN_CONSOLE_HOST }),
+    adminConsole: Object.freeze({ enabled: parsed.ADMIN_CONSOLE_ENABLED === 'true', port: parsed.ADMIN_CONSOLE_PORT, host: parsed.ADMIN_CONSOLE_HOST, token: parsed.ADMIN_CONSOLE_TOKEN }),
     // Build identity is configuration metadata only. It is never inferred
     // from the host, package manager, or Discord content.
     runtimeIdentity: loadRuntimeIdentity(env),

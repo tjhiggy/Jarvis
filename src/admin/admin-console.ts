@@ -15,6 +15,11 @@ export interface AdminConsole {
   readonly close: () => Promise<void>;
 }
 
+export interface AdminConsoleRssControl {
+  readonly token: string;
+  readonly setPaused: (paused: boolean) => Promise<void>;
+}
+
 const html = (snapshot: AdminConsoleSnapshot): string => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jarvis Command Deck</title><style>
@@ -31,9 +36,20 @@ export const startAdminConsole = (options: {
   readonly port: number;
   readonly host?: string;
   readonly snapshot: () => Promise<AdminConsoleSnapshot>;
+  readonly rssControl?: AdminConsoleRssControl | undefined;
 }): Promise<AdminConsole> => {
   const host = options.host ?? '127.0.0.1';
   const server = createServer(async (request, response) => {
+    if (request.method === 'POST' && (request.url === '/api/rss/pause' || request.url === '/api/rss/resume')) {
+      if (options.rssControl === undefined || request.headers.authorization !== `Bearer ${options.rssControl.token}`) {
+        response.writeHead(401, { 'content-type': 'application/json; charset=utf-8' }); response.end(JSON.stringify({ error: 'Unauthorized' })); return;
+      }
+      try {
+        await options.rssControl.setPaused(request.url.endsWith('/pause'));
+        response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify({ ok: true, paused: request.url.endsWith('/pause') }));
+      } catch { response.writeHead(503, { 'content-type': 'application/json; charset=utf-8' }); response.end(JSON.stringify({ error: 'RSS control unavailable' })); }
+      return;
+    }
     if (request.method !== 'GET' || (request.url !== '/' && request.url !== '/api/status')) {
       response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); response.end('Not found'); return;
     }

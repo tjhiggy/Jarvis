@@ -970,6 +970,7 @@ export const createApplication = async (
       adminConsole = await startAdminConsole({
         port: config.adminConsole.port,
         host: config.adminConsole.host,
+        rssControl: rssStorage === undefined || config.adminConsole.token === '' ? undefined : { token: config.adminConsole.token, setPaused: async (paused: boolean) => { rssStorage?.setPaused(config.discord.guildId, paused); } },
         snapshot: async () => {
           const rows = engagementRepository?.analyticsSummary === undefined
             ? []
