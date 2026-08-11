@@ -728,9 +728,55 @@ export const createApplication = async (
       dependencies.createBroadcastStore?.(config.storage.databasePath) ??
       new SqliteBroadcastStore(config.storage.databasePath);
     const initializedBroadcastStore = broadcastStore;
+    const runBroadcastDelivery = async <T>(
+      category: BroadcastCategory,
+      delivery: () => Promise<T>,
+    ): Promise<T> => {
+      const startedAt = new Date();
+      await engagementRepository?.recordDeliveryMetric?.({
+        serverId: config.discord.guildId,
+        category,
+        name: 'delivery_attempted',
+        occurredAt: startedAt.toISOString(),
+      });
+      try {
+        const result = await delivery();
+        await engagementRepository?.recordDeliveryMetric?.({
+          serverId: config.discord.guildId,
+          category,
+          name: 'delivery_succeeded',
+          occurredAt: new Date().toISOString(),
+          durationMs: Math.max(0, Date.now() - startedAt.getTime()),
+        });
+        return result;
+      } catch (error) {
+        await engagementRepository?.recordDeliveryMetric?.({
+          serverId: config.discord.guildId,
+          category,
+          name: 'delivery_failed',
+          occurredAt: new Date().toISOString(),
+          durationMs: Math.max(0, Date.now() - startedAt.getTime()),
+        });
+        await engagementRepository?.recordDeliveryMetric?.({
+          serverId: config.discord.guildId,
+          category,
+          name: 'delivery_retried',
+          occurredAt: new Date().toISOString(),
+        });
+        throw error;
+      }
+    };
     const scheduledBroadcastPolicy = new BroadcastPolicyService(
       initializedBroadcastStore,
       [...config.security.allowedChannelIds],
+      async ({ serverId, category, occurredAt }) => {
+        await engagementRepository?.recordDeliveryMetric?.({
+          serverId,
+          category,
+          name: 'delivery_suppressed',
+          occurredAt: occurredAt.toISOString(),
+        });
+      },
     );
     const ensureScheduledBroadcastPolicy = async (
       category: BroadcastCategory,
@@ -820,17 +866,28 @@ export const createApplication = async (
               typeof sendable.send !== 'function'
             )
               throw new Error('Configured RSS channel is unavailable.');
-            await sendable.send({
-              content: digest.content,
-              allowedMentions: { parse: [], repliedUser: false },
-            });
+            await runBroadcastDelivery('rss', () =>
+              sendable.send({
+                content: digest.content,
+                allowedMentions: { parse: [], repliedUser: false },
+              }),
+            );
           },
         },
         config.discord.guildId,
         config.engagement.channels.rssId,
-        new BroadcastPolicyService(rssBroadcastStore, [
-          config.engagement.channels.rssId,
-        ]),
+        new BroadcastPolicyService(
+          rssBroadcastStore,
+          [config.engagement.channels.rssId],
+          async ({ serverId, category, occurredAt }) => {
+            await engagementRepository?.recordDeliveryMetric?.({
+              serverId,
+              category,
+              name: 'delivery_suppressed',
+              occurredAt: occurredAt.toISOString(),
+            });
+          },
+        ),
         rssBroadcastStore,
       );
       rssScheduler.start();
@@ -947,10 +1004,12 @@ export const createApplication = async (
             const channel = await client!.channels?.fetch(channelId);
             if (!isEventChannel(channel))
               throw new Error('Configured proactive channel is unavailable.');
-            await channel.send({
-              content,
-              allowedMentions: { parse: [], repliedUser: false },
-            });
+            await runBroadcastDelivery('proactive', () =>
+              channel.send({
+                content,
+                allowedMentions: { parse: [], repliedUser: false },
+              }),
+            );
           },
         },
         channelId: config.engagement.channels.activityId,
@@ -958,9 +1017,18 @@ export const createApplication = async (
         isGloballyPaused: (guildId) =>
           engagementRepository!.engagementPaused!(guildId),
         catalog: proactiveCatalog,
-        policy: new BroadcastPolicyService(initializedBroadcastStore, [
-          ...config.security.allowedChannelIds,
-        ]),
+        policy: new BroadcastPolicyService(
+          initializedBroadcastStore,
+          [...config.security.allowedChannelIds],
+          async ({ serverId, category, occurredAt }) => {
+            await engagementRepository?.recordDeliveryMetric?.({
+              serverId,
+              category,
+              name: 'delivery_suppressed',
+              occurredAt: occurredAt.toISOString(),
+            });
+          },
+        ),
         broadcastStore: initializedBroadcastStore,
         logger,
       });
@@ -1558,13 +1626,15 @@ export const createApplication = async (
             );
             if (!isEventChannel(channel))
               throw new Error('Configured event channel is unavailable.');
-            await channel.send({
-              content: `<@${reminder.userId}> reminder: ${reminder.title} is due now.`,
-              allowedMentions: {
-                parse: [],
-                repliedUser: false,
-              },
-            });
+            await runBroadcastDelivery('event_reminder', () =>
+              channel.send({
+                content: `<@${reminder.userId}> reminder: ${reminder.title} is due now.`,
+                allowedMentions: {
+                  parse: [],
+                  repliedUser: false,
+                },
+              }),
+            );
           },
         },
       });
@@ -1605,10 +1675,12 @@ export const createApplication = async (
             const channel = await schedulerClient.channels?.fetch(channelId);
             if (!isEventChannel(channel))
               throw new Error('Configured recap channel is unavailable.');
-            await channel.send({
-              content,
-              allowedMentions: { parse: [], repliedUser: false },
-            });
+            await runBroadcastDelivery('recap', () =>
+              channel.send({
+                content,
+                allowedMentions: { parse: [], repliedUser: false },
+              }),
+            );
           },
         },
       });
@@ -1656,7 +1728,9 @@ export const createApplication = async (
             const channel = await schedulerClient.channels?.fetch(channelId);
             if (!isEventChannel(channel))
               throw new Error('Configured birthday channel is unavailable.');
-            await channel.send({ content, allowedMentions });
+            await runBroadcastDelivery('birthday', () =>
+              channel.send({ content, allowedMentions }),
+            );
           },
         },
       });

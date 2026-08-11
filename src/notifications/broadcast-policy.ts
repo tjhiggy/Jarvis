@@ -35,6 +35,11 @@ export class BroadcastPolicyService {
   constructor(
     private readonly store: BroadcastStore,
     allowedChannelIds: readonly string[],
+    private readonly onSuppressed?: (input: {
+      readonly serverId: string;
+      readonly category: BroadcastCategory;
+      readonly occurredAt: Date;
+    }) => Promise<void>,
   ) {
     this.allowedChannelIds = new Set(allowedChannelIds);
   }
@@ -43,21 +48,21 @@ export class BroadcastPolicyService {
     input: BroadcastPolicyEvaluationInput,
   ): Promise<BroadcastDecision> {
     if (!this.allowedChannelIds.has(input.channelId)) {
-      return { allowed: false, reason: 'destination_not_allowed' };
+      return this.suppressed(input, 'destination_not_allowed');
     }
     if (input.globallyPaused) {
-      return { allowed: false, reason: 'globally_paused' };
+      return this.suppressed(input, 'globally_paused');
     }
 
     const policy = await this.store.getPolicy(input.serverId, input.category);
     if (policy === undefined || policy.state === 'disabled') {
-      return { allowed: false, reason: 'disabled' };
+      return this.suppressed(input, 'disabled');
     }
     if (policy.state === 'paused') {
-      return { allowed: false, reason: 'paused' };
+      return this.suppressed(input, 'paused');
     }
     if (policy.channelId !== input.channelId) {
-      return { allowed: false, reason: 'destination_not_allowed' };
+      return this.suppressed(input, 'destination_not_allowed');
     }
     if (
       isQuietHour(
@@ -67,7 +72,7 @@ export class BroadcastPolicyService {
         input.now,
       )
     ) {
-      return { allowed: false, reason: 'quiet_hours' };
+      return this.suppressed(input, 'quiet_hours');
     }
     const latestCompletedAt = await this.store.getLatestCompletedAt(
       input.serverId,
@@ -80,11 +85,11 @@ export class BroadcastPolicyService {
         input.now,
       )
     ) {
-      return { allowed: false, reason: 'cadence_limited' };
+      return this.suppressed(input, 'cadence_limited');
     }
     if (memberControllable(input.category)) {
       if (input.userId === undefined) {
-        return { allowed: false, reason: 'member_not_opted_in' };
+        return this.suppressed(input, 'member_not_opted_in');
       }
       const preference = await this.store.getMemberPreference(
         input.serverId,
@@ -92,11 +97,23 @@ export class BroadcastPolicyService {
         input.category,
       );
       if (preference?.enabled !== true) {
-        return { allowed: false, reason: 'member_not_opted_in' };
+        return this.suppressed(input, 'member_not_opted_in');
       }
     }
 
     return { allowed: true };
+  }
+
+  private async suppressed(
+    input: BroadcastPolicyEvaluationInput,
+    reason: Exclude<BroadcastDecision, { readonly allowed: true }>['reason'],
+  ): Promise<BroadcastDecision> {
+    await this.onSuppressed?.({
+      serverId: input.serverId,
+      category: input.category,
+      occurredAt: input.now,
+    });
+    return { allowed: false, reason };
   }
 }
 

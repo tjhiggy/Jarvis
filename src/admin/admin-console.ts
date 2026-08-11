@@ -64,7 +64,7 @@ export interface AdminConsoleSnapshot {
   readonly rss?:
     | {
         readonly paused: boolean;
-        readonly feeds: readonly {
+        readonly feeds?: readonly {
           readonly label: string;
           readonly url: string;
         }[];
@@ -148,6 +148,29 @@ const renderBroadcastCards = (snapshot: AdminConsoleSnapshot): string => {
     )}<h3>Recent delivery metrics</h3><p>Last 7 days</p>${summary(7, broadcasts.last7Days)}<p>Last 30 days</p>${summary(30, broadcasts.last30Days)}</article>`;
 };
 
+const safeSnapshot = (
+  snapshot: AdminConsoleSnapshot,
+): AdminConsoleSnapshot => ({
+  platform: snapshot.platform,
+  database: snapshot.database,
+  engagement: snapshot.engagement,
+  providers: snapshot.providers,
+  integrations: snapshot.integrations,
+  metrics: snapshot.metrics,
+  ...(snapshot.rss === undefined
+    ? {}
+    : { rss: { paused: snapshot.rss.paused } }),
+  ...(snapshot.broadcasts === undefined
+    ? {}
+    : {
+        broadcasts: {
+          categories: snapshot.broadcasts.categories,
+          last7Days: snapshot.broadcasts.last7Days,
+          last30Days: snapshot.broadcasts.last30Days,
+        },
+      }),
+});
+
 const html = (snapshot: AdminConsoleSnapshot): string => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jarvis Command Deck</title><style>
@@ -160,7 +183,7 @@ const html = (snapshot: AdminConsoleSnapshot): string => `<!doctype html>
 ${renderBroadcastCards(snapshot)}
 <article class="card"><h2>RSS preview</h2>${snapshot.rss ? `<p><input id="rss-url" placeholder="Allowlisted HTTPS feed URL"><button onclick="previewRss()">Preview feed</button></p><p id="rss-result" class="muted"></p>` : '<p class="muted">RSS preview is unavailable.</p>'}</article>
 </section><p><small>Bound to localhost. Refresh for a current snapshot.</small></p></main><script>
-async function controlBroadcast(category,action){if(!confirm('Confirm '+category+' '+action+' for this MuthaShip?'))return;const token=prompt('Enter the local Admin Console token:');if(!token)return;const result=document.getElementById('rss-result');try{const confirmation=await fetch('/api/broadcast/'+category+'/confirmation',{method:'POST',headers:{Authorization:'Bearer '+token}});const confirmationBody=await confirmation.json();if(!confirmation.ok)throw new Error(confirmationBody.error||'Confirmation failed');const response=await fetch('/api/broadcast/'+category+'/'+action,{method:'POST',headers:{Authorization:'Bearer '+token,'X-Confirmation-Nonce':confirmationBody.nonce}});const body=await response.json();if(!response.ok)throw new Error(body.error||'Request failed');if(result)result.textContent=category+' '+action+'d successfully. Refreshing...';setTimeout(()=>location.reload(),300);}catch(error){if(result)result.textContent=error instanceof Error?error.message:'Broadcast control failed';}}
+async function controlBroadcast(category,action){if(!confirm('Confirm '+category+' '+action+' for this MuthaShip?'))return;const token=prompt('Enter the local Admin Console token:');if(!token)return;const result=document.getElementById('rss-result');try{const confirmation=await fetch('/api/broadcast/'+category+'/confirmation',{method:'POST',headers:{Authorization:'Bearer '+token,'X-Broadcast-Action':action}});const confirmationBody=await confirmation.json();if(!confirmation.ok)throw new Error(confirmationBody.error||'Confirmation failed');const response=await fetch('/api/broadcast/'+category+'/'+action,{method:'POST',headers:{Authorization:'Bearer '+token,'X-Confirmation-Nonce':confirmationBody.nonce}});const body=await response.json();if(!response.ok)throw new Error(body.error||'Request failed');if(result)result.textContent=category+' '+action+'d successfully. Refreshing...';setTimeout(()=>location.reload(),300);}catch(error){if(result)result.textContent=error instanceof Error?error.message:'Broadcast control failed';}}
 async function previewRss(){const token=prompt('Enter the local Admin Console token:');const url=document.getElementById('rss-url').value;if(!token||!url)return;const result=document.getElementById('rss-result');try{const response=await fetch('/api/rss/preview',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({url})});const body=await response.json();if(!response.ok)throw new Error(body.error||'Preview failed');const entries=body.items.map((item)=>[item.title,item.url,item.publishedAt].join('\n')).join('\n\n');result.textContent=body.items.length+' feed items found. No feed was saved; saving establishes a baseline, so historical entries are not posted.\n\n'+entries;}catch(error){result.textContent=error instanceof Error?error.message:'RSS preview failed';}}
 </script></body></html>`;
 
@@ -178,6 +201,7 @@ export const startAdminConsole = (options: {
     string,
     {
       readonly category: BroadcastCategory;
+      readonly action: 'pause' | 'resume';
       readonly expiresAt: number;
       used: boolean;
     }
@@ -220,9 +244,17 @@ export const startAdminConsole = (options: {
         return;
       }
       if (action === 'confirmation') {
+        const requestedAction = request.headers['x-broadcast-action'];
+        if (requestedAction !== 'pause' && requestedAction !== 'resume') {
+          writeJson(response, 400, {
+            error: 'Confirmation action is required.',
+          });
+          return;
+        }
         const nonce = randomUUID();
         confirmations.set(nonce, {
           category,
+          action: requestedAction,
           expiresAt: now().getTime() + 60_000,
           used: false,
         });
@@ -235,6 +267,7 @@ export const startAdminConsole = (options: {
       if (
         confirmation === undefined ||
         confirmation.category !== category ||
+        confirmation.action !== action ||
         confirmation.expiresAt < now().getTime()
       ) {
         writeJson(response, 401, { error: 'Confirmation required.' });
@@ -314,7 +347,7 @@ export const startAdminConsole = (options: {
       return;
     }
     try {
-      const snapshot = await options.snapshot();
+      const snapshot = safeSnapshot(await options.snapshot());
       if (request.url === '/api/status') {
         response.writeHead(200, {
           'content-type': 'application/json; charset=utf-8',

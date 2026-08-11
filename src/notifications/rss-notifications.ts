@@ -26,6 +26,8 @@ export const isAllowedRssUrl = (
     const url = new URL(value);
     return (
       url.protocol === 'https:' &&
+      url.username === '' &&
+      url.password === '' &&
       !privateHost(url.hostname) &&
       allowedHosts.some(
         (host) => host.toLowerCase() === url.hostname.toLowerCase(),

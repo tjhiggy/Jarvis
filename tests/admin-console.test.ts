@@ -20,7 +20,12 @@ describe('admin console', () => {
       metrics: { events: 2, failures: 0 },
       rss: {
         paused: false,
-        feeds: [{ label: 'News', url: 'https://news.example/feed.xml' }],
+        feeds: [
+          {
+            label: 'News',
+            url: 'https://operator:token@news.example/feed.xml?key=secret',
+          },
+        ],
       },
     };
     const console = await startAdminConsole({
@@ -32,7 +37,12 @@ describe('admin console', () => {
       typeof address === 'object' && address !== null ? address.port : 0;
     const response = await fetch(`http://127.0.0.1:${port}/api/status`);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(snapshot);
+    const statusBody = await response.text();
+    expect(JSON.parse(statusBody)).toEqual({
+      ...snapshot,
+      rss: { paused: false },
+    });
+    expect(statusBody).not.toMatch(/operator|token|key=|feed\.xml/);
     const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
     expect(page).toContain('Jarvis Command Deck');
     expect(page).toContain('controlBroadcast');
@@ -279,7 +289,10 @@ describe('admin console', () => {
 
     const confirmation = await fetch(`${base}/api/broadcast/rss/confirmation`, {
       method: 'POST',
-      headers: { authorization: 'Bearer local-token' },
+      headers: {
+        authorization: 'Bearer local-token',
+        'x-broadcast-action': 'pause',
+      },
     });
     expect(confirmation.status).toBe(200);
     const { nonce } = (await confirmation.json()) as { nonce: string };
@@ -298,7 +311,10 @@ describe('admin console', () => {
 
     const expires = await fetch(`${base}/api/broadcast/rss/confirmation`, {
       method: 'POST',
-      headers: { authorization: 'Bearer local-token' },
+      headers: {
+        authorization: 'Bearer local-token',
+        'x-broadcast-action': 'resume',
+      },
     });
     const { nonce: expiredNonce } = (await expires.json()) as { nonce: string };
     now = new Date(now.getTime() + 61_000);
@@ -309,6 +325,42 @@ describe('admin console', () => {
           headers: {
             authorization: 'Bearer local-token',
             'x-confirmation-nonce': expiredNonce,
+          },
+        })
+      ).status,
+    ).toBe(401);
+    await console.close();
+  });
+
+  it('binds a confirmation nonce to its exact state change', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      broadcastControl: {
+        token: 'local-token',
+        allowedCategories: ['rss'],
+        setState: async () => undefined,
+      },
+    });
+    const address = console.server.address();
+    const port =
+      typeof address === 'object' && address !== null ? address.port : 0;
+    const base = `http://127.0.0.1:${port}`;
+    const confirmation = await fetch(`${base}/api/broadcast/rss/confirmation`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer local-token',
+        'x-broadcast-action': 'pause',
+      },
+    });
+    const { nonce } = (await confirmation.json()) as { nonce: string };
+    expect(
+      (
+        await fetch(`${base}/api/broadcast/rss/resume`, {
+          method: 'POST',
+          headers: {
+            authorization: 'Bearer local-token',
+            'x-confirmation-nonce': nonce,
           },
         })
       ).status,
