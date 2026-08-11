@@ -25,6 +25,48 @@ export interface ApprovedKnowledgeCatalog {
   get(id: string): KnowledgeResult | undefined;
 }
 
+const knowledgeTokens = (value: string): readonly string[] =>
+  value
+    .toLocaleLowerCase('en-US')
+    .normalize('NFKC')
+    .match(/[\p{L}\p{N}]{2,}/gu) ?? [];
+
+export const rankKnowledgeResults = (
+  entries: readonly KnowledgeResult[],
+  query: string,
+): readonly KnowledgeResult[] => {
+  const queryTokens = [...new Set(knowledgeTokens(query))];
+  if (queryTokens.length === 0) return [];
+  const tokenMatches = (candidate: string, token: string): boolean =>
+    candidate === token ||
+    (token.length >= 4 && candidate.startsWith(token)) ||
+    (candidate.length >= 4 && token.startsWith(candidate));
+  return entries
+    .map((entry, index) => {
+      const titleTokens = knowledgeTokens(entry.title);
+      const contentTokens = knowledgeTokens(entry.content);
+      const score = queryTokens.reduce((total, token) => {
+        const titleMatch = titleTokens.some((candidate) =>
+          tokenMatches(candidate, token),
+        );
+        const contentMatch = contentTokens.some((candidate) =>
+          tokenMatches(candidate, token),
+        );
+        return (
+          total +
+          (titleMatch || contentMatch ? 10 : 0) +
+          (titleMatch ? 3 : 0) +
+          (contentMatch ? 1 : 0)
+        );
+      }, 0);
+      return { entry, index, score };
+    })
+    .filter(({ score }) => score > 0)
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, 5)
+    .map(({ entry }) => entry);
+};
+
 const secretPattern = /(?:sk|tvly|xox[baprs]|gh[pousr])-[A-Za-z0-9_-]{12,}/gi;
 const emailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const mentionPattern = /@(everyone|here|[!&]?\d{15,22})/gi;
@@ -94,15 +136,7 @@ export const buildKnowledgeCatalog = (
       const entry = byId.get(id.trim().toLowerCase());
       return entry ? toResult(entry) : undefined;
     },
-    search: (query: string) => {
-      const normalized = query.trim().toLowerCase();
-      if (!normalized) return [];
-      return active
-        .filter((entry) =>
-          `${entry.title} ${entry.content}`.toLowerCase().includes(normalized),
-        )
-        .slice(0, 5)
-        .map(toResult);
-    },
+    search: (query: string) =>
+      rankKnowledgeResults(active.map(toResult), query),
   });
 };

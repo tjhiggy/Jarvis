@@ -5,6 +5,7 @@ import type {
   ApprovedKnowledgeCatalog,
   KnowledgeResult,
 } from './approved-knowledge.js';
+import { rankKnowledgeResults } from './approved-knowledge.js';
 
 export interface KnowledgeAdminEntry {
   readonly id: string;
@@ -127,13 +128,7 @@ export class SQLiteKnowledgeApprovalStore {
     query: string,
     catalog: ApprovedKnowledgeCatalog,
   ): Promise<readonly KnowledgeResult[]> {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return [];
-    return (await this.list(guildId, catalog))
-      .filter((entry) =>
-        `${entry.title} ${entry.content}`.toLowerCase().includes(normalized),
-      )
-      .slice(0, 5);
+    return rankKnowledgeResults(await this.list(guildId, catalog), query);
   }
 
   close(): void {
