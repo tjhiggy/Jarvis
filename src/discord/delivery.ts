@@ -11,6 +11,10 @@ export interface ReplyPayload {
   readonly content?: string;
   readonly ephemeral?: boolean;
   readonly allowedMentions?: AllowedMentions;
+  readonly files?: readonly Readonly<{
+    attachment: Buffer;
+    name: string;
+  }>[];
 }
 
 export interface ReplyTarget {

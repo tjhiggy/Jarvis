@@ -41,6 +41,12 @@ const config: AppConfig = {
     timeoutMs: 1_000,
     maxRetries: 0,
   },
+  imageGeneration: {
+    enabled: false,
+    channelId: '',
+    model: 'gpt-image-1-mini',
+    timeoutMs: 60_000,
+  },
   ollama: {
     baseUrl: 'http://127.0.0.1:11434',
     model: 'qwen3:8b',

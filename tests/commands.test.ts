@@ -70,6 +70,7 @@ describe('command definitions', () => {
       'channel-summary',
       'server-search',
       'my-stats',
+      'image',
       'reminder',
       'fantasy',
       'introduce',
@@ -122,7 +123,7 @@ describe('command definitions', () => {
         },
       ],
     });
-    expect(definitions[11]).toEqual({
+    expect(definitions[12]).toEqual({
       type: 1,
       name: 'reminder',
       description: 'Manage your personal reminders.',
@@ -230,6 +231,7 @@ describe('command definitions', () => {
       'channel-summary',
       'server-search',
       'my-stats',
+      'image',
       'reminder',
       'fantasy',
       'poll',
@@ -253,7 +255,7 @@ describe('command definitions', () => {
       'notifications',
       'config',
     ]);
-    expect(definitions[13]).toMatchObject({
+    expect(definitions[14]).toMatchObject({
       name: 'poll',
       options: [
         { name: 'question', required: true, max_length: 200 },
@@ -276,7 +278,7 @@ describe('command definitions', () => {
         { name: 'option5', required: false, max_length: 80 },
       ],
     });
-    expect(definitions[14]).toMatchObject({
+    expect(definitions[15]).toMatchObject({
       name: 'poll-close',
       options: [{ name: 'poll_id', required: true, max_length: 12 }],
     });
@@ -1581,6 +1583,60 @@ describe('handleCommand', () => {
       ephemeral: true,
     });
   });
+
+  it('restricts image generation to configured administrators and channel', async () => {
+    const generate = vi.fn(async () => ({
+      bytes: Buffer.from('png'),
+      mediaType: 'image/png' as const,
+    }));
+    const base = dependencies();
+    const configured = {
+      ...base,
+      config: {
+        ...base.config,
+        imageGeneration: { enabled: true, channelId: 'image-channel' },
+        engagement: {
+          enabled: true,
+          channels: {
+            introductionId: '',
+            suggestionId: '',
+            eventId: '',
+            recapId: '',
+            activityId: '',
+            birthdayId: '',
+            rssId: '',
+          },
+          rssAllowedHosts: [],
+          recapSchedule: '',
+          retentionDays: 30,
+          adminRoleIds: new Set(['admin-role']),
+        },
+      },
+      imageGeneration: { generate },
+    } as unknown as CommandDependencies;
+    const denied = interaction({
+      commandName: 'image',
+      channelId: 'image-channel',
+      subcommand: 'generate',
+      values: { prompt: 'Create a safe purple MuthaShip banner.' },
+    });
+    await handleCommand(denied.interaction, configured);
+    expect(denied.replies[0]).toMatchObject({ ephemeral: true });
+
+    const allowed = interaction({
+      commandName: 'image',
+      channelId: 'image-channel',
+      subcommand: 'generate',
+      roleIds: ['admin-role'],
+      values: { prompt: 'Create a safe purple MuthaShip banner.' },
+    });
+    await handleCommand(allowed.interaction, configured);
+    expect(allowed.deferred[0]).toMatchObject({ ephemeral: false });
+    expect(allowed.edits[0]).toMatchObject({
+      files: [{ name: 'jarvis-image.png' }],
+      allowedMentions: safeMentions,
+    });
+  });
 });
 
 function interaction(
@@ -1594,7 +1650,9 @@ function interaction(
     topic: string | null;
     userId: string;
     values: Readonly<Record<string, string | null>>;
-    subcommand: 'set' | 'list' | 'cancel' | 'status' | 'enable' | 'disable';
+    subcommand:
+      'set' | 'list' | 'cancel' | 'status' | 'enable' | 'disable' | 'generate';
+    roleIds: readonly string[];
   }> = {},
 ): {
   readonly interaction: CommandInteraction;
@@ -1626,6 +1684,13 @@ function interaction(
         isThread: () => overrides.isThread ?? false,
       },
       user: { id: overrides.userId ?? 'user-1' },
+      member: {
+        roles: {
+          cache: {
+            has: (id: string) => overrides.roleIds?.includes(id) ?? false,
+          },
+        },
+      },
       options: {
         getSubcommand: () => overrides.subcommand ?? 'list',
         getString: (name) => {

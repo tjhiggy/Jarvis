@@ -287,6 +287,18 @@ interface NotificationSubcommandDefinition {
     }[];
   }[];
 }
+interface ImageSubcommandDefinition {
+  readonly type: 1;
+  readonly name: 'generate';
+  readonly description: string;
+  readonly options: readonly {
+    readonly type: 3;
+    readonly name: 'prompt';
+    readonly description: string;
+    readonly required: true;
+    readonly max_length: number;
+  }[];
+}
 
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
@@ -314,7 +326,8 @@ export type CommandOptionDefinition =
   | BirthdaySubcommandDefinition
   | GitHubSubcommandDefinition
   | RssSubcommandDefinition
-  | NotificationSubcommandDefinition;
+  | NotificationSubcommandDefinition
+  | ImageSubcommandDefinition;
 // GitHub is intentionally read-only and repository-scoped.
 
 export interface CommandDefinition {
@@ -331,6 +344,7 @@ export interface CommandDefinition {
     | 'catch-me-up'
     | 'server-search'
     | 'my-stats'
+    | 'image'
     | 'post'
     | 'channel-summary'
     | 'reminder'
@@ -535,6 +549,27 @@ export const createCommandDefinitions = (
           type: 1,
           name: 'disable',
           description: 'Opt out and delete your retained command counts.',
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'image',
+      description: 'Generate one administrator-controlled MuthaShip image.',
+      options: [
+        {
+          type: 1,
+          name: 'generate',
+          description: 'Generate one image in the configured channel.',
+          options: [
+            {
+              type: 3,
+              name: 'prompt',
+              description: 'Image description (20-1000 characters).',
+              required: true,
+              max_length: 1000,
+            },
+          ],
         },
       ],
     },

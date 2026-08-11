@@ -107,11 +107,11 @@
 - Produces: administrator-only `/image generate prompt:<text>` in one configured allowlisted channel, one image per request, disabled by default.
 - Consumes: `ImageGenerationService.generate({prompt})` returning bounded attachment bytes and media type.
 
-- [ ] Write failing tests for disabled default, admin/channel enforcement, prompt bounds, mention rejection, provider errors, one-image cap, and content-free logs.
-- [ ] Witness focused failures.
-- [ ] Implement the provider boundary and OpenAI image adapter with explicit model/configuration and timeout.
-- [ ] Wire Discord attachment delivery only after authorization; do not persist prompts or image bytes.
-- [ ] Run focused suites and commit `feat: add controlled image generation`.
+- [x] Write failing tests for disabled default, admin/channel enforcement, prompt bounds, mention rejection, provider errors, one-image cap, and content-free logs.
+- [x] Witness focused failures.
+- [x] Implement the provider boundary and OpenAI image adapter with explicit model/configuration and timeout.
+- [x] Wire Discord attachment delivery only after authorization; do not persist prompts or image bytes.
+- [x] Run focused suites and commit `feat: add controlled image generation`.
 
 ### Task 5: Model evaluation and routing decision
 

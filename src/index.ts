@@ -66,6 +66,8 @@ import {
   MemberStatisticsService,
   SQLiteMemberStatisticsStore,
 } from './community/member-statistics.js';
+import { ImageGenerationService } from './images/image-generation.js';
+import { OpenAIImageProvider } from './openai/openai-image-service.js';
 import {
   IntroductionService,
   type IntroductionGateway,
@@ -512,6 +514,7 @@ export const createApplication = async (
   let instrumentation: Instrumentation | undefined;
   let memberStatisticsStore: SQLiteMemberStatisticsStore | undefined;
   let memberStatistics: MemberStatisticsService | undefined;
+  let imageGeneration: ImageGenerationService | undefined;
   let rssStorage: RssStorage | undefined;
   let rssScheduler: RssScheduler | undefined;
   let delegatedPostService: DelegatedPostService | undefined;
@@ -858,6 +861,15 @@ export const createApplication = async (
       );
     }
     const ai = aiFactory(config);
+    if (config.imageGeneration.enabled) {
+      imageGeneration = new ImageGenerationService(
+        new OpenAIImageProvider(
+          config.openai.apiKey,
+          config.imageGeneration.model,
+          config.imageGeneration.timeoutMs,
+        ),
+      );
+    }
     client = discordFactory();
     if (rssStorage !== undefined && config.engagement.channels.rssId !== '') {
       const rssBroadcastStore = initializedBroadcastStore;
@@ -1592,6 +1604,7 @@ export const createApplication = async (
           faq,
           ...(knowledge === undefined ? {} : { knowledge }),
           ...(memberStatistics === undefined ? {} : { memberStatistics }),
+          ...(imageGeneration === undefined ? {} : { imageGeneration }),
           ...(introductionService === undefined ? {} : { introductionService }),
           ...(suggestionService === undefined ? {} : { suggestionService }),
           ...(eventService === undefined ? {} : { eventService }),

@@ -28,6 +28,12 @@ export interface AppConfig {
     timeoutMs: number;
     maxRetries: number;
   }>;
+  readonly imageGeneration: Readonly<{
+    enabled: boolean;
+    channelId: string;
+    model: string;
+    timeoutMs: number;
+  }>;
   readonly ollama: Readonly<{
     baseUrl: string;
     model: string;
@@ -236,6 +242,14 @@ const baseEnvironmentSchema = z.object({
   MAX_INPUT_CHARS: integer(12000, 1),
   OPENAI_TIMEOUT_MS: integer(45000, 1),
   OPENAI_MAX_RETRIES: integer(3, 0, 10),
+  IMAGE_GENERATION_ENABLED: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.enum(['true', 'false']).default('false'),
+  ),
+  IMAGE_GENERATION_CHANNEL_ID: optionalDiscordSnowflake,
+  IMAGE_GENERATION_MODEL: optionalString('gpt-image-1-mini'),
+  IMAGE_GENERATION_TIMEOUT_MS: integer(60000, 1000, 180000),
   RATE_LIMIT_REQUESTS: integer(5, 1),
   RATE_LIMIT_WINDOW_MS: integer(60000, 1),
   HISTORY_RETENTION_DAYS: integer(30, 1),
@@ -396,6 +410,17 @@ const environmentSchema = baseEnvironmentSchema.superRefine(
         message: 'OPENAI_API_KEY is required when AI_PROVIDER=openai.',
       });
     }
+    if (
+      value.IMAGE_GENERATION_ENABLED === 'true' &&
+      (value.OPENAI_API_KEY === '' || value.IMAGE_GENERATION_CHANNEL_ID === '')
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['IMAGE_GENERATION_ENABLED'],
+        message:
+          'Enabled image generation requires OPENAI_API_KEY and IMAGE_GENERATION_CHANNEL_ID.',
+      });
+    }
 
     validatePollConfiguration(value, context);
     validateEngagementConfiguration(value, context);
@@ -469,6 +494,12 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
       model: parsed.OPENAI_MODEL,
       timeoutMs: parsed.OPENAI_TIMEOUT_MS,
       maxRetries: parsed.OPENAI_MAX_RETRIES,
+    }),
+    imageGeneration: Object.freeze({
+      enabled: parsed.IMAGE_GENERATION_ENABLED === 'true',
+      channelId: parsed.IMAGE_GENERATION_CHANNEL_ID,
+      model: parsed.IMAGE_GENERATION_MODEL,
+      timeoutMs: parsed.IMAGE_GENERATION_TIMEOUT_MS,
     }),
     ollama: Object.freeze({
       baseUrl: parsed.OLLAMA_BASE_URL.replace(/\/+$/, ''),

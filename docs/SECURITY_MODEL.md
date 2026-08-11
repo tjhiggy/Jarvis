@@ -125,6 +125,13 @@ invalid content fails closed with a sanitized error that names
   days. It stores no prompt, response, channel content, or cross-server total.
   Disabling the feature deletes that member's retained counters in the current
   server immediately while preserving other servers' independent preferences.
+- **Controlled image boundary.** Image generation is disabled by default and
+  requires an OpenAI key, one exact destination channel, and a configured
+  MuthaShip administrator role. Each request produces at most one bounded
+  attachment. Prompts reject mass and role mentions, are never persisted, and
+  are not included in logs. Provider errors are projected to content-free safe
+  responses. Jarvis does not browse, edit Discord settings, or reuse generated
+  bytes as model context.
 - **Credential redaction.** Structured logs recursively redact values under
   keys named `token`, `apiKey`, or `authorization` (case-insensitive), including
   those keys in nested headers. This is not a general secret detector for
