@@ -58,6 +58,10 @@ describe('delegated posts', () => {
       service.confirm({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
     ).resolves.toEqual({ id: 'msg-1' });
     expect(sent[0].embeds[0].title).toBe('MuthaShip transmission');
+    expect(sent[0].embeds[0].fields).toContainEqual({
+      name: 'Posted for',
+      value: 'U',
+    });
     await expect(
       service.confirm({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
     ).rejects.toThrow();

@@ -1222,9 +1222,79 @@ export const createApplication = async (
         },
       });
     if (config.adminConsole?.enabled) {
+      const adminPostChannels = (
+        await Promise.all(
+          [...config.security.allowedChannelIds].map(async (channelId) => {
+            const channel = await client?.channels?.fetch(channelId);
+            if (!isEventChannel(channel)) return undefined;
+            const label =
+              typeof channel === 'object' &&
+              channel !== null &&
+              'name' in channel &&
+              typeof channel.name === 'string' &&
+              channel.name.trim() !== ''
+                ? channel.name.trim()
+                : `approved-channel-${channelId.slice(-4)}`;
+            return { id: channelId, label };
+          }),
+        )
+      ).filter(
+        (channel): channel is { id: string; label: string } =>
+          channel !== undefined,
+      );
       adminConsole = await startAdminConsole({
         port: config.adminConsole.port,
         host: config.adminConsole.host,
+        postControl:
+          config.adminConsole.token === '' || delegatedPostService === undefined
+            ? undefined
+            : {
+                token: config.adminConsole.token,
+                channels: adminPostChannels,
+                preview: async ({ channelId, content }) => {
+                  const draft = delegatedPostService!.preview({
+                    guildId: config.discord.guildId,
+                    ownerUserId: botUserId,
+                    ownerName: 'Command Deck',
+                    ownerRoleIds: config.engagement.adminRoleIds,
+                    channelId,
+                    content,
+                  });
+                  const channel = adminPostChannels.find(
+                    (candidate) => candidate.id === channelId,
+                  );
+                  return {
+                    draftId: draft.id,
+                    destination: `#${channel?.label ?? 'approved-channel'}`,
+                    title: 'MuthaShip transmission',
+                    description: draft.content,
+                  };
+                },
+                confirm: async (draftId) => {
+                  const message = await delegatedPostService!.confirm({
+                    guildId: config.discord.guildId,
+                    ownerUserId: botUserId,
+                    draftId,
+                  });
+                  return { messageId: message.id };
+                },
+                cancel: async (draftId) =>
+                  delegatedPostService!.cancel({
+                    guildId: config.discord.guildId,
+                    ownerUserId: botUserId,
+                    draftId,
+                  }),
+                audit: async ({ operation, channelId, outcome }) => {
+                  logger?.info(
+                    {
+                      operation: `command_deck_post_${operation}`,
+                      channelId,
+                      outcome,
+                    },
+                    'Command Deck broadcast action recorded.',
+                  );
+                },
+              },
         broadcastControl:
           config.adminConsole.token === ''
             ? undefined

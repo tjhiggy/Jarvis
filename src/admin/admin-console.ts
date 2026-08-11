@@ -108,6 +108,30 @@ export interface AdminConsoleBroadcastControl {
   }) => Promise<void>;
 }
 
+export interface AdminConsolePostControl {
+  readonly token: string;
+  readonly channels: readonly { readonly id: string; readonly label: string }[];
+  readonly preview: (input: {
+    readonly channelId: string;
+    readonly content: string;
+  }) => Promise<{
+    readonly draftId: string;
+    readonly destination: string;
+    readonly title: string;
+    readonly description: string;
+  }>;
+  readonly confirm: (
+    draftId: string,
+  ) => Promise<{ readonly messageId: string }>;
+  readonly cancel: (draftId: string) => Promise<boolean>;
+  readonly audit?: (entry: {
+    readonly operation: 'preview' | 'confirm' | 'cancel';
+    readonly channelId: string;
+    readonly outcome: 'succeeded' | 'failed';
+    readonly occurredAt: Date;
+  }) => Promise<void>;
+}
+
 const rssIntegrationStatus = (
   status: AdminConsoleSnapshot['integrations']['rss'],
 ): string => {
@@ -171,7 +195,10 @@ const safeSnapshot = (
       }),
 });
 
-const html = (snapshot: AdminConsoleSnapshot): string => `<!doctype html>
+const html = (
+  snapshot: AdminConsoleSnapshot,
+  postControl?: AdminConsolePostControl,
+): string => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jarvis Command Deck</title><style>
 :root{color-scheme:dark;--void:#090b17;--panel:#15182b;--panel2:#1d2038;--line:#3b3566;--gold:#f4c76b;--violet:#b89cff;--blue:#75b7ff;--text:#f5f2ff;--muted:#aeb2ca;--ok:#75e6ad}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% -10%,#33255c 0,#11152a 35%,var(--void) 72%);color:var(--text);font:16px system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}main{max-width:1040px;margin:0 auto;padding:40px 24px 56px}header{display:flex;align-items:center;gap:16px;margin-bottom:28px}header .crest{font-size:38px;filter:drop-shadow(0 0 12px #9777ff88)}h1{margin:0;color:var(--gold);font-size:clamp(28px,5vw,42px);letter-spacing:.02em}h2{margin:0 0 12px;color:var(--violet);font-size:20px}.subtitle{margin:4px 0 0;color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px}.card{background:linear-gradient(145deg,#1d2038dd,#121528ee);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 12px 34px #0006;transition:border-color .2s,transform .2s}.card:hover{border-color:#8069d9;transform:translateY(-2px)}.ok{color:var(--ok)}.muted{color:var(--muted)}ul{padding-left:20px}small{color:#8f94b2;overflow-wrap:anywhere}button{border:1px solid #6c5bc0;background:#332b68;color:var(--text);border-radius:8px;padding:9px 13px;font:inherit;cursor:pointer;margin:4px 6px 4px 0}button:hover,button:focus-visible{background:#5143a0;outline:2px solid var(--blue);outline-offset:2px}input{background:#0e1121;border:1px solid #514a7d;border-radius:8px;color:var(--text);padding:9px 10px;font:inherit;max-width:100%}@media(max-width:520px){main{padding:24px 16px 40px}.card{padding:16px}}
@@ -181,9 +208,15 @@ const html = (snapshot: AdminConsoleSnapshot): string => `<!doctype html>
 <article class="card"><h2>Providers</h2><p>AI: ${snapshot.providers.ai}</p><p>OpenAI: ${snapshot.providers.openAiConfigured ? 'configured' : 'not configured'}</p><p>Ollama: ${snapshot.providers.ollamaConfigured ? 'configured' : 'not configured'}</p><p>Web search: ${snapshot.providers.webSearchConfigured ? 'configured' : 'not configured'}</p></article>
 <article class="card"><h2>Integrations</h2><p>RSS: ${rssIntegrationStatus(snapshot.integrations.rss)}</p><p>Sleeper Fantasy Football: ${snapshot.integrations.sleeper ? 'ready' : 'not configured'}</p><p>GitHub read-only: ${snapshot.integrations.github ? 'ready' : 'not configured'}</p><p>Metrics: ${snapshot.metrics === null ? 'unavailable' : `${snapshot.metrics.events} events, ${snapshot.metrics.failures} failures`}</p></article>
 ${renderBroadcastCards(snapshot)}
+${
+  postControl === undefined
+    ? '<article class="card"><h2>New broadcast</h2><p class="muted">One-off broadcasts are unavailable.</p></article>'
+    : `<article class="card"><h2>New broadcast</h2><p><label>Destination <select id="post-channel">${postControl.channels.map((channel) => `<option value="${escapeHtml(channel.label)}">${escapeHtml(channel.label)}</option>`).join('')}</select></label></p><p><label>Message <textarea id="post-content" maxlength="1500" rows="6" placeholder="Compose a MuthaShip broadcast"></textarea></label></p><p><button onclick="previewPost()">Preview</button></p><pre id="post-result" class="muted"></pre></article>`
+}
 <article class="card"><h2>RSS preview</h2>${snapshot.rss ? `<p><input id="rss-url" placeholder="Allowlisted HTTPS feed URL"><button onclick="previewRss()">Preview feed</button></p><p id="rss-result" class="muted"></p>` : '<p class="muted">RSS preview is unavailable.</p>'}</article>
 </section><p><small>Bound to localhost. Refresh for a current snapshot.</small></p></main><script>
 async function controlBroadcast(category,action){if(!confirm('Confirm '+category+' '+action+' for this MuthaShip?'))return;const token=prompt('Enter the local Admin Console token:');if(!token)return;const result=document.getElementById('rss-result');try{const confirmation=await fetch('/api/broadcast/'+category+'/confirmation',{method:'POST',headers:{Authorization:'Bearer '+token,'X-Broadcast-Action':action}});const confirmationBody=await confirmation.json();if(!confirmation.ok)throw new Error(confirmationBody.error||'Confirmation failed');const response=await fetch('/api/broadcast/'+category+'/'+action,{method:'POST',headers:{Authorization:'Bearer '+token,'X-Confirmation-Nonce':confirmationBody.nonce}});const body=await response.json();if(!response.ok)throw new Error(body.error||'Request failed');if(result)result.textContent=category+' '+action+'d successfully. Refreshing...';setTimeout(()=>location.reload(),300);}catch(error){if(result)result.textContent=error instanceof Error?error.message:'Broadcast control failed';}}
+async function previewPost(){const token=prompt('Enter the local Admin Console token:');const channelId=document.getElementById('post-channel').value;const content=document.getElementById('post-content').value;const result=document.getElementById('post-result');if(!token||!channelId||!content)return;try{const preview=await fetch('/api/post/preview',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({channelId,content})});const body=await preview.json();if(!preview.ok)throw new Error(body.error||'Preview failed');result.textContent=body.title+'\n'+body.destination+'\n\n'+body.description;if(!confirm('Send this public broadcast to '+body.destination+'?')){await fetch('/api/post/cancel',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','X-Confirmation-Nonce':body.confirmationNonce},body:JSON.stringify({draftId:body.draftId})});result.textContent='Broadcast cancelled.';return;}const sent=await fetch('/api/post/confirm',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json','X-Confirmation-Nonce':body.confirmationNonce},body:JSON.stringify({draftId:body.draftId})});const sentBody=await sent.json();if(!sent.ok)throw new Error(sentBody.error||'Delivery failed');result.textContent='Broadcast sent successfully.';}catch(error){result.textContent=error instanceof Error?error.message:'Broadcast unavailable';}}
 async function previewRss(){const token=prompt('Enter the local Admin Console token:');const url=document.getElementById('rss-url').value;if(!token||!url)return;const result=document.getElementById('rss-result');try{const response=await fetch('/api/rss/preview',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({url})});const body=await response.json();if(!response.ok)throw new Error(body.error||'Preview failed');const entries=body.items.map((item)=>[item.title,item.url,item.publishedAt].join('\n')).join('\n\n');result.textContent=body.items.length+' feed items found. No feed was saved; saving establishes a baseline, so historical entries are not posted.\n\n'+entries;}catch(error){result.textContent=error instanceof Error?error.message:'RSS preview failed';}}
 </script></body></html>`;
 
@@ -193,6 +226,7 @@ export const startAdminConsole = (options: {
   readonly snapshot: () => Promise<AdminConsoleSnapshot>;
   readonly rssControl?: AdminConsoleRssControl | undefined;
   readonly broadcastControl?: AdminConsoleBroadcastControl | undefined;
+  readonly postControl?: AdminConsolePostControl | undefined;
   readonly now?: () => Date;
 }): Promise<AdminConsole> => {
   const host = options.host ?? '127.0.0.1';
@@ -202,6 +236,15 @@ export const startAdminConsole = (options: {
     {
       readonly category: BroadcastCategory;
       readonly action: 'pause' | 'resume';
+      readonly expiresAt: number;
+      used: boolean;
+    }
+  >();
+  const postConfirmations = new Map<
+    string,
+    {
+      readonly draftId: string;
+      readonly channelId: string;
       readonly expiresAt: number;
       used: boolean;
     }
@@ -222,6 +265,127 @@ export const startAdminConsole = (options: {
   };
   const server = createServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (
+      request.method === 'POST' &&
+      (path === '/api/post/preview' ||
+        path === '/api/post/confirm' ||
+        path === '/api/post/cancel')
+    ) {
+      const control = options.postControl;
+      if (control === undefined || !writeAuthorized(request, control.token)) {
+        writeJson(response, 401, { error: 'Unauthorized' });
+        return;
+      }
+      let rawBody = '';
+      for await (const chunk of request) {
+        rawBody += chunk.toString();
+        if (rawBody.length > 4096) break;
+      }
+      try {
+        const body = JSON.parse(rawBody) as {
+          channelId?: unknown;
+          content?: unknown;
+          draftId?: unknown;
+        };
+        if (path === '/api/post/preview') {
+          const requestedChannel = String(body.channelId ?? '').trim();
+          const channel = control.channels.find(
+            (candidate) =>
+              candidate.id === requestedChannel ||
+              candidate.label === requestedChannel,
+          );
+          const content = String(body.content ?? '').trim();
+          if (
+            channel === undefined ||
+            content === '' ||
+            content.length > 1500
+          ) {
+            writeJson(response, 400, {
+              error:
+                'Choose an approved channel and enter up to 1500 characters.',
+            });
+            return;
+          }
+          const preview = await control.preview({
+            channelId: channel.id,
+            content,
+          });
+          const confirmationNonce = randomUUID();
+          postConfirmations.set(confirmationNonce, {
+            draftId: preview.draftId,
+            channelId: channel.id,
+            expiresAt: now().getTime() + 60_000,
+            used: false,
+          });
+          await control.audit?.({
+            operation: 'preview',
+            channelId: channel.id,
+            outcome: 'succeeded',
+            occurredAt: now(),
+          });
+          writeJson(response, 200, { ...preview, confirmationNonce });
+          return;
+        }
+        const draftId = String(body.draftId ?? '').trim();
+        const nonce = request.headers['x-confirmation-nonce'];
+        const confirmation =
+          typeof nonce === 'string' ? postConfirmations.get(nonce) : undefined;
+        if (
+          confirmation === undefined ||
+          confirmation.draftId !== draftId ||
+          confirmation.expiresAt < now().getTime()
+        ) {
+          writeJson(response, 401, { error: 'Confirmation required.' });
+          return;
+        }
+        if (confirmation.used) {
+          writeJson(response, 409, {
+            error: 'Confirmation has already been used.',
+          });
+          return;
+        }
+        confirmation.used = true;
+        if (path === '/api/post/cancel') {
+          const cancelled = await control.cancel(draftId);
+          await control.audit?.({
+            operation: 'cancel',
+            channelId: confirmation.channelId,
+            outcome: cancelled ? 'succeeded' : 'failed',
+            occurredAt: now(),
+          });
+          writeJson(response, cancelled ? 200 : 404, { cancelled });
+          return;
+        }
+        try {
+          const sent = await control.confirm(draftId);
+          await control.audit?.({
+            operation: 'confirm',
+            channelId: confirmation.channelId,
+            outcome: 'succeeded',
+            occurredAt: now(),
+          });
+          writeJson(response, 200, { ok: true, messageId: sent.messageId });
+        } catch {
+          confirmation.used = false;
+          await control.audit?.({
+            operation: 'confirm',
+            channelId: confirmation.channelId,
+            outcome: 'failed',
+            occurredAt: now(),
+          });
+          writeJson(response, 503, {
+            error:
+              'Broadcast delivery is unavailable. The draft remains retryable.',
+          });
+        }
+      } catch {
+        writeJson(response, 503, {
+          error:
+            'Broadcast delivery is unavailable. The draft remains retryable.',
+        });
+      }
+      return;
+    }
     const broadcastMatch =
       /^\/api\/broadcast\/(rss|proactive|recap|event_reminder|birthday|trivia)\/(confirmation|pause|resume)$/.exec(
         path,
@@ -360,7 +524,7 @@ export const startAdminConsole = (options: {
         'content-type': 'text/html; charset=utf-8',
         'cache-control': 'no-store',
       });
-      response.end(html(snapshot));
+      response.end(html(snapshot, options.postControl));
     } catch {
       response.writeHead(503, {
         'content-type': 'application/json; charset=utf-8',

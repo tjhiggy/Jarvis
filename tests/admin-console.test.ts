@@ -379,6 +379,148 @@ describe('admin console', () => {
     ).toBe(401);
     await console.close();
   });
+
+  it('previews and sends one allowlisted Command Deck broadcast with a single-use confirmation', async () => {
+    const previews: Array<{ channelId: string; content: string }> = [];
+    const confirmations: string[] = [];
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      postControl: {
+        token: 'local-token',
+        channels: [{ id: 'channel-1', label: 'jarvis-testing' }],
+        preview: async (input) => {
+          previews.push(input);
+          return {
+            draftId: 'draft-1',
+            destination: '#jarvis-testing',
+            title: 'MuthaShip transmission',
+            description: 'Crew update',
+          };
+        },
+        confirm: async (draftId) => {
+          confirmations.push(draftId);
+          return { messageId: 'message-1' };
+        },
+        cancel: async () => true,
+      },
+    });
+    const address = console.server.address();
+    const port =
+      typeof address === 'object' && address !== null ? address.port : 0;
+    const base = `http://127.0.0.1:${port}`;
+
+    const page = await (await fetch(`${base}/`)).text();
+    expect(page).toContain('New broadcast');
+    expect(page).toContain('jarvis-testing');
+    expect(page).not.toContain('channel-1');
+
+    expect(
+      (
+        await fetch(`${base}/api/post/preview`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            channelId: 'channel-1',
+            content: 'Crew update',
+          }),
+        })
+      ).status,
+    ).toBe(401);
+
+    const preview = await fetch(`${base}/api/post/preview`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer local-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ channelId: 'channel-1', content: 'Crew update' }),
+    });
+    expect(preview.status).toBe(200);
+    const previewBody = (await preview.json()) as {
+      draftId: string;
+      confirmationNonce: string;
+      destination: string;
+      description: string;
+    };
+    expect(previewBody).toMatchObject({
+      draftId: 'draft-1',
+      destination: '#jarvis-testing',
+      description: 'Crew update',
+    });
+    expect(previews).toEqual([
+      { channelId: 'channel-1', content: 'Crew update' },
+    ]);
+
+    const confirm = () =>
+      fetch(`${base}/api/post/confirm`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer local-token',
+          'content-type': 'application/json',
+          'x-confirmation-nonce': previewBody.confirmationNonce,
+        },
+        body: JSON.stringify({ draftId: previewBody.draftId }),
+      });
+    expect((await confirm()).status).toBe(200);
+    expect((await confirm()).status).toBe(409);
+    expect(confirmations).toEqual(['draft-1']);
+    await console.close();
+  });
+
+  it('keeps a failed Command Deck broadcast confirmation retryable', async () => {
+    let attempts = 0;
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      postControl: {
+        token: 'local-token',
+        channels: [{ id: 'channel-1', label: 'jarvis-testing' }],
+        preview: async () => ({
+          draftId: 'draft-1',
+          destination: '#jarvis-testing',
+          title: 'MuthaShip transmission',
+          description: 'Crew update',
+        }),
+        confirm: async () => {
+          attempts += 1;
+          if (attempts === 1) throw new Error('Discord unavailable');
+          return { messageId: 'message-1' };
+        },
+        cancel: async () => true,
+      },
+    });
+    const address = console.server.address();
+    const port =
+      typeof address === 'object' && address !== null ? address.port : 0;
+    const base = `http://127.0.0.1:${port}`;
+    const preview = await fetch(`${base}/api/post/preview`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer local-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ channelId: 'channel-1', content: 'Crew update' }),
+    });
+    const previewBody = (await preview.json()) as {
+      draftId: string;
+      confirmationNonce: string;
+    };
+    const confirm = () =>
+      fetch(`${base}/api/post/confirm`, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer local-token',
+          'content-type': 'application/json',
+          'x-confirmation-nonce': previewBody.confirmationNonce,
+        },
+        body: JSON.stringify({ draftId: previewBody.draftId }),
+      });
+    expect((await confirm()).status).toBe(503);
+    expect((await confirm()).status).toBe(200);
+    expect(attempts).toBe(2);
+    await console.close();
+  });
 });
 
 function safeSnapshot(): AdminConsoleSnapshot {
