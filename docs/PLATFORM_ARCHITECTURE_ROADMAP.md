@@ -80,6 +80,8 @@ include Discord and optional OpenAI, RSS providers, Sleeper, GitHub, MCP, and
 the Sites frontend. Sites must not contain secrets or directly expose an
 unrestricted control surface. The first Admin Command Deck release is
 read-only and local-first; safe writes require an authenticated API boundary.
+The shared read-only provider contract is documented in
+[PROVIDER_CONTRACT.md](PROVIDER_CONTRACT.md).
 
 ## Definition of done for every phase
 
