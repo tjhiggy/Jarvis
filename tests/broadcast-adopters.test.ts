@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RecapScheduler, RecapService } from '../src/engagement/recap.js';
-import { EventScheduler } from '../src/engagement/event-scheduler.js';
+import {
+  EventScheduler,
+  eventReminderRetryGraceMs,
+} from '../src/engagement/event-scheduler.js';
 import { BirthdayScheduler } from '../src/engagement/birthdays.js';
 import { BroadcastPolicyService } from '../src/notifications/broadcast-policy.js';
 import { SqliteBroadcastStore } from '../src/notifications/sqlite-broadcast-store.js';
@@ -125,7 +128,7 @@ describe('scheduled broadcast policy adopters', () => {
     expect(markFailed).not.toHaveBeenCalled();
   });
 
-  it('delivers a policy-suppressed event reminder after policy resumes even once the event has closed', async () => {
+  it('delivers a policy-suppressed event reminder when policy resumes one minute after the event closes', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'jarvis-event-policy-'));
     const repository = new SQLiteEngagementRepository(
       join(directory, 'engagement.db'),
@@ -189,6 +192,79 @@ describe('scheduled broadcast policy adopters', () => {
       }).tick();
 
       expect(deliveries).toBe(1);
+    } finally {
+      await repository.closeConnection();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('marks a policy-suppressed reminder terminal after the retry grace without posting', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jarvis-event-grace-'));
+    let repository = new SQLiteEngagementRepository(
+      join(directory, 'engagement.db'),
+    );
+    const broadcastStore = deliveryStore();
+    const dueAt = new Date(Date.now() + 60_000);
+    const deliver = vi.fn();
+    try {
+      await repository.createEvent({
+        id: 'event-grace',
+        guildId: 'server-1',
+        channelId: 'events',
+        ownerUserId: 'owner-1',
+        title: 'Boarding',
+        description: 'Crew event',
+        scheduledAt: dueAt,
+        timezone: 'UTC',
+        capacity: 10,
+        status: 'scheduled',
+        createdAt: new Date(dueAt.getTime() - 1),
+        updatedAt: new Date(dueAt.getTime() - 1),
+      });
+      await repository.respondToEvent({
+        eventId: 'event-grace',
+        guildId: 'server-1',
+        userId: 'crew-1',
+        response: 'yes',
+        attendance: 'none',
+        reminderOptIn: true,
+        createdAt: new Date(dueAt.getTime() - 1),
+        updatedAt: new Date(dueAt.getTime() - 1),
+      });
+      await new EventScheduler({
+        repository,
+        gateway: { deliver },
+        policy: {
+          evaluate: async () => ({
+            allowed: false as const,
+            reason: 'member_not_opted_in' as const,
+          }),
+        },
+        broadcastStore,
+        now: () => dueAt,
+      }).tick();
+      await repository.closeConnection();
+      repository = new SQLiteEngagementRepository(
+        join(directory, 'engagement.db'),
+      );
+
+      const expired = new EventScheduler({
+        repository,
+        gateway: { deliver },
+        policy: { evaluate: async () => ({ allowed: true as const }) },
+        broadcastStore,
+        now: () => new Date(dueAt.getTime() + eventReminderRetryGraceMs + 1),
+      });
+      await expired.tick();
+
+      expect(deliver).not.toHaveBeenCalled();
+      expect(expired.lastRun).toMatchObject({ status: 'success' });
+      await expect(
+        repository.claimDueEventReminders(
+          new Date(dueAt.getTime() + eventReminderRetryGraceMs + 2),
+          1,
+        ),
+      ).resolves.toEqual([]);
     } finally {
       await repository.closeConnection();
       await rm(directory, { recursive: true, force: true });

@@ -1,4 +1,5 @@
 import type { EngagementRepository } from './storage.js';
+export { eventReminderRetryGraceMs } from './storage.js';
 import type { BroadcastPolicyService } from '../notifications/broadcast-policy.js';
 import type { BroadcastStore } from '../notifications/broadcast-store.js';
 import { projectOperationalError } from '../utils/logger.js';

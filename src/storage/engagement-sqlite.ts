@@ -23,6 +23,7 @@ import {
   EngagementOptOutError,
   EngagementEventClosedError,
   EngagementRecordConflictError,
+  eventReminderRetryGraceMs,
   type EngagementCardDeletion,
   type EngagementIdempotencyScope,
   type EngagementRepository,
@@ -1374,12 +1375,18 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     this.ensureOpen();
     const claimedAt = milliseconds(now);
     const staleBefore = claimedAt - 5 * 60 * 1_000;
+    const retryDeadline = claimedAt - eventReminderRetryGraceMs;
     return this.database.transaction(() => {
+      this.database
+        .prepare(
+          "UPDATE engagement_rsvps SET reminder_state = 'failed', reminder_claimed_at = NULL, reminder_lease_token = NULL, updated_at = ? WHERE response = 'yes' AND reminder_opt_in = 1 AND reminder_state = 'pending' AND (reminder_claimed_at IS NULL OR reminder_claimed_at < ?) AND EXISTS (SELECT 1 FROM engagement_events e WHERE e.guild_id = engagement_rsvps.guild_id AND e.id = engagement_rsvps.event_id AND e.status IN ('scheduled', 'completed') AND e.scheduled_at <= ?)",
+        )
+        .run(claimedAt, staleBefore, retryDeadline);
       const candidates = this.database
         .prepare(
-          "SELECT r.event_id, r.guild_id, r.user_id, e.channel_id, e.title, e.scheduled_at FROM engagement_rsvps r JOIN engagement_events e ON e.guild_id = r.guild_id AND e.id = r.event_id LEFT JOIN engagement_preferences p ON p.guild_id = r.guild_id WHERE e.status IN ('scheduled', 'completed') AND r.response = 'yes' AND r.reminder_opt_in = 1 AND r.reminder_state = 'pending' AND coalesce(p.paused, 0) = 0 AND e.scheduled_at <= ? AND (r.reminder_claimed_at IS NULL OR r.reminder_claimed_at < ?) ORDER BY e.scheduled_at ASC, r.updated_at ASC, r.user_id ASC LIMIT ?",
+          "SELECT r.event_id, r.guild_id, r.user_id, e.channel_id, e.title, e.scheduled_at FROM engagement_rsvps r JOIN engagement_events e ON e.guild_id = r.guild_id AND e.id = r.event_id LEFT JOIN engagement_preferences p ON p.guild_id = r.guild_id WHERE e.status IN ('scheduled', 'completed') AND r.response = 'yes' AND r.reminder_opt_in = 1 AND r.reminder_state = 'pending' AND coalesce(p.paused, 0) = 0 AND e.scheduled_at <= ? AND e.scheduled_at > ? AND (r.reminder_claimed_at IS NULL OR r.reminder_claimed_at < ?) ORDER BY e.scheduled_at ASC, r.updated_at ASC, r.user_id ASC LIMIT ?",
         )
-        .all(claimedAt, staleBefore, limit) as Array<{
+        .all(claimedAt, retryDeadline, staleBefore, limit) as Array<{
         event_id: string;
         guild_id: string;
         channel_id: string;
