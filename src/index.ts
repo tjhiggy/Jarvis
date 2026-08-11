@@ -135,6 +135,10 @@ import type {
 import { SqliteBroadcastStore } from './notifications/sqlite-broadcast-store.js';
 import { HttpGitHubReadOnlyService } from './github/github-service.js';
 import {
+  FeatureRequestService,
+  HttpGitHubIssueCreateService,
+} from './github/feature-request.js';
+import {
   startAdminConsole,
   type AdminConsole,
   type AdminConsoleBroadcastCategory,
@@ -1612,6 +1616,16 @@ export const createApplication = async (
         logger,
       });
     const initializedReminderScheduler = reminderScheduler;
+    const featureRequestService = config.github
+      ? new FeatureRequestService({
+          github: new HttpGitHubIssueCreateService(
+            config.github.owner,
+            config.github.repo,
+            config.github.token,
+            config.github.timeoutMs,
+          ),
+        })
+      : undefined;
 
     handlerState.handlers = createDiscordHandlers({
       botUserId,
@@ -1633,6 +1647,9 @@ export const createApplication = async (
                 },
               }
             : {}),
+          ...(featureRequestService === undefined
+            ? {}
+            : { featureRequestService }),
           ...(rssStorage === undefined ? {} : { rssStorage }),
           broadcastStore: initializedBroadcastStore,
           conversationService,

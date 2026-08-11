@@ -98,5 +98,7 @@ Each phase requires:
 ## Out of scope
 
 Jarvis will not autonomously learn from raw Discord conversations, execute
-code or shell commands, modify server settings, perform GitHub writes, expose
-secrets, or grant arbitrary role permissions.
+code or shell commands, modify server settings, perform general GitHub writes,
+expose secrets, or grant arbitrary role permissions. The only approved GitHub
+write is administrator-confirmed creation of a labeled issue in one configured
+repository through `/feature-request`.
