@@ -55,7 +55,9 @@ describe('SQLiteEngagementRepository', () => {
       'engagement_recap_runs',
       'engagement_rsvps',
       'engagement_schema_migrations',
-      'engagement_suggestions',
+    'engagement_suggestions',
+    'engagement_team_members',
+    'engagement_teams',
       'engagement_trivia_answers',
       'engagement_trivia_rounds',
     ]);

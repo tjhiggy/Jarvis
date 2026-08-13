@@ -1924,6 +1924,95 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     return { current, longest };
   }
 
+  async createTeam(serverId: string, name: string, ownerId: string, at: Date) {
+    this.ensureOpen();
+    const id = randomUUID();
+    try {
+      this.database
+        .prepare(
+          'INSERT INTO engagement_teams (id,guild_id,name,owner_id,created_at) VALUES (?,?,?,?,?)',
+        )
+        .run(id, serverId, name, ownerId, milliseconds(at));
+    } catch (error) {
+      if (isConstraint(error)) return undefined;
+      throw error;
+    }
+    this.database
+      .prepare(
+        'INSERT INTO engagement_team_members (team_id,user_id,joined_at) VALUES (?,?,?)',
+      )
+      .run(id, ownerId, milliseconds(at));
+    return { id, serverId, name, ownerId, memberIds: [ownerId], createdAt: at };
+  }
+  async listTeams(serverId: string) {
+    this.ensureOpen();
+    return (
+      this.database
+        .prepare(
+          'SELECT id,guild_id,name,owner_id,created_at FROM engagement_teams WHERE guild_id=? ORDER BY created_at',
+        )
+        .all(serverId) as any[]
+    ).map((row) => ({
+      id: row.id,
+      serverId: row.guild_id,
+      name: row.name,
+      ownerId: row.owner_id,
+      memberIds: (
+        this.database
+          .prepare(
+            'SELECT user_id FROM engagement_team_members WHERE team_id=? ORDER BY joined_at',
+          )
+          .all(row.id) as any[]
+      ).map((member) => member.user_id),
+      createdAt: new Date(row.created_at),
+    }));
+  }
+  async joinTeam(serverId: string, name: string, userId: string) {
+    this.ensureOpen();
+    const team = this.database
+      .prepare('SELECT id FROM engagement_teams WHERE guild_id=? AND name=?')
+      .get(serverId, name) as any;
+    if (!team) return 'missing' as const;
+    if (
+      this.database
+        .prepare(
+          'SELECT 1 FROM engagement_team_members WHERE team_id=? AND user_id=?',
+        )
+        .get(team.id, userId)
+    )
+      return 'already' as const;
+    const count = this.database
+      .prepare(
+        'SELECT COUNT(*) AS count FROM engagement_team_members WHERE team_id=?',
+      )
+      .get(team.id) as any;
+    if (count.count >= 50) return 'full' as const;
+    this.database
+      .prepare('INSERT INTO engagement_team_members VALUES (?,?,?)')
+      .run(team.id, userId, Date.now());
+    return 'joined' as const;
+  }
+  async leaveTeam(serverId: string, name: string, userId: string) {
+    this.ensureOpen();
+    const team = this.database
+      .prepare(
+        'SELECT id,owner_id FROM engagement_teams WHERE guild_id=? AND name=?',
+      )
+      .get(serverId, name) as any;
+    if (!team) return 'missing' as const;
+    const result = this.database
+      .prepare(
+        'DELETE FROM engagement_team_members WHERE team_id=? AND user_id=?',
+      )
+      .run(team.id, userId);
+    if (!result.changes) return 'absent' as const;
+    if (team.owner_id === userId)
+      this.database
+        .prepare('DELETE FROM engagement_teams WHERE id=?')
+        .run(team.id);
+    return 'left' as const;
+  }
+
   async cleanup(cutoff: Date, limit: number): Promise<number> {
     this.ensureOpen();
     if (!Number.isSafeInteger(limit) || limit < 0)
@@ -2222,6 +2311,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           'CREATE TABLE IF NOT EXISTS engagement_participation_streaks (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, last_day TEXT NOT NULL, current_streak INTEGER NOT NULL, longest_streak INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id,user_id)); CREATE INDEX IF NOT EXISTS engagement_participation_streaks_retention ON engagement_participation_streaks (updated_at,guild_id);',
         );
         this.recordMigration(27);
+      }
+      if (!this.hasMigration(28)) {
+        this.database.exec(
+          'CREATE TABLE IF NOT EXISTS engagement_teams (id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, name TEXT NOT NULL COLLATE NOCASE, owner_id TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(guild_id,name)); CREATE TABLE IF NOT EXISTS engagement_team_members (team_id TEXT NOT NULL, user_id TEXT NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(team_id,user_id), FOREIGN KEY(team_id) REFERENCES engagement_teams(id) ON DELETE CASCADE); CREATE INDEX IF NOT EXISTS engagement_teams_guild ON engagement_teams(guild_id,created_at);',
+        );
+        this.recordMigration(28);
       }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
