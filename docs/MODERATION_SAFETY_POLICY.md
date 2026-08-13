@@ -40,12 +40,12 @@ known-good release, verify health, and record the result.
 
 ## Module boundaries
 
-| Module | Initial responsibility | Explicit non-goals |
-| --- | --- | --- |
-| AutoMod | Configure and report bounded, allowlisted rule state | Arbitrary server settings or silent rule changes |
-| Warnings | Record an administrator-issued warning with retention and audit | Automated punishment or public shaming |
-| Moderation logs | Content-free action metadata and export-safe audit | Message archives or surveillance |
-| Raid protection | Detect bounded join/activity spikes and recommend or request a configured response | Autonomous bans, kicks, or role changes |
+| Module          | Initial responsibility                                                             | Explicit non-goals                               |
+| --------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------ |
+| AutoMod         | Configure and report bounded, allowlisted rule state                               | Arbitrary server settings or silent rule changes |
+| Warnings        | Record an administrator-issued warning with retention and audit                    | Automated punishment or public shaming           |
+| Moderation logs | Content-free action metadata and export-safe audit                                 | Message archives or surveillance                 |
+| Raid protection | Detect bounded join/activity spikes and recommend or request a configured response | Autonomous bans, kicks, or role changes          |
 
 The initial raid-protection slice is a pure policy evaluator. It emits a
 bounded `flag` or `pause_recommendation`; it does not inspect privileged
