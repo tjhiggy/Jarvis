@@ -28,6 +28,8 @@ remains proprietary and production authority remains with the maintainer.
   CI, documentation, and deployment verification are complete.
 - **Security**: use `SECURITY.md` for vulnerabilities. Do not put secrets or
   exploit details in public Issues, Discussions, or pull requests.
+- **Moderation safety**: use [MODERATION_SAFETY_POLICY.md](MODERATION_SAFETY_POLICY.md)
+  as the shared contract for moderation backlog items and release evidence.
 
 ## Maintainer change path
 
