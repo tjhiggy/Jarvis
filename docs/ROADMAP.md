@@ -67,15 +67,17 @@ documentation, migration rehearsal, Discord smoke testing, and a tagged release.
 
 ### v1.2.0 Expansion Systems
 
-External REST/API boundaries, webhooks, temporary voice channels, moderation
-automation, tournaments, and the Discord-to-GitHub planning workflow.
-Tracked issues: #1, #20, #50, #51, #52, #53, #55, #62, and #63.
+v1.2.0 shipped as the Expansion Systems release. It delivered bounded REST and
+webhook boundaries, moderation policy foundations, tournament and voice policy
+contracts, and GitHub Discussions-native intake. The milestone is closed.
 
 ### v1.3.0 Community Operations
 
 Hardened Docker evaluation, private support tickets, server dashboard, activity
-heatmap, year-in-review reporting, and the community platform epic.
-Tracked issues: #5, #15, #41, #44, #57, and #195.
+heatmap, year-in-review reporting, Command Deck operations, and release
+configuration readiness.
+Tracked issues: #5, #15, #41, #44, #57, #195, #228, #230, #232, #233, #234,
+and #235.
 
 ### v1.4.0 Economy and Progression
 
