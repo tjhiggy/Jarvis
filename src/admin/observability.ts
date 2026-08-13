@@ -1,5 +1,8 @@
 export interface AdminObservabilityInput {
-  readonly metrics: { readonly events: number; readonly failures: number } | null;
+  readonly metrics: {
+    readonly events: number;
+    readonly failures: number;
+  } | null;
   readonly database: 'healthy' | 'unavailable';
   readonly configuredFeatures: readonly string[];
   readonly configuredIntegrations: number;
@@ -26,7 +29,10 @@ export const buildAdminObservabilityProjection = (
   const integrationReadiness =
     input.totalIntegrations === 0
       ? 0
-      : Math.round((bounded(input.configuredIntegrations) / input.totalIntegrations) * 100);
+      : Math.round(
+          (bounded(input.configuredIntegrations) / input.totalIntegrations) *
+            100,
+        );
   return {
     health:
       input.database === 'unavailable'
