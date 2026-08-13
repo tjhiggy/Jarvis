@@ -74,6 +74,14 @@ export interface EngagementRepository extends Partial<PlatformMetricsRepository>
     name: string,
     userId: string,
   ): Promise<'left' | 'absent' | 'missing'>;
+  economyBalance?(serverId: string, userId: string): Promise<number>;
+  economyAward?(
+    serverId: string,
+    userId: string,
+    amount: number,
+    key: string,
+    at: Date,
+  ): Promise<boolean>;
   recordParticipationStreak?(
     guildId: string,
     userId: string,
