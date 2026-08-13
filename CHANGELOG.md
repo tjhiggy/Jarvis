@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-13
+
+- Shipped persistent teams and the bounded MuthaShip Coin ledger foundation.
+- Moved unfinished expansion systems to the v1.2 milestone with explicit scope boundaries.
+
 ## [1.0.0] - 2026-08-11
 
 - Established the stable MuthaShip Platform baseline and Command Deck operating model.
