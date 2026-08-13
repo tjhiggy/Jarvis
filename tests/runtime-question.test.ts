@@ -7,8 +7,8 @@ import { classifyRuntimeQuestion } from '../src/services/runtime-question.js';
 
 describe('runtime identity and self-question handling', () => {
   it('uses the package metadata as the canonical version fallback', () => {
-    expect(loadApplicationVersion()).toBe('1.3.0');
-    expect(loadRuntimeIdentity({}).version).toBe('1.3.0');
+    expect(loadApplicationVersion()).toBe('1.4.0');
+    expect(loadRuntimeIdentity({}).version).toBe('1.4.0');
   });
 
   it('strips control characters from deployment metadata', () => {

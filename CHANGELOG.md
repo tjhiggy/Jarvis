@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-13
+
+- Added the privacy-safe progression and economy foundation for coins,
+  inventory, rewards, trading, achievements, XP, voice XP, leaderboards, and
+  custom titles.
+- Added bounded server-scoped aggregate projections and documentation for
+  independent feature gating, opt-out, deletion, and Command Deck visibility.
+- Added the documented plan for the v1.4 Sites-hosted Command Deck migration.
+
 ## [1.3.0] - 2026-08-13
 
 - Added the Command Deck Operations observability card with aggregate health,

@@ -18,8 +18,12 @@ export const buildCommunityAnalyticsReport = (
 ): CommunityAnalyticsReport => {
   const heatmap = days.slice(-366).map((day) => ({
     day: day.day,
-    events: Number.isFinite(day.events) ? Math.max(0, Math.floor(day.events)) : 0,
-    failures: Number.isFinite(day.failures) ? Math.max(0, Math.floor(day.failures)) : 0,
+    events: Number.isFinite(day.events)
+      ? Math.max(0, Math.floor(day.events))
+      : 0,
+    failures: Number.isFinite(day.failures)
+      ? Math.max(0, Math.floor(day.failures))
+      : 0,
   }));
   return {
     window,
