@@ -53,3 +53,13 @@ Each module requires implementation tests, migration and rollback rehearsal,
 documentation, security review, lint/build/docs checks, a real test-server
 smoke test, a disabled/recovery test, release notes, and explicit enablement
 evidence before its issue can close.
+
+## AutoMod foundation
+
+Jarvis v1.2 includes a bounded AutoMod policy evaluator. It validates
+server-scoped rules for spam, flood, links, and prohibited content, then
+returns either `allow` or `flag` for downstream review. This slice does not
+delete messages, timeout members, change Discord settings, or make moderation
+decisions autonomously. Discord delivery and administrator review remain
+explicit integration work, protected by the server pause and rollback rules
+above.
