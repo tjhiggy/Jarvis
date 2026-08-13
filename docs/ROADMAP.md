@@ -59,29 +59,34 @@ Discord-setting changes, and external writes remain out of scope.
   member and administrator deletion, and a disabled-by-default feature flag.
 - Profiles are never learned from chat, voice, reactions, or browsing activity.
 
-## Planned release 0.9.0: Crew Engagement
+## Release plan
 
-The next feature release focuses on repeatable, privacy-safe participation in
-the MuthaShip community. These items are planned, not implemented, and will be
-shipped independently behind server-scoped feature flags:
+The remaining backlog is organized into shippable GitHub milestones. Each issue
+belongs to exactly one milestone, and each milestone requires tests,
+documentation, migration rehearsal, Discord smoke testing, and a tagged release.
 
-- Member profile cards with explicit opt-in and current Discord identity.
-- MuthaShip Coins, daily rewards, and bounded ambassador-card collection.
-- Participation streaks and aggregate engagement progress.
-- Allowlisted game roles and persistent teams without arbitrary role or server
-  administration.
-- Command Deck visibility for feature health, participation, and economy
-  metrics without raw message content.
+### v1.2.0 Expansion Systems
+External REST/API boundaries, webhooks, temporary voice channels, moderation
+automation, tournaments, and the Discord-to-GitHub planning workflow.
+Tracked issues: #1, #20, #50, #51, #52, #53, #55, #62, and #63.
 
-Tracked backlog: #9 profile cards, #22 daily rewards, #14 participation
-streaks, #45 game roles, #48 persistent teams, and #186 MuthaShip Coins and
-ambassador cards. Each item requires tests, documentation, retention and
-opt-out behavior, a Discord smoke test, and a tagged release before it is
-called shipped.
+### v1.3.0 Community Operations
+Hardened Docker evaluation, private support tickets, server dashboard, activity
+heatmap, year-in-review reporting, and the community platform epic.
+Tracked issues: #5, #15, #41, #44, #57, and #195.
 
-The first implementation slice is daily rewards, followed by participation streaks. These are not released until
-the command, migration, opt-out behavior, smoke test, and release evidence are
-complete.
+### v1.4.0 Economy and Progression
+Server currency, inventory, reward store, trading, achievements, XP, voice XP,
+leaderboards, and custom titles.
+Tracked issues: #8, #10, #11, #12, #13, #21, #23, #24, and #25.
+
+### v1.5.0 Community Games and Entertainment
+Daily/community challenges, predictions, tournament follow-ups, memorable
+quotes, quote of the day, meme generation, roasts, and throwbacks.
+Tracked issues: #17, #18, #19, #36, #37, #38, #39, and #40.
+
+GitHub is the source of truth for issue ownership; this roadmap is the readable
+map. Items move to shipped only with a release tag and evidence.
 
 ## Next
 
