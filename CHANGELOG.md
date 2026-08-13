@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-13
+
+- Added the Command Deck Operations observability card with aggregate health,
+  command events, failures, feature adoption, and integration readiness.
+- Added validated proactive catalog administration, hardened Docker deployment
+  guidance, and the MuthaShip-themed Command Deck surface.
+- Added privacy-safe community analytics projections for server dashboards,
+  activity heatmaps, and year-in-review reports.
+- Added the bounded private support-ticket service foundation.
+- Added release enablement, deployment, rollback, retention, and milestone
+  evidence documentation.
+
 ## [1.2.0] - 2026-08-13
 
 - Added bounded AutoMod, warning, moderation-log, raid, and temporary voice policies.
