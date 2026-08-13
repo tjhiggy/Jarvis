@@ -57,6 +57,23 @@ export interface EngagementRepository extends Partial<PlatformMetricsRepository>
     day: string,
     at: Date,
   ): Promise<{ current: number; longest: number }>;
+  createTeam?(
+    serverId: string,
+    name: string,
+    ownerId: string,
+    at: Date,
+  ): Promise<import('./teams.js').Team | undefined>;
+  listTeams?(serverId: string): Promise<readonly import('./teams.js').Team[]>;
+  joinTeam?(
+    serverId: string,
+    name: string,
+    userId: string,
+  ): Promise<'joined' | 'already' | 'full' | 'missing'>;
+  leaveTeam?(
+    serverId: string,
+    name: string,
+    userId: string,
+  ): Promise<'left' | 'absent' | 'missing'>;
   recordParticipationStreak?(
     guildId: string,
     userId: string,
