@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-13
+
+- Added a bounded, allowlisted community entertainment catalog covering daily
+  challenges, predictions, memorable quotes, quote of the day, throwbacks,
+  roasts, and memes.
+- Added explicit documentation for moderation, retention, opt-out, rate-limit,
+  and future Discord delivery requirements.
+
 ## [1.4.0] - 2026-08-13
 
 - Added the privacy-safe progression and economy foundation for coins,
