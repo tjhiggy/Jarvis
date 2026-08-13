@@ -15,6 +15,12 @@ images. With `ADMIN_CONSOLE_TOKEN`, it also provides
 bounded, confirmed operator workflows. It does not expose tokens, conversation
 content, or Discord server-management controls.
 
+The Operations card is the observability surface for this milestone. It shows
+healthy, degraded, or unavailable state, aggregate command events and failures,
+configured feature count, and integration readiness. Empty states are explicit,
+and the projection is content-free: it never includes message text, member
+identity, raw prompts, or secrets.
+
 The console is intentionally disabled by default and rejects non-local bind
 addresses. Discord commands remain the operational fallback. When enabled with
 `ADMIN_CONSOLE_TOKEN`, the local operator can preview an allowlisted HTTPS RSS

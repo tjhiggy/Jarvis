@@ -10,6 +10,7 @@ import type {
   BroadcastDeliveryErrorCategory,
   BroadcastPolicyState,
 } from '../notifications/broadcast-store.js';
+import { buildAdminObservabilityProjection } from './observability.js';
 
 type BroadcastRuntimeHealth = 'ready' | 'degraded' | 'unavailable';
 
@@ -218,6 +219,7 @@ const html = (
 <article class="card"><h2>Providers</h2><p>AI: ${snapshot.providers.ai}</p><p>OpenAI: ${snapshot.providers.openAiConfigured ? 'configured' : 'not configured'}</p><p>Ollama: ${snapshot.providers.ollamaConfigured ? 'configured' : 'not configured'}</p><p>Web search: ${snapshot.providers.webSearchConfigured ? 'configured' : 'not configured'}</p></article>
 <article class="card"><h2>Integrations</h2><p>RSS: ${rssIntegrationStatus(snapshot.integrations.rss)}</p><p>Sleeper Fantasy Football: ${snapshot.integrations.sleeper ? 'ready' : 'not configured'}</p><p>GitHub read-only: ${snapshot.integrations.github ? 'ready' : 'not configured'}</p><p>Metrics: ${snapshot.metrics === null ? 'unavailable' : `${snapshot.metrics.events} events, ${snapshot.metrics.failures} failures`}</p></article>
 ${snapshot.intelligence === undefined ? '<article class="card"><h2>Community Intelligence</h2><p class="muted">Intelligence status is unavailable.</p></article>' : `<article class="card"><h2>Community Intelligence</h2><p>Approved sources: ${snapshot.intelligence.approvedSources}</p><p>Retained search: ${snapshot.intelligence.retainedSearch}</p><p>Opted-in members: ${snapshot.intelligence.optedInMembers}</p><p>Image generation: ${snapshot.intelligence.imageGeneration}</p><p>Local model: ${escapeHtml(snapshot.intelligence.localModel)}</p></article>`}
+${(() => { const projection = buildAdminObservabilityProjection({ metrics: snapshot.metrics, database: snapshot.database, configuredFeatures: snapshot.engagement.features, configuredIntegrations: [snapshot.integrations.rss !== 'not_configured', snapshot.integrations.sleeper, snapshot.integrations.github].filter(Boolean).length, totalIntegrations: 3 }); return `<article class="card"><h2>Operations</h2><p>Health: <strong>${projection.health}</strong></p><p>Command events: ${projection.events} · Failures: ${projection.failures}</p><p>Feature adoption: ${projection.adoption} configured</p><p>Integration readiness: ${projection.integrationReadiness}%</p><p class="muted">Aggregate only. No message content, member identity, or secrets.</p></article>`; })()}
 ${renderBroadcastCards(snapshot)}
 ${
   postControl === undefined
