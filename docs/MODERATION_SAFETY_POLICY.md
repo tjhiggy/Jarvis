@@ -47,6 +47,11 @@ known-good release, verify health, and record the result.
 | Moderation logs | Content-free action metadata and export-safe audit | Message archives or surveillance |
 | Raid protection | Detect bounded join/activity spikes and recommend or request a configured response | Autonomous bans, kicks, or role changes |
 
+The initial raid-protection slice is a pure policy evaluator. It emits a
+bounded `flag` or `pause_recommendation`; it does not inspect privileged
+member data, change server settings, kick or ban members, or enable lockdown
+without a separately authorized integration.
+
 ## Release gate
 
 Each module requires implementation tests, migration and rollback rehearsal,
