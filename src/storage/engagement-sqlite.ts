@@ -2012,6 +2012,35 @@ export class SQLiteEngagementRepository implements EngagementRepository {
         .run(team.id);
     return 'left' as const;
   }
+  async economyBalance(serverId: string, userId: string) {
+    this.ensureOpen();
+    const row = this.database
+      .prepare(
+        'SELECT COALESCE(SUM(amount),0) AS balance FROM engagement_coin_ledger WHERE guild_id=? AND user_id=?',
+      )
+      .get(serverId, userId) as any;
+    return Number(row.balance);
+  }
+  async economyAward(
+    serverId: string,
+    userId: string,
+    amount: number,
+    key: string,
+    at: Date,
+  ) {
+    this.ensureOpen();
+    try {
+      this.database
+        .prepare(
+          'INSERT INTO engagement_coin_ledger (guild_id,user_id,amount,award_key,created_at) VALUES (?,?,?,?,?)',
+        )
+        .run(serverId, userId, amount, key, milliseconds(at));
+      return true;
+    } catch (error) {
+      if (isConstraint(error)) return false;
+      throw error;
+    }
+  }
 
   async cleanup(cutoff: Date, limit: number): Promise<number> {
     this.ensureOpen();
@@ -2317,6 +2346,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           'CREATE TABLE IF NOT EXISTS engagement_teams (id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, name TEXT NOT NULL COLLATE NOCASE, owner_id TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(guild_id,name)); CREATE TABLE IF NOT EXISTS engagement_team_members (team_id TEXT NOT NULL, user_id TEXT NOT NULL, joined_at INTEGER NOT NULL, PRIMARY KEY(team_id,user_id), FOREIGN KEY(team_id) REFERENCES engagement_teams(id) ON DELETE CASCADE); CREATE INDEX IF NOT EXISTS engagement_teams_guild ON engagement_teams(guild_id,created_at);',
         );
         this.recordMigration(28);
+      }
+      if (!this.hasMigration(29)) {
+        this.database.exec(
+          'CREATE TABLE IF NOT EXISTS engagement_coin_ledger (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, amount INTEGER NOT NULL, award_key TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (guild_id,user_id,award_key)); CREATE INDEX IF NOT EXISTS engagement_coin_ledger_balance ON engagement_coin_ledger(guild_id,user_id,created_at);',
+        );
+        this.recordMigration(29);
       }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
