@@ -41,6 +41,8 @@ Deck. Existing Discord command behavior remains unchanged.
 | 0.9     | Crew Engagement           | Released. Member profiles, daily rewards, participation streaks, game roles, persistent teams, MuthaShip Coins foundation, and Command Deck engagement visibility.                  |
 | 1.0     | MuthaShip Platform        | Released. Versioned module contracts, compatibility tests, security review, backup and restore rehearsal, rollback runbooks, and operational readiness.                             |
 | 1.1     | Community Expansion       | Released. Persistent teams and the bounded MuthaShip Coin ledger foundation. Trading, cards, moderation automation, and new integrations are sequenced into v1.2 and later.         |
+| 1.2     | Expansion Systems         | Released as `v1.2.0` on 2026-08-13. Bounded moderation policies, REST/webhook boundaries, tournament policy, and GitHub Discussions-native intake. |
+| 1.3     | Community Operations      | In progress. Command Deck operations, reproducible release readiness, Docker evaluation, support tickets, dashboards, and activity reporting. |
 
 ## Command analytics and engagement metrics
 
