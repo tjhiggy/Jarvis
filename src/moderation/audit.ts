@@ -1,4 +1,5 @@
-export type ModerationAction = 'warning_issued' | 'automod_flagged' | 'raid_detected';
+export type ModerationAction =
+  'warning_issued' | 'automod_flagged' | 'raid_detected';
 
 export interface ModerationAuditEntry {
   readonly serverId: string;
@@ -11,11 +12,16 @@ export interface ModerationAuditEntry {
 
 const id = /^[0-9]{8,20}$/;
 
-export function createModerationAuditEntry(input: ModerationAuditEntry): ModerationAuditEntry {
+export function createModerationAuditEntry(
+  input: ModerationAuditEntry,
+): ModerationAuditEntry {
   if (!id.test(input.serverId)) throw new Error('invalid server id');
-  if (input.actorId !== undefined && !id.test(input.actorId)) throw new Error('invalid actor id');
-  if (input.subjectId !== undefined && !id.test(input.subjectId)) throw new Error('invalid subject id');
-  if (!Number.isFinite(Date.parse(input.at))) throw new Error('invalid timestamp');
+  if (input.actorId !== undefined && !id.test(input.actorId))
+    throw new Error('invalid actor id');
+  if (input.subjectId !== undefined && !id.test(input.subjectId))
+    throw new Error('invalid subject id');
+  if (!Number.isFinite(Date.parse(input.at)))
+    throw new Error('invalid timestamp');
   return Object.freeze({ ...input });
 }
 

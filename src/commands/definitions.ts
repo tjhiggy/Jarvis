@@ -1578,4 +1578,3 @@ export const createCommandDefinitions = (
 
   return definitions;
 };
-
