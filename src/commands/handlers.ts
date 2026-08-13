@@ -72,8 +72,6 @@ import type {
   GitHubReadOnlyService,
   GitHubServiceError,
 } from '../github/github-service.js';
-import type { FeatureRequestService } from '../github/feature-request.js';
-import { handleFeatureRequestCommand } from './feature-request.js';
 import { formatCommandPermissionRules } from './command-permissions.js';
 import { handleRssCommand } from './rss.js';
 import type { RssStorage } from '../notifications/rss-storage.js';
@@ -200,7 +198,6 @@ export interface CommandDependencies {
   readonly imageGeneration?: ImageGenerationService;
   readonly sleeper?: Readonly<{ leagueId: string; service: SleeperService }>;
   readonly github?: Readonly<{ service: GitHubReadOnlyService }>;
-  readonly featureRequestService?: FeatureRequestService;
   readonly rssStorage?: Pick<
     RssStorage,
     'addFeed' | 'listFeeds' | 'removeFeed' | 'setPaused'
@@ -290,7 +287,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/server-search searches retained Jarvis conversation only in this channel or thread.',
     '/my-stats status, enable, or disable manages your private opt-in command count.',
     '/image generate is an administrator-only image tool in its configured channel.',
-    '/feature-request preview, confirm, or cancel lets configured administrators create one reviewed backlog issue.',
+    'Project feedback belongs in GitHub Discussions and native issue forms.',
     '/reminder set in:<duration> message:<text> creates a private personal reminder request.',
     '/reminder list shows your retained reminders in this server.',
     '/reminder cancel id:<id> cancels one of your reminders.',
@@ -311,7 +308,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
           'Members may vote anonymously and change their selection while a poll is open.',
         ]
       : ['Polls: not configured.']),
-    'Safety: Jarvis cannot administer or modify the server, use arbitrary tools, or take external actions beyond administrator-confirmed feature-request issue creation. History stays scoped to the current channel or thread.',
+    'Safety: Jarvis cannot administer or modify the server, use arbitrary tools, or write to GitHub. History stays scoped to the current channel or thread.',
   ].join('\n');
 
 const handleCommandInternal = async (
@@ -333,14 +330,6 @@ const handleCommandInternal = async (
       return;
     case 'github':
       await handleGitHub(interaction, dependencies);
-      return;
-    case 'feature-request':
-      await handleFeatureRequestCommand(interaction, {
-        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
-        ...(dependencies.featureRequestService === undefined
-          ? {}
-          : { service: dependencies.featureRequestService }),
-      });
       return;
     case 'knowledge':
       await handleKnowledge(interaction, dependencies);
