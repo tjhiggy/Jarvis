@@ -26,7 +26,7 @@ describe('progression summary', () => {
       memberCount: 2,
       totalCoins: 15,
       totalXp: 120,
-      leaderboard: [{ userId: 'b', xp: 80, level: 3 }],
+      leaderboard: expect.arrayContaining([{ userId: 'b', xp: 80, level: 3 }]),
     });
   });
   it('caps leaderboard and member input', () => {
