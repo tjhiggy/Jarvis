@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-13
+
+- Added bounded AutoMod, warning, moderation-log, raid, and temporary voice policies.
+- Added read-only REST and signed webhook boundaries plus tournament policy validation.
+- Moved project feedback intake from Discord GitHub issue creation to GitHub Discussions and native workflows.
+- Documented moderation safety, rollback, retention, and release enablement requirements.
+
 ## [1.1.0] - 2026-08-13
 
 - Shipped persistent teams and the bounded MuthaShip Coin ledger foundation.
