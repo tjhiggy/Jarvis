@@ -41,6 +41,20 @@ remains proprietary and production authority remains with the maintainer.
    and record the result in the PR or release notes.
 8. Close the Issue and update the Roadmap or Changelog when behavior ships.
 
+### Definition of done for backlog issues
+
+An issue is not complete when code merely exists. Before closure, the feature
+must be enabled or configured in a disposable or test server and exercised
+through its real operator or member flow. The issue or linked pull request must
+record the required channels, roles, providers, permissions, feature flags,
+native GitHub settings, and any setup that remains intentionally deferred.
+
+Closure evidence must include tests, build, documentation validation, a Discord
+smoke test, disabled or recovery behavior, release notes, and deployment and
+rollback guidance. If the external setup cannot be completed yet, keep the
+issue open or split the setup into a linked issue. Never close an item based
+only on merged implementation.
+
 ## Sprint and release operating model
 
 Use short, named sprints rather than an unbounded “in progress” queue. The
