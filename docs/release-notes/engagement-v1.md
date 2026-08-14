@@ -1,6 +1,6 @@
 # Engagement V1
 
-**Status: implemented, unreleased.**
+**Status: shipped in v0.4.0 Crew Engagement.**
 
 Engagement V1 adds deliberately bounded participation features to Jarvis. It is
 disabled by default and must be enabled only after an operator configures the
@@ -36,7 +36,7 @@ feature channels and engagement administrator roles.
   policy. Backups are historical copies and must be protected as production
   personal data.
 
-## Operator actions before any release
+## Operator actions for an existing deployment
 
 1. Resolve the TypeScript 7.0 and `typescript-eslint` compatibility mismatch,
    then run the full lint gate.
@@ -51,14 +51,16 @@ feature channels and engagement administrator roles.
 5. Deploy and publish only after explicit maintainer authorization. Keep the
    prior approved revision and a protected database backup for rollback.
 
-## Validation snapshot
+## Historical validation snapshot
 
 On 2026-08-08, final hardening verification passed 53 test files and 679 tests; `npm run build`,
 `npm run docs:check`, and `git diff --check` also passed. Repository-wide lint
 was blocked before ESLint inspected project files because installed
 `typescript-eslint` does not support the locked TypeScript 7.0 version. No
 test-guild exercise, production backup, deployment, registration, release, or
-scheduled-cycle monitoring was performed for this unreleased snapshot.
+scheduled-cycle monitoring was performed for that pre-release snapshot. The
+subsequent v0.4.0 release gate and deployment evidence are authoritative for
+the shipped feature.
 
 For the operating and rollback procedure, see the
 [Engagement V1 runbook](../ENGAGEMENT_RUNBOOK.md).

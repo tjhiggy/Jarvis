@@ -29,20 +29,23 @@ the module registry and instrumentation boundary, durable aggregate metrics,
 provider and integration readiness, and a localhost-only read-only Command
 Deck. Existing Discord command behavior remains unchanged.
 
-| Release | Focus                     | Shippable outcome                                                                                                                                                                   |
-| ------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.3     | Platform Core             | Released. Module registry, interaction context, authorization, feature flags, storage and scheduler contracts, health, audit, and command analytics events.                         |
-| 0.3.x   | Discord Interaction Shell | Consistent help, concise responses, private/public indicators, preview-confirm-cancel flows, buttons instead of UUID copy and paste, and standard error states.                     |
-| 0.4     | Crew Engagement           | Released. Shared UX and contracts across introductions, suggestions, events, RSVP, trivia, polls, reminders, birthdays, LFG, and game nights.                                       |
-| 0.5     | Shipboard Broadcasts      | Released. RSS, approved proactive posts, recaps, event reminders, birthday mentions, quiet hours, cadence limits, previews, pause/resume, lease fencing, and durable deduplication. |
-| 0.6     | Command Deck              | Local Admin Console with safe channel selection, configuration previews, audit visibility, backup and rollback support, mobile polish, and authenticated, confirmed writes.         |
-| 0.7     | Community Intelligence    | Privacy-bounded recaps, approved knowledge, summaries, catch-me-up, and aggregate insights with source windows and minimum-group thresholds.                                        |
-| 0.8     | Connected Systems         | Released as `v0.8.0` on 2026-08-11. Read-only Sleeper Fantasy Football, GitHub, MCP, repository questions, and pull-request summaries with strict allowlists.                       |
-| 0.9     | Crew Engagement           | Released. Member profiles, daily rewards, participation streaks, game roles, persistent teams, MuthaShip Coins foundation, and Command Deck engagement visibility.                  |
-| 1.0     | MuthaShip Platform        | Released. Versioned module contracts, compatibility tests, security review, backup and restore rehearsal, rollback runbooks, and operational readiness.                             |
-| 1.1     | Community Expansion       | Released. Persistent teams and the bounded MuthaShip Coin ledger foundation. Trading, cards, moderation automation, and new integrations are sequenced into v1.2 and later.         |
-| 1.2     | Expansion Systems         | Released as `v1.2.0` on 2026-08-13. Bounded moderation policies, REST/webhook boundaries, tournament policy, and GitHub Discussions-native intake.                                  |
-| 1.3     | Community Operations      | In progress. Command Deck operations, reproducible release readiness, Docker evaluation, support tickets, dashboards, and activity reporting.                                       |
+| Release | Focus                                | Shippable outcome                                                                                                                                                                   |
+| ------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.3     | Platform Core                        | Released. Module registry, interaction context, authorization, feature flags, storage and scheduler contracts, health, audit, and command analytics events.                         |
+| 0.3.x   | Discord Interaction Shell            | Consistent help, concise responses, private/public indicators, preview-confirm-cancel flows, buttons instead of UUID copy and paste, and standard error states.                     |
+| 0.4     | Crew Engagement                      | Released. Shared UX and contracts across introductions, suggestions, events, RSVP, trivia, polls, reminders, birthdays, LFG, and game nights.                                       |
+| 0.5     | Shipboard Broadcasts                 | Released. RSS, approved proactive posts, recaps, event reminders, birthday mentions, quiet hours, cadence limits, previews, pause/resume, lease fencing, and durable deduplication. |
+| 0.6     | Command Deck                         | Local Admin Console with safe channel selection, configuration previews, audit visibility, backup and rollback support, mobile polish, and authenticated, confirmed writes.         |
+| 0.7     | Community Intelligence               | Privacy-bounded recaps, approved knowledge, summaries, catch-me-up, and aggregate insights with source windows and minimum-group thresholds.                                        |
+| 0.8     | Connected Systems                    | Released as `v0.8.0` on 2026-08-11. Read-only Sleeper Fantasy Football, GitHub, MCP, repository questions, and pull-request summaries with strict allowlists.                       |
+| 0.9     | Crew Engagement                      | Released. Member profiles, daily rewards, participation streaks, game roles, persistent teams, MuthaShip Coins foundation, and Command Deck engagement visibility.                  |
+| 1.0     | MuthaShip Platform                   | Released. Versioned module contracts, compatibility tests, security review, backup and restore rehearsal, rollback runbooks, and operational readiness.                             |
+| 1.1     | Community Expansion                  | Released. Persistent teams and the bounded MuthaShip Coin ledger foundation. Trading, cards, moderation automation, and new integrations are sequenced into v1.2 and later.         |
+| 1.2     | Expansion Systems                    | Released as `v1.2.0` on 2026-08-13. Bounded moderation policies, REST/webhook boundaries, tournament policy, and GitHub Discussions-native intake.                                  |
+| 1.3     | Community Operations                 | Released as `v1.3.0` on 2026-08-13. Command Deck operations, reproducible release readiness, Docker evaluation, support tickets, dashboards, and activity reporting.                |
+| 1.4     | Economy and Progression              | Released as `v1.4.0` on 2026-08-13. Privacy-safe progression and economy foundations plus staged Sites Command Deck migration planning.                                             |
+| 1.5     | Community Games and Entertainment    | Released as `v1.5.0` on 2026-08-13. Bounded, allowlisted entertainment catalog foundations with explicit delivery and moderation boundaries.                                        |
+| 1.6     | Next Community Platform Enhancements | Planned. Scope is defined through the GitHub roadmap and must meet the same release gates before implementation is called shipped.                                                  |
 
 ## Command analytics and engagement metrics
 

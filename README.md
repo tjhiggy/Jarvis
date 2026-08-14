@@ -1,9 +1,9 @@
 # Jarvis Discord Bot
 
-![Jarvis community platform overview](assets/jarvis-admin-overview-infographic-v3.png)
+![Jarvis community platform overview](assets/jarvis-admin-overview-infographic-v4.png)
 
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5%2B-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6%2B-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![CI](https://github.com/tjhiggy/Jarvis/actions/workflows/ci.yml/badge.svg)](https://github.com/tjhiggy/Jarvis/actions/workflows/ci.yml)
 [![Security policy](https://img.shields.io/badge/security-policy-blue)](SECURITY.md)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey)](LICENSE.md)
@@ -18,10 +18,10 @@ second, imaginary moderator powers never. It answers questions in Discord,
 keeps bounded conversation history per channel or thread, and can use local or
 hosted AI without pretending an interface is a superpower.
 
-Release package: `0.7.0` | Runtime: Node.js 22+ | License: proprietary, except
+Release package: `1.5.0` | Runtime: Node.js 22+ | License: proprietary, except
 the Code of Conduct under CC BY 4.0
 
-Share the [Jarvis community platform overview](assets/jarvis-admin-overview-infographic-v3.png)
+Share the [Jarvis community platform overview](assets/jarvis-admin-overview-infographic-v4.png)
 with Muthaship server administrators for a visual summary of current
 capabilities, local and cloud dependencies, safety boundaries, and planned
 enhancements.
@@ -450,13 +450,12 @@ default Ollama model on this workstation. See the
 
 ## Release and license
 
-The current release package and changelog version is `0.8.0`. Release actions
+The current release package and changelog version is `1.5.0`. Release actions
 are maintainer-owned and documented in
 [Releases](docs/RELEASES.md) and the [Changelog](CHANGELOG.md).
 
-The next planned milestone is `v0.9.0 Crew Engagement`, covering opt-in member
-profiles, MuthaShip Coins and daily rewards, participation streaks, game roles,
-persistent teams, and aggregate Command Deck visibility. See the
+The next planned milestone is `v1.6.0`, focused on the next set of community
+platform enhancements. See the
 [platform architecture roadmap](docs/PLATFORM_ARCHITECTURE_ROADMAP.md) and
 [roadmap](docs/ROADMAP.md) for scope and acceptance rules.
 

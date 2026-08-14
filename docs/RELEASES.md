@@ -7,8 +7,8 @@ Every roadmap phase ends with a shipped version. A phase is not complete when
 its pull requests merge. It is complete only after the release tag and GitHub
 release exist, release notes and migration notes are published, the full test,
 build, documentation, and diff gates pass, and the deployed instance completes
-the smoke checklist. `v0.3.0` (Platform Core) was released on 2026-08-10. The
-next planned milestone is `v0.4.0` (Crew Engagement).
+the smoke checklist. `v1.5.0` (Community Games and Entertainment) is the
+current released milestone. The next planned milestone is `v1.6.0`.
 
 ## Versioning
 
