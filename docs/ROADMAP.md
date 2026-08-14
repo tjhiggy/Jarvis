@@ -72,6 +72,7 @@ optional Sites-hosted operator console.
 Tracked issues: #8, #10, #11, #12, #13, #21, #23, #24, #25, and #263.
 The Sites migration is deliberately staged: read-only mirror, authenticated
 local API, confirmed safe writes, then production cutover with local fallback.
+It was not completed in v1.4 and is tracked for v1.6 in issue #263.
 
 ### v1.5.0 Community Games and Entertainment
 
