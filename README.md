@@ -66,8 +66,10 @@ and capability boundaries are documented in [Discord profile package](docs/DISCO
 
 See [Architecture](docs/ARCHITECTURE.md) for the source-backed component and
 trust-boundary detail, the [Platform Architecture Roadmap](docs/PLATFORM_ARCHITECTURE_ROADMAP.md)
-for the core-platform release plan, and [Roadmap](docs/ROADMAP.md) for the sharp line between
-shipped and proposed work.
+for the core-platform release plan, [Roadmap](docs/ROADMAP.md) for milestone
+scope, and [Implementation status](docs/IMPLEMENTATION_STATUS.md) for the
+authoritative distinction between shipped, configured, enabled, foundation,
+and planned work.
 
 ## Architecture at a glance
 
@@ -497,6 +499,7 @@ instead of guessing.
 | [Discussion workflow](docs/DISCUSSIONS.md)                          | Plain-language admin feedback, triage, and Discussion-to-Issue flow                         |
 | [Extension guide](docs/extensions/README.md)                        | Disabled contracts and requirements for any future integration                              |
 | [Roadmap](docs/ROADMAP.md)                                          | Released, implemented-pending-release, planned, later, and explicitly out-of-scope work     |
+| [Implementation status](docs/IMPLEMENTATION_STATUS.md)              | Canonical shipped, configured, enabled, foundation, and planned status matrix                 |
 | [Releases](docs/RELEASES.md)                                        | Versioning, validation gates, publication authority, and rollback                           |
 
 Repository policies and project records:
