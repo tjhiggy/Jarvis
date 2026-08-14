@@ -68,11 +68,10 @@ current sequence is:
 2. **Sprint 2: v0.4.0 Crew Engagement** - shared UX and contracts across
    introductions, suggestions, events, trivia, polls, reminders, birthdays,
    LFG, game nights, and bounded community rewards.
-3. **Sprint 3: v0.5.0 Shipboard Broadcasts** - release package prepared for
+3. **Sprint 3: v0.5.0 Shipboard Broadcasts** - released with
    RSS, approved proactive posts, recaps, event reminders, birthday mentions,
    quiet hours, previews, authenticated category pause controls, and durable
-   deduplication. It is not released until CI, deployment smoke evidence, tag,
-   and GitHub release publication are complete.
+   deduplication.
 4. **Sprint 4: v0.6.0 Command Deck** - safe channel selection, audit
    visibility, configuration previews, backup/rollback, mobile polish, and
    authenticated admin broadcasts.
@@ -81,6 +80,12 @@ current sequence is:
    generation, measured model routing, and aggregate Command Deck visibility.
 6. **Sprint 6: v0.8.0 Connected Systems** - Sleeper enhancements, GitHub
    read-only tools, RSS/stream improvements, and MCP foundations.
+
+7. **Sprints 7-13: v0.9.0 through v1.5.0** - released Crew Engagement,
+   MuthaShip Platform, Community Expansion, Expansion Systems, Community
+   Operations, Economy and Progression, and Community Games and Entertainment.
+8. **Next: v1.6.0** - planned work only; promote items from the GitHub Project
+   after scope, safety, documentation, and acceptance criteria are approved.
 
 Only move an Issue to **Released** after its pull requests merge, the required
 tests/build/docs/diff gates pass, deployment smoke testing is recorded, and a

@@ -39,25 +39,10 @@ dates, promises, or claims that an interface declaration is a working feature.
   generation, a measured local-model decision, and aggregate Command Deck
   readiness visibility.
 
-## Implemented, pending the next versioned release
-
-- Privacy-aware engagement V1: configured guided introductions and suggestions,
-  administrator-created events with opt-in RSVP, aggregate weekly recaps,
-  curated trivia, retention-limited local SQLite records, member deletion and
-  opt-out paths, and administrator scheduler pause/status controls.
-
-Engagement V1 remains disabled by default and limited to configured channels,
-bot-owned messages, and local SQLite records. See the
-[Engagement runbook](ENGAGEMENT_RUNBOOK.md) for the operational contract. XP,
-automatically inferred or cross-server profiles, voice tracking, automated role assignment, moderation,
-Discord-setting changes, and external writes remain out of scope.
-
-## Implemented, pending release 0.4.0
-
-- Opt-in, server-scoped member profiles with private create/edit/delete
-  confirmation, visible/hidden controls, current Discord identity rendering,
-  member and administrator deletion, and a disabled-by-default feature flag.
-- Profiles are never learned from chat, voice, reactions, or browsing activity.
+All implementation slices listed above are included in a tagged release. Features
+remain independently gated and limited to configured channels, bot-owned
+messages, and local SQLite records where applicable. See the
+[Engagement runbook](ENGAGEMENT_RUNBOOK.md) for the operational contract.
 
 ## Release plan
 
@@ -93,6 +78,13 @@ local API, confirmed safe writes, then production cutover with local fallback.
 Daily/community challenges, predictions, tournament follow-ups, memorable
 quotes, quote of the day, meme generation, roasts, and throwbacks.
 Tracked issues: #17, #18, #19, #36, #37, #38, #39, and #40.
+
+### v1.6.0 Next Community Platform Enhancements
+
+The next release is intentionally not pre-claimed. Candidate work is organized
+in GitHub Projects and Discussions, then promoted into a milestone only after
+scope, safety boundaries, test coverage, documentation, and an operator smoke
+path are approved.
 
 GitHub is the source of truth for issue ownership; this roadmap is the readable
 map. Items move to shipped only with a release tag and evidence.
