@@ -50,9 +50,17 @@ describe('admin console', () => {
       rss: { paused: false },
     });
     expect(statusBody).not.toMatch(/operator|token|key=|feed\.xml/);
-    const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+    const pageResponse = await fetch(`http://127.0.0.1:${port}/`);
+    const page = await pageResponse.text();
     expect(page).toContain('Jarvis Command Deck');
-    expect(page).toContain('Community Intelligence');
+    expect(page).toContain('aria-label="Command Deck navigation"');
+    expect(page).toContain('data-view="overview"');
+    expect(page).toContain('New transmission');
+    expect(page).toContain('All systems nominal');
+    expect(page).toContain('/assets/command-deck/jarvis-icon.png');
+    expect(page).toContain('/assets/command-deck/bridge-banner.webp');
+    expect(page).not.toContain('👑');
+    expect(page).toContain('Community intelligence');
     expect(page).toContain('Approved sources: 3');
     expect(page).toContain('Opted-in members: 2');
     expect(page).toContain('gemma3:4b');
@@ -61,6 +69,19 @@ describe('admin console', () => {
     expect(page).toContain('saving establishes a baseline');
     expect(page).toContain('body.items.map');
     expect(page).not.toContain('api-key');
+    expect(pageResponse.headers.get('content-security-policy')).toContain(
+      "default-src 'self'",
+    );
+    const iconResponse = await fetch(
+      `http://127.0.0.1:${port}/assets/command-deck/jarvis-icon.png`,
+    );
+    expect(iconResponse.status).toBe(200);
+    expect(iconResponse.headers.get('content-type')).toBe('image/png');
+    const bannerResponse = await fetch(
+      `http://127.0.0.1:${port}/assets/command-deck/bridge-banner.webp`,
+    );
+    expect(bannerResponse.status).toBe(200);
+    expect(bannerResponse.headers.get('content-type')).toBe('image/webp');
     await console.close();
   });
 
@@ -422,12 +443,13 @@ describe('admin console', () => {
     const base = `http://127.0.0.1:${port}`;
 
     const page = await (await fetch(`${base}/`)).text();
-    expect(page).toContain('New broadcast');
+    expect(page).toContain('New transmission');
     expect(page).toContain('id="admin-token"');
     expect(page).toContain('jarvis-testing');
     expect(page).not.toContain('channel-1');
-    expect(page).toContain("body.title+'\\n'");
-    expect(page).not.toContain("body.title+'\n'");
+    expect(page).toContain('Public transmission preview');
+    expect(page).toContain('Send transmission');
+    expect(page).not.toContain("confirm('Send this public broadcast");
 
     expect(
       (
