@@ -1,9 +1,12 @@
 # Local Admin Console
 
 Jarvis includes an optional localhost-only Command Deck at `http://127.0.0.1:8787`.
-The interface uses the MuthaShip visual language: dark space-console surfaces,
-purple navigation accents, and gold Jarvis identity cues. This is presentation
-only; it does not grant additional Discord permissions.
+The interface is organized as a responsive bridge console with persistent
+desktop navigation and a compact mobile section selector. The visual system is
+grounded in Jarvis's Discord icon and command-bridge banner: near-black hull
+surfaces, restrained violet energy, gold identity cues, and semantic health
+colors. This is presentation only; it does not grant additional Discord
+permissions.
 Enable it with `ADMIN_CONSOLE_ENABLED=true`, then restart Jarvis. It reports
 platform health, providers, integrations, aggregate metrics, configured RSS
 feeds, broadcast state, and a privacy-bounded Community Intelligence card. The
@@ -15,7 +18,10 @@ images. With `ADMIN_CONSOLE_TOKEN`, it also provides
 bounded, confirmed operator workflows. It does not expose tokens, conversation
 content, or Discord server-management controls.
 
-The Operations card is the observability surface for this milestone. It shows
+The Overview is the operator's first-stop health surface. It shows the current
+platform identity, aggregate command events and failures, feature adoption,
+integration readiness, and the next obvious action. The Operations section
+provides the same observability contract in more detail. It shows
 healthy, degraded, or unavailable state, aggregate command events and failures,
 configured feature count, and integration readiness. Empty states are explicit,
 and the projection is content-free: it never includes message text, member
@@ -30,15 +36,37 @@ browser page, and do not change Discord permissions or server settings.
 
 ## One-off broadcasts
 
-The **New broadcast** card lists only configured allowlisted text channels by
+The **New transmission** workflow under **Broadcasts** lists only configured
+allowlisted text channels by
 friendly name. An operator composes up to 1,500 characters, previews the exact
-public MuthaShip card, and confirms or cancels. Confirmation is short-lived,
+public MuthaShip card in the page, and confirms or cancels without a native
+browser dialog. Confirmation is short-lived,
 single-use, and bound to the draft. Failed Discord delivery leaves the draft
 retryable. Audit logs retain operation, destination ID, time, and outcome only,
 never the message content. Discord `/post` remains the fallback workflow.
 If Discord cannot resolve a channel name during startup, the allowlisted
 destination remains selectable as `Approved channel N`; delivery still performs
 the normal live channel and permission checks before posting.
+
+## Command Deck information architecture
+
+- **Overview:** health, deployment identity, metrics, and immediate actions.
+- **Community:** engagement modules and privacy-bounded intelligence readiness.
+- **Broadcasts:** one-off transmissions, scheduled broadcast controls, and RSS
+  preview.
+- **Integrations:** RSS, Sleeper Fantasy Football, and provider readiness.
+- **Operations:** aggregate observability with no content or member identity.
+- **Settings:** the local security boundary and future safe configuration
+  surfaces.
+
+On desktop the section navigation remains visible. On tablet and mobile it is
+replaced by a labeled selector, KPI grids collapse without horizontal overflow,
+and controls retain keyboard focus indicators. Health states always include
+text labels and do not rely on color alone.
+
+The HTML response uses a nonce-scoped Content Security Policy and denies
+framing, MIME sniffing, and referrer leakage. Brand assets are served from
+fixed local routes only; the route cannot be used as an arbitrary file reader.
 
 The preview endpoint is `POST /api/rss/preview` with
 `{"url":"https://example.com/feed.xml"}` and a bearer token. Preview accepts
