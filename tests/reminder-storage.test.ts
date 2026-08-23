@@ -44,6 +44,16 @@ describe('SQLiteReminderStore schema and creation', () => {
     database.close();
   });
 
+  it('closes the opened database when migration fails', async () => {
+    const failingPath = join(directory, 'migration-failure.db');
+    const database = new Database(failingPath);
+    database.exec('CREATE TABLE reminders (id TEXT PRIMARY KEY)');
+    database.close();
+
+    expect(() => new SQLiteReminderStore(failingPath)).toThrow();
+    await expect(rm(failingPath, { force: true })).resolves.toBeUndefined();
+  });
+
   it('preserves an existing user_version when opening the same database', async () => {
     await store.closeConnection();
     await mkdir(dirname(databasePath), { recursive: true });

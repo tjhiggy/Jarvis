@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { openSqliteDatabase } from '../storage/open-sqlite-database.js';
 
 export interface RssFeedRecord {
   readonly serverId: string;
@@ -11,11 +12,15 @@ export interface RssFeedRecord {
 export class RssStorage {
   private readonly db: Database.Database;
   constructor(path: string) {
-    this.db = new Database(path);
-    this.db.pragma('foreign_keys = ON');
-    this.db.exec(
-      `CREATE TABLE IF NOT EXISTS rss_feeds (server_id TEXT NOT NULL, url TEXT NOT NULL, label TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (server_id, url)); CREATE TABLE IF NOT EXISTS rss_servers (server_id TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS rss_seen_items (server_id TEXT NOT NULL, item_key TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (server_id, item_key)); CREATE TABLE IF NOT EXISTS rss_feed_baselines (server_id TEXT NOT NULL, url TEXT NOT NULL, baselined_at INTEGER NOT NULL, PRIMARY KEY (server_id, url)); CREATE TABLE IF NOT EXISTS rss_completed_items (server_id TEXT NOT NULL, item_key TEXT NOT NULL, completed_day TEXT NOT NULL, completed_at INTEGER NOT NULL, PRIMARY KEY (server_id, item_key)); CREATE INDEX IF NOT EXISTS rss_completed_items_daily ON rss_completed_items(server_id, completed_day); CREATE TABLE IF NOT EXISTS rss_daily_delivery_reservations (server_id TEXT NOT NULL, item_key TEXT NOT NULL, delivery_day TEXT NOT NULL, lease_token TEXT NOT NULL, reserved_at INTEGER NOT NULL, PRIMARY KEY (server_id, item_key)); CREATE INDEX IF NOT EXISTS rss_daily_delivery_reservations_daily ON rss_daily_delivery_reservations(server_id, delivery_day, reserved_at);`,
-    );
+    this.db = openSqliteDatabase(path);
+    try {
+      this.db.exec(
+        `CREATE TABLE IF NOT EXISTS rss_feeds (server_id TEXT NOT NULL, url TEXT NOT NULL, label TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (server_id, url)); CREATE TABLE IF NOT EXISTS rss_servers (server_id TEXT PRIMARY KEY, paused INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS rss_seen_items (server_id TEXT NOT NULL, item_key TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (server_id, item_key)); CREATE TABLE IF NOT EXISTS rss_feed_baselines (server_id TEXT NOT NULL, url TEXT NOT NULL, baselined_at INTEGER NOT NULL, PRIMARY KEY (server_id, url)); CREATE TABLE IF NOT EXISTS rss_completed_items (server_id TEXT NOT NULL, item_key TEXT NOT NULL, completed_day TEXT NOT NULL, completed_at INTEGER NOT NULL, PRIMARY KEY (server_id, item_key)); CREATE INDEX IF NOT EXISTS rss_completed_items_daily ON rss_completed_items(server_id, completed_day); CREATE TABLE IF NOT EXISTS rss_daily_delivery_reservations (server_id TEXT NOT NULL, item_key TEXT NOT NULL, delivery_day TEXT NOT NULL, lease_token TEXT NOT NULL, reserved_at INTEGER NOT NULL, PRIMARY KEY (server_id, item_key)); CREATE INDEX IF NOT EXISTS rss_daily_delivery_reservations_daily ON rss_daily_delivery_reservations(server_id, delivery_day, reserved_at);`,
+      );
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
   }
   addFeed(serverId: string, url: string, label: string): void {
     this.db

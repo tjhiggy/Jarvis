@@ -1,6 +1,5 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
+import { openSqliteDatabase } from '../storage/open-sqlite-database.js';
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
 const COMMAND_PATTERN = /^[a-z0-9-]{1,64}$/;
@@ -16,13 +15,9 @@ export class SQLiteMemberStatisticsStore {
   private readonly database: Database.Database;
 
   constructor(databasePath: string) {
-    if (databasePath !== ':memory:') {
-      mkdirSync(dirname(databasePath), { recursive: true });
-    }
-    this.database = new Database(databasePath);
-    this.database.pragma('journal_mode = WAL');
-    this.database.pragma('busy_timeout = 5000');
-    this.database.exec(`
+    this.database = openSqliteDatabase(databasePath);
+    try {
+      this.database.exec(`
       CREATE TABLE IF NOT EXISTS member_statistics_preferences (
         server_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
@@ -41,6 +36,10 @@ export class SQLiteMemberStatisticsStore {
       CREATE INDEX IF NOT EXISTS idx_member_statistics_daily_day
         ON member_statistics_daily(metric_day);
     `);
+    } catch (error) {
+      this.database.close();
+      throw error;
+    }
   }
 
   enabled(serverId: string, userId: string): boolean {

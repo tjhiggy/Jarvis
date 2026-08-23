@@ -1,5 +1,3 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import type {
   PollOptionView,
@@ -13,6 +11,7 @@ import {
   type PollStore,
   type ReservePollInput,
 } from './poll-store.js';
+import { openSqliteDatabase } from '../storage/open-sqlite-database.js';
 
 interface PollRow {
   id: string;
@@ -42,10 +41,8 @@ export class SQLitePollStore implements PollStore {
   private closed = false;
 
   constructor(databasePath: string) {
-    mkdirSync(dirname(databasePath), { recursive: true });
-    this.database = new Database(databasePath);
+    this.database = openSqliteDatabase(databasePath);
     try {
-      this.configure();
       this.migrate();
     } catch (error) {
       this.database.close();
@@ -367,13 +364,6 @@ export class SQLitePollStore implements PollStore {
       this.database.close();
       this.closed = true;
     }
-  }
-
-  private configure(): void {
-    this.database.pragma('journal_mode = WAL');
-    this.database.pragma('foreign_keys = ON');
-    this.database.pragma('busy_timeout = 5000');
-    this.database.pragma('synchronous = NORMAL');
   }
 
   private migrate(): void {
