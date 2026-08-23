@@ -80,6 +80,7 @@ $requiredReadmeLinks = @(
   'docs/DEPLOYMENT.md'
   'docs/DISCORD_SETUP.md'
   'docs/OPERATIONS.md'
+  'docs/PLATFORM_RECOVERY_VERIFICATION.md'
   'docs/RELEASES.md'
   'docs/ROADMAP.md'
   'docs/SECURITY_MODEL.md'
@@ -614,6 +615,16 @@ foreach ($requiredLink in $requiredReadmeLinks) {
   if ($readmeContent -notmatch "\]\($escapedLink(?:#[^)]+)?\)") {
     $errors += "README.md: missing documentation link '$requiredLink'"
   }
+}
+
+$implementationStatusRelativePath = 'docs/IMPLEMENTATION_STATUS.md'
+$implementationStatusPath = Join-Path $repositoryRoot $implementationStatusRelativePath
+$implementationStatusContent = Get-Content -LiteralPath $implementationStatusPath -Raw
+if (
+  $implementationStatusContent -notmatch
+  [regex]::Escape('](PLATFORM_RECOVERY_VERIFICATION.md)')
+) {
+  $errors += "${implementationStatusRelativePath}: missing platform recovery verification matrix link"
 }
 
 $engagementProductSpecPath = Join-Path $repositoryRoot $engagementProductSpecRelativePath

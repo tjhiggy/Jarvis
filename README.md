@@ -394,6 +394,8 @@ deletion rules, is in the
 The standard quality gate is:
 
 ```powershell
+npm run recovery:check
+npm run recovery:verify
 npm test
 npm run lint
 npm run format:check
@@ -401,6 +403,17 @@ npm run build
 npm run features:check
 npm run docs:check
 ```
+
+The [platform recovery verification matrix](docs/PLATFORM_RECOVERY_VERIFICATION.md)
+maps every v1.6 recovery claim to synthetic, disposable Vitest evidence.
+`recovery:check` is read-only; `recovery:verify` runs that focused suite and
+writes only a sanitized local receipt under `.artifacts/qa/`. Use
+`npm run recovery:write` only when the typed catalog intentionally changes,
+then review and commit the regenerated matrix. The receipt contains no
+production configuration, Discord state, provider credentials, SQLite data, or
+message content. Linked recovery defects remain visible in the matrix instead
+of being waved away because a neighboring test happened to pass. Shocking
+concept, but green tests do not make missing coverage magically real.
 
 `docs:check` deterministically inspects tracked Markdown and YAML, rejects
 unfinished markers and likely credentials, resolves repository links, and
@@ -487,24 +500,25 @@ instead of guessing.
 
 ## Documentation map
 
-| Guide                                                               | Purpose                                                                                     |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| [Architecture](docs/ARCHITECTURE.md)                                | Components, request flow, storage identity, trust boundaries, and extension seams           |
-| [Configuration](docs/CONFIGURATION.md)                              | Every environment key, default, validation rule, and safe operating note                    |
-| [Discord setup](docs/DISCORD_SETUP.md)                              | Application creation, intents, minimum permissions, installation, and command registration  |
-| [Development](docs/DEVELOPMENT.md)                                  | Local workflows, repository map, scripts, testing, and change boundaries                    |
-| [Deployment](docs/DEPLOYMENT.md)                                    | Native Windows and Docker deployment, updates, backup, restore, and rollback                |
-| [Operations](docs/OPERATIONS.md)                                    | Health, logs, provider checks, retention, recovery, and outage handling                     |
-| [Troubleshooting](docs/TROUBLESHOOTING.md)                          | Safe diagnosis and recovery by symptom                                                      |
-| [Security model](docs/SECURITY_MODEL.md)                            | Assets, threats, controls, residual risk, and no-mutation guarantees                        |
-| [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md) | Implemented V1 scope, consent, retention, deletion, and non-goals                           |
-| [Change management](docs/CHANGE_MANAGEMENT.md)                      | Standard request, validation, merge, deployment, and closeout process                       |
-| [GitHub workflow](docs/GITHUB_WORKFLOW.md)                          | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
-| [Discussion workflow](docs/DISCUSSIONS.md)                          | Plain-language admin feedback, triage, and Discussion-to-Issue flow                         |
-| [Extension guide](docs/extensions/README.md)                        | Disabled contracts and requirements for any future integration                              |
-| [Roadmap](docs/ROADMAP.md)                                          | Released, implemented-pending-release, planned, later, and explicitly out-of-scope work     |
-| [Implementation status](docs/IMPLEMENTATION_STATUS.md)              | Canonical shipped, configured, enabled, foundation, and planned status matrix               |
-| [Releases](docs/RELEASES.md)                                        | Versioning, validation gates, publication authority, and rollback                           |
+| Guide                                                                    | Purpose                                                                                     |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| [Architecture](docs/ARCHITECTURE.md)                                     | Components, request flow, storage identity, trust boundaries, and extension seams           |
+| [Configuration](docs/CONFIGURATION.md)                                   | Every environment key, default, validation rule, and safe operating note                    |
+| [Discord setup](docs/DISCORD_SETUP.md)                                   | Application creation, intents, minimum permissions, installation, and command registration  |
+| [Development](docs/DEVELOPMENT.md)                                       | Local workflows, repository map, scripts, testing, and change boundaries                    |
+| [Deployment](docs/DEPLOYMENT.md)                                         | Native Windows and Docker deployment, updates, backup, restore, and rollback                |
+| [Operations](docs/OPERATIONS.md)                                         | Health, logs, provider checks, retention, recovery, and outage handling                     |
+| [Platform recovery verification](docs/PLATFORM_RECOVERY_VERIFICATION.md) | Disposable recovery evidence, operator guidance, and linked focused defects                 |
+| [Troubleshooting](docs/TROUBLESHOOTING.md)                               | Safe diagnosis and recovery by symptom                                                      |
+| [Security model](docs/SECURITY_MODEL.md)                                 | Assets, threats, controls, residual risk, and no-mutation guarantees                        |
+| [Engagement product specification](docs/ENGAGEMENT_PRODUCT_SPEC.md)      | Implemented V1 scope, consent, retention, deletion, and non-goals                           |
+| [Change management](docs/CHANGE_MANAGEMENT.md)                           | Standard request, validation, merge, deployment, and closeout process                       |
+| [GitHub workflow](docs/GITHUB_WORKFLOW.md)                               | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
+| [Discussion workflow](docs/DISCUSSIONS.md)                               | Plain-language admin feedback, triage, and Discussion-to-Issue flow                         |
+| [Extension guide](docs/extensions/README.md)                             | Disabled contracts and requirements for any future integration                              |
+| [Roadmap](docs/ROADMAP.md)                                               | Released, implemented-pending-release, planned, later, and explicitly out-of-scope work     |
+| [Implementation status](docs/IMPLEMENTATION_STATUS.md)                   | Canonical shipped, configured, enabled, foundation, and planned status matrix               |
+| [Releases](docs/RELEASES.md)                                             | Versioning, validation gates, publication authority, and rollback                           |
 
 Repository policies and project records:
 

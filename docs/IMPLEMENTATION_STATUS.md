@@ -10,6 +10,14 @@ owns the command-by-command inventory, configuration requirements, automated
 evidence, and manual smoke cases. Run `npm run features:check` before changing a
 shipped claim.
 
+The executable [platform recovery verification matrix](PLATFORM_RECOVERY_VERIFICATION.md)
+separately records the v1.6 platform, storage, scheduler, provider, and
+sanitization recovery evidence. Run `npm run recovery:check` to reject a stale
+matrix and `npm run recovery:verify` to execute its disposable focused suite and
+write the local sanitized receipt. Rows linked to focused defects remain
+unverified recovery work, not shipped claims, until their executable evidence is
+added and the matrix is regenerated.
+
 ## Current status
 
 | Area                              | Status                    | What is actually available                                                                                                         | What remains                                                                              |
