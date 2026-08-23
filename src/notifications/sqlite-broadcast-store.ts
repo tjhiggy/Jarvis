@@ -1,6 +1,4 @@
-import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import type { BroadcastCategory } from './broadcast-policy.js';
 import type {
@@ -10,6 +8,7 @@ import type {
   BroadcastPolicy,
   BroadcastStore,
 } from './broadcast-store.js';
+import { openSqliteDatabase } from '../storage/open-sqlite-database.js';
 
 interface PolicyRow {
   server_id: string;
@@ -57,10 +56,14 @@ export class SqliteBroadcastStore implements BroadcastStore {
   private closed = false;
 
   constructor(databasePath: string) {
-    mkdirSync(dirname(databasePath), { recursive: true });
-    this.database = new Database(databasePath);
-    this.configure();
-    this.migrate();
+    this.database = openSqliteDatabase(databasePath);
+    try {
+      this.migrate();
+    } catch (error) {
+      this.database.close();
+      this.closed = true;
+      throw error;
+    }
   }
 
   async getPolicy(
@@ -368,13 +371,6 @@ export class SqliteBroadcastStore implements BroadcastStore {
       this.database.close();
       this.closed = true;
     }
-  }
-
-  private configure(): void {
-    this.database.pragma('journal_mode = WAL');
-    this.database.pragma('foreign_keys = ON');
-    this.database.pragma('busy_timeout = 5000');
-    this.database.pragma('synchronous = NORMAL');
   }
 
   private migrate(): void {

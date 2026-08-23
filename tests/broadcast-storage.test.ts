@@ -293,6 +293,16 @@ describe('SqliteBroadcastStore', () => {
     ).toThrow();
     database.close();
   });
+
+  it('closes the opened database when migration fails', async () => {
+    const path = await databasePath(directories);
+    const database = new Database(path);
+    database.exec('CREATE TABLE broadcast_policies (id TEXT PRIMARY KEY)');
+    database.close();
+
+    expect(() => new SqliteBroadcastStore(path)).toThrow();
+    await expect(rm(path, { force: true })).resolves.toBeUndefined();
+  });
 });
 
 function policy(overrides: Partial<BroadcastPolicy> = {}): BroadcastPolicy {

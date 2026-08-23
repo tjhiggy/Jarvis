@@ -1,5 +1,3 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import type {
@@ -42,6 +40,7 @@ import type {
   MetricsSummaryRow,
 } from '../platform/metrics.js';
 import type { MemberProfile } from '../engagement/member-profiles.js';
+import { openSqliteDatabase } from './open-sqlite-database.js';
 
 const deliveryMetricNames = [
   'delivery_attempted',
@@ -526,10 +525,8 @@ export class SQLiteEngagementRepository implements EngagementRepository {
   private closed = false;
 
   constructor(databasePath: string) {
-    mkdirSync(dirname(databasePath), { recursive: true });
-    this.database = new Database(databasePath);
+    this.database = openSqliteDatabase(databasePath);
     try {
-      this.configure();
       this.migrate();
     } catch (error) {
       this.database.close();
@@ -2102,12 +2099,6 @@ export class SQLiteEngagementRepository implements EngagementRepository {
     }
   }
 
-  private configure(): void {
-    this.database.pragma('journal_mode = WAL');
-    this.database.pragma('foreign_keys = ON');
-    this.database.pragma('busy_timeout = 5000');
-    this.database.pragma('synchronous = NORMAL');
-  }
   private migrate(): void {
     this.database.transaction(() => {
       this.database
