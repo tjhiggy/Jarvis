@@ -1,12 +1,14 @@
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import {
   classifyRecoveryMatrixReadError,
   runFocusedRecoveryEvidence,
 } from '../src/platform/recovery-focused-runner.js';
+import * as recoveryFocusedRunner from '../src/platform/recovery-focused-runner.js';
 import { sanitizeRecoveryReceipt } from '../src/platform/recovery-receipt.js';
 
 const executeFile = promisify(execFile);
@@ -26,6 +28,8 @@ describe('recovery receipt sanitization', () => {
       ],
       counts: {
         totalScenarios: 2,
+        verifiedScenarios: 1,
+        defectLinkedScenarios: 1,
         totalFiles: 2,
         passedFiles: 2,
         failedFiles: 0,
@@ -33,7 +37,7 @@ describe('recovery receipt sanitization', () => {
       },
       durationMs: 1234,
       exitStatus: 0,
-      redactionPassed: true,
+      redactionPassed: false,
       canary,
       discordUserId: '123456789012345678',
       providerUrl: 'https://operator:password@example.test/v1',
@@ -43,6 +47,9 @@ describe('recovery receipt sanitization', () => {
       failure: {
         headers: { authorization: `Bearer ${canary}` },
         nested: { databasePath: 'C:\\Users\\Jim\\private.sqlite' },
+      },
+      diagnosticMetadata: {
+        nestedCanary: canary,
       },
     });
 
@@ -56,6 +63,8 @@ describe('recovery receipt sanitization', () => {
       ],
       counts: {
         totalScenarios: 2,
+        verifiedScenarios: 1,
+        defectLinkedScenarios: 1,
         totalFiles: 2,
         passedFiles: 2,
         failedFiles: 0,
@@ -79,6 +88,8 @@ describe('recovery receipt sanitization', () => {
         testFiles: ['C:\\private\\evidence.test.ts'],
         counts: {
           totalScenarios: 1,
+          verifiedScenarios: 1,
+          defectLinkedScenarios: 0,
           totalFiles: 1,
           passedFiles: 1,
           failedFiles: 0,
@@ -88,6 +99,28 @@ describe('recovery receipt sanitization', () => {
         redactionPassed: true,
       }),
     ).toThrow(/sanitized recovery receipt/i);
+  });
+
+  it('does not attest redaction when the raw receipt omits the fixed canary', () => {
+    const receipt = sanitizeRecoveryReceipt({
+      repositoryVersion: '1.5.0',
+      nodeVersion: 'v22.16.0',
+      scenarioIds: ['storage-fresh-migration'],
+      testFiles: ['tests/engagement-storage.test.ts'],
+      counts: {
+        totalScenarios: 1,
+        verifiedScenarios: 1,
+        defectLinkedScenarios: 0,
+        totalFiles: 1,
+        passedFiles: 1,
+        failedFiles: 0,
+      },
+      durationMs: 1234,
+      exitStatus: 0,
+      redactionPassed: true,
+    });
+
+    expect(receipt.redactionPassed).toBe(false);
   });
 
   it('aggregates one passing and one failing unique evidence file independently', async () => {
@@ -107,6 +140,7 @@ describe('recovery receipt sanitization', () => {
         {
           id: 'provider-unavailable-state',
           evidence: 'tests/failing-evidence.test.ts',
+          defect: '#289',
         },
       ],
       runVitest,
@@ -114,6 +148,8 @@ describe('recovery receipt sanitization', () => {
 
     expect(result.counts).toEqual({
       totalScenarios: 3,
+      verifiedScenarios: 2,
+      defectLinkedScenarios: 1,
       totalFiles: 2,
       passedFiles: 1,
       failedFiles: 1,
@@ -123,6 +159,23 @@ describe('recovery receipt sanitization', () => {
       'tests/failing-evidence.test.ts',
       'tests/passing-evidence.test.ts',
     ]);
+  });
+
+  it('preserves TMPDIR in the restricted focused-test environment', () => {
+    const environmentCreator = (
+      recoveryFocusedRunner as Record<string, unknown>
+    ).createDisposableTestEnvironment;
+
+    expect(environmentCreator).toBeTypeOf('function');
+    if (typeof environmentCreator !== 'function') {
+      return;
+    }
+
+    const environment = (
+      environmentCreator as (input: NodeJS.ProcessEnv) => NodeJS.ProcessEnv
+    )({ TMPDIR: 'C:\\synthetic-temp-directory' });
+
+    expect(environment.TMPDIR).toBe('C:\\synthetic-temp-directory');
   });
 
   it('distinguishes a missing recovery matrix from a sanitized read failure', () => {
@@ -149,26 +202,38 @@ describe('recovery receipt sanitization', () => {
   it.skipIf(isFocusedRecoveryRun)(
     'writes a content-free receipt for the unique catalog evidence files',
     async () => {
-      const result = await executeFile(
-        process.execPath,
-        ['--import', 'tsx', 'scripts/verify-platform-recovery.ts'],
-        { cwd: process.cwd() },
+      const focusedTmpdir = await mkdtemp(
+        resolve(tmpdir(), 'jarvis-recovery-focused-'),
       );
-      const serializedReceipt = await readFile(
-        resolve(process.cwd(), '.artifacts/qa/platform-recovery.json'),
-        'utf8',
-      );
-      const receipt = JSON.parse(serializedReceipt) as {
-        testFiles: string[];
-        redactionPassed: boolean;
-      };
+      try {
+        const result = await executeFile(
+          process.execPath,
+          ['--import', 'tsx', 'scripts/verify-platform-recovery.ts'],
+          {
+            cwd: process.cwd(),
+            env: { ...process.env, TMPDIR: focusedTmpdir },
+          },
+        );
+        const serializedReceipt = await readFile(
+          resolve(process.cwd(), '.artifacts/qa/platform-recovery.json'),
+          'utf8',
+        );
+        const receipt = JSON.parse(serializedReceipt) as {
+          testFiles: string[];
+          redactionPassed: boolean;
+        };
 
-      expect(result.stdout).toMatch(/platform recovery verification passed/i);
-      expect(receipt.redactionPassed).toBe(true);
-      expect(new Set(receipt.testFiles).size).toBe(receipt.testFiles.length);
-      expect(serializedReceipt).not.toMatch(
-        /canary|authorization|https?:|C:\\\\Users|private member/i,
-      );
+        expect(result.stdout).toMatch(
+          /platform recovery verification completed/i,
+        );
+        expect(receipt.redactionPassed).toBe(true);
+        expect(new Set(receipt.testFiles).size).toBe(receipt.testFiles.length);
+        expect(serializedReceipt).not.toMatch(
+          /canary|authorization|https?:|C:\\\\Users|private member/i,
+        );
+      } finally {
+        await rm(focusedTmpdir, { force: true, recursive: true });
+      }
     },
     60_000,
   );

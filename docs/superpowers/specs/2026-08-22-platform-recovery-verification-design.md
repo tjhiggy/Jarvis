@@ -12,20 +12,23 @@ inputs to this verification.
 An operator or release reviewer can run one command and receive a bounded,
 content-free receipt covering the platform, storage, scheduler, provider, and
 sanitization recovery scenarios required for v1.6. A committed matrix explains
-which executable test proves each scenario and prevents silent coverage drift.
+which rows have executable evidence and which remain linked focused defects,
+preventing silent coverage drift.
 
 ## Architecture
 
 The recovery verifier has three layers:
 
 1. A typed scenario catalog identifies every required recovery behavior, its
-   executable Vitest evidence, and its operator-facing recovery expectation.
+   executable Vitest evidence or linked focused defect, and its operator-facing
+   recovery expectation.
 2. A pure validator rejects missing, duplicate, unsafe, or nonexistent evidence
    and renders the canonical Markdown matrix.
 3. A command-line runner executes the exact focused test files in a disposable
    environment and writes a local JSON receipt containing only scenario IDs,
-   test-file names, aggregate outcomes, versions, duration, and a redaction
-   assertion. Receipts are local evidence and are never committed.
+   test-file names, aggregate outcomes split into verified and defect-linked
+   scenarios, versions, duration, and a redaction assertion. Receipts are local
+   evidence and are never committed.
 
 The existing focused tests remain the source of runtime truth. This slice fills
 only acceptance-criteria gaps discovered during reconciliation. Product defects
@@ -49,8 +52,9 @@ linked from the matrix rather than smuggled into a QA patch.
 - No environment dump, Discord ID, member content, prompt, provider payload,
   raw URL, authorization header, or credential is written to a receipt.
 - The receipt is written below `.artifacts/qa/`, which is git-ignored.
-- A canary secret is injected into failure paths; successful verification proves
-  that it is absent from all serialized evidence.
+- A fixed canary secret is injected into raw receipt diagnostics, including
+  nested count metadata. The real allowlist boundary sets the redaction result
+  true only after the serialized safe receipt excludes that canary.
 - The committed report is deterministic and contains no timestamps or machine
   paths.
 

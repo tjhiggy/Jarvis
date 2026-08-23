@@ -86,8 +86,8 @@ documentation and GitHub YAML through PowerShell 7.
 
 The versioned [platform recovery verification matrix](PLATFORM_RECOVERY_VERIFICATION.md)
 is the recovery source of truth. It maps each v1.6 platform, storage,
-scheduler, provider, and sanitization claim to a committed focused test and
-operator recovery guidance.
+scheduler, provider, and sanitization row to executable focused evidence or a
+linked focused defect, plus operator recovery guidance.
 
 - `npm run recovery:check` validates the typed catalog and confirms the
   committed matrix is current. It is read-only and uses no network.
@@ -99,11 +99,12 @@ operator recovery guidance.
   `.artifacts/qa/platform-recovery.json`.
 
 The receipt is local and git-ignored. Its allowlist contains scenario IDs,
-repository-relative test files, aggregate counts, repository and Node versions,
-duration, exit status, and the redaction result only. It never reads `.env`,
-Discord state, provider credentials, or production SQLite data, and it must not
-contain message content, raw IDs, URLs, headers, or secrets. Inspect only the
-sanitized receipt when recording verification evidence.
+repository-relative test files, aggregate counts that distinguish verified from
+defect-linked scenarios, repository and Node versions, duration, exit status,
+and the redaction result only. It never reads `.env`, Discord state, provider
+credentials, or production SQLite data, and it must not contain message content,
+raw IDs, URLs, headers, or secrets. Inspect only the sanitized receipt when
+recording verification evidence.
 
 The matrix deliberately leaves unproven recovery behavior visible with a linked
 focused defect, rather than calling it shipped because a related test passes.

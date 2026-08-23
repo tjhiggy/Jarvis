@@ -6,11 +6,13 @@ import { dirname, resolve } from 'node:path';
 import { recoveryScenarioCatalog } from '../src/platform/recovery-scenario-catalog.js';
 import {
   classifyRecoveryMatrixReadError,
+  createDisposableTestEnvironment,
   runFocusedRecoveryEvidence,
 } from '../src/platform/recovery-focused-runner.js';
 import {
   sanitizeRecoveryReceipt,
   type RecoveryReceipt,
+  recoveryReceiptRedactionCanary,
 } from '../src/platform/recovery-receipt.js';
 import {
   renderRecoveryMatrix,
@@ -26,7 +28,7 @@ const receiptPath = resolve(
   repositoryRoot,
   '.artifacts/qa/platform-recovery.json',
 );
-const redactionCanary = 'canary-secret-value-do-not-serialize';
+const redactionCanary = recoveryReceiptRedactionCanary;
 
 await run();
 
@@ -66,7 +68,7 @@ async function run(): Promise<void> {
   }
 
   console.log(
-    `Platform recovery verification passed for ${receipt.counts.totalScenarios} scenarios and ${receipt.counts.totalFiles} focused test files.`,
+    `Platform recovery verification completed ${receipt.counts.totalFiles} focused test files for ${receipt.counts.verifiedScenarios} verified scenarios and ${receipt.counts.defectLinkedScenarios} defect-linked scenarios.`,
   );
 }
 
@@ -122,10 +124,19 @@ async function runFocusedVerification(): Promise<RecoveryReceipt> {
     nodeVersion: process.version,
     scenarioIds,
     testFiles: result.testFiles,
-    counts: result.counts,
+    counts: {
+      ...result.counts,
+      diagnosticMetadata: {
+        canary: redactionCanary,
+      },
+    },
     durationMs,
     exitStatus: result.exitStatus,
-    redactionPassed: true,
+    redactionPassed: false,
+    diagnosticMetadata: {
+      canary: redactionCanary,
+      authorization: `Bearer ${redactionCanary}`,
+    },
   });
   const serializedReceipt = JSON.stringify(receipt);
 
@@ -171,7 +182,7 @@ function runVitest(testFile: string): Promise<number> {
       [vitestEntrypoint, 'run', '--silent=true', testFile],
       {
         cwd: repositoryRoot,
-        env: disposableTestEnvironment(),
+        env: createDisposableTestEnvironment(process.env),
         stdio: 'ignore',
         windowsHide: true,
       },
@@ -186,33 +197,4 @@ function runVitest(testFile: string): Promise<number> {
       resolveExitStatus(code ?? 1);
     });
   });
-}
-
-function disposableTestEnvironment(): NodeJS.ProcessEnv {
-  const environment: NodeJS.ProcessEnv = {
-    CI: 'true',
-    NODE_ENV: 'test',
-    NO_COLOR: '1',
-    PLATFORM_RECOVERY_FOCUSED_RUNNER: 'true',
-  };
-  const allowedNames = [
-    'ComSpec',
-    'COMSPEC',
-    'Path',
-    'PATH',
-    'PATHEXT',
-    'SystemRoot',
-    'SYSTEMROOT',
-    'TEMP',
-    'TMP',
-  ];
-
-  for (const name of allowedNames) {
-    const value = process.env[name];
-    if (value !== undefined) {
-      environment[name] = value;
-    }
-  }
-
-  return environment;
 }

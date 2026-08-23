@@ -405,15 +405,17 @@ npm run docs:check
 ```
 
 The [platform recovery verification matrix](docs/PLATFORM_RECOVERY_VERIFICATION.md)
-maps every v1.6 recovery claim to synthetic, disposable Vitest evidence.
+maps every required v1.6 recovery row to executable, synthetic Vitest evidence
+or a linked focused defect.
 `recovery:check` is read-only; `recovery:verify` runs that focused suite and
 writes only a sanitized local receipt under `.artifacts/qa/`. Use
 `npm run recovery:write` only when the typed catalog intentionally changes,
 then review and commit the regenerated matrix. The receipt contains no
 production configuration, Discord state, provider credentials, SQLite data, or
-message content. Linked recovery defects remain visible in the matrix instead
-of being waved away because a neighboring test happened to pass. Shocking
-concept, but green tests do not make missing coverage magically real.
+message content. Its counts distinguish verified scenarios from defect-linked
+scenarios. Linked recovery defects remain visible in the matrix instead of
+being waved away because a neighboring test happened to pass. Shocking concept,
+but green tests do not make missing coverage magically real.
 
 `docs:check` deterministically inspects tracked Markdown and YAML, rejects
 unfinished markers and likely credentials, resolves repository links, and

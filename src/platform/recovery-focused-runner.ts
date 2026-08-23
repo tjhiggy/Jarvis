@@ -3,6 +3,7 @@ import type { RecoveryReceiptCounts } from './recovery-receipt.js';
 export interface RecoveryEvidenceScenario {
   id: string;
   evidence: string;
+  defect?: string;
 }
 
 export interface FocusedRecoveryEvidenceResult {
@@ -12,6 +13,38 @@ export interface FocusedRecoveryEvidenceResult {
 }
 
 export type FocusedVitestRunner = (testFile: string) => Promise<number>;
+
+export function createDisposableTestEnvironment(
+  processEnvironment: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {
+    CI: 'true',
+    NODE_ENV: 'test',
+    NO_COLOR: '1',
+    PLATFORM_RECOVERY_FOCUSED_RUNNER: 'true',
+  };
+  const allowedNames = [
+    'ComSpec',
+    'COMSPEC',
+    'Path',
+    'PATH',
+    'PATHEXT',
+    'SystemRoot',
+    'SYSTEMROOT',
+    'TEMP',
+    'TMP',
+    'TMPDIR',
+  ];
+
+  for (const name of allowedNames) {
+    const value = processEnvironment[name];
+    if (value !== undefined) {
+      environment[name] = value;
+    }
+  }
+
+  return environment;
+}
 
 export async function runFocusedRecoveryEvidence(
   scenarios: readonly RecoveryEvidenceScenario[],
@@ -38,6 +71,12 @@ export async function runFocusedRecoveryEvidence(
     testFiles,
     counts: {
       totalScenarios: scenarios.length,
+      verifiedScenarios: scenarios.filter(
+        (scenario) => scenario.defect === undefined,
+      ).length,
+      defectLinkedScenarios: scenarios.filter(
+        (scenario) => scenario.defect !== undefined,
+      ).length,
       totalFiles: testFiles.length,
       passedFiles,
       failedFiles,

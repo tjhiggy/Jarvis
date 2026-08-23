@@ -1,9 +1,14 @@
 export interface RecoveryReceiptCounts {
   totalScenarios: number;
+  verifiedScenarios: number;
+  defectLinkedScenarios: number;
   totalFiles: number;
   passedFiles: number;
   failedFiles: number;
 }
+
+export const recoveryReceiptRedactionCanary =
+  'canary-secret-value-do-not-serialize';
 
 export interface RecoveryReceipt {
   repositoryVersion: string;
@@ -28,8 +33,6 @@ export function sanitizeRecoveryReceipt(input: unknown): RecoveryReceipt {
   const counts = input.counts;
   const durationMs = input.durationMs;
   const exitStatus = input.exitStatus;
-  const redactionPassed = input.redactionPassed;
-
   if (
     !isRepositoryVersion(repositoryVersion) ||
     !isNodeVersion(nodeVersion) ||
@@ -38,28 +41,40 @@ export function sanitizeRecoveryReceipt(input: unknown): RecoveryReceipt {
     !isCounts(counts) ||
     !isNonNegativeSafeInteger(durationMs) ||
     !isExitStatus(exitStatus) ||
-    typeof redactionPassed !== 'boolean' ||
     counts.totalScenarios !== scenarioIds.length ||
+    counts.verifiedScenarios + counts.defectLinkedScenarios !==
+      counts.totalScenarios ||
     counts.totalFiles !== testFiles.length ||
     counts.passedFiles + counts.failedFiles !== testFiles.length
   ) {
     throw invalidReceipt();
   }
 
-  return {
+  const sanitizedReceipt: RecoveryReceipt = {
     repositoryVersion,
     nodeVersion,
     scenarioIds: [...scenarioIds],
     testFiles: [...testFiles],
     counts: {
       totalScenarios: counts.totalScenarios,
+      verifiedScenarios: counts.verifiedScenarios,
+      defectLinkedScenarios: counts.defectLinkedScenarios,
       totalFiles: counts.totalFiles,
       passedFiles: counts.passedFiles,
       failedFiles: counts.failedFiles,
     },
     durationMs,
     exitStatus,
-    redactionPassed,
+    redactionPassed: false,
+  };
+
+  return {
+    ...sanitizedReceipt,
+    redactionPassed:
+      containsCanary(input, recoveryReceiptRedactionCanary) &&
+      !JSON.stringify(sanitizedReceipt).includes(
+        recoveryReceiptRedactionCanary,
+      ),
   };
 }
 
@@ -108,10 +123,26 @@ function isCounts(value: unknown): value is RecoveryReceiptCounts {
   return (
     isRecord(value) &&
     isNonNegativeSafeInteger(value.totalScenarios) &&
+    isNonNegativeSafeInteger(value.verifiedScenarios) &&
+    isNonNegativeSafeInteger(value.defectLinkedScenarios) &&
     isNonNegativeSafeInteger(value.totalFiles) &&
     isNonNegativeSafeInteger(value.passedFiles) &&
     isNonNegativeSafeInteger(value.failedFiles)
   );
+}
+
+function containsCanary(value: unknown, canary: string): boolean {
+  if (typeof value === 'string') {
+    return value.includes(canary);
+  }
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsCanary(entry, canary));
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return Object.values(value).some((entry) => containsCanary(entry, canary));
 }
 
 function isNonNegativeSafeInteger(value: unknown): value is number {
