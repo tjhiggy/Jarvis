@@ -228,6 +228,27 @@ then start one process and run `/status`. A restore rolls conversation history
 back to the backup point. Treat it as an authorized recovery decision, not a
 casual undo button.
 
+## Schema rollback classification
+
+Jarvis refuses to open a SQLite database whose `user_version` is newer than the
+binary supports. That refusal is intentional and classified as follows:
+
+- **Supported**: database schema version is less than or equal to the running
+  application. Open proceeds normally after migrations (if any) complete.
+- **Unsupported**: database schema version is greater than the running
+  application. The process must not open the file. The only approved recovery
+  is to restore a pre-upgrade backup that was taken with a matching application
+  version, then start that matching binary.
+
+Do not attempt to lower `user_version` by hand, edit migration tables, or run
+an older binary against a newer database. Those paths are unsupported and can
+corrupt durable state. Always take a stopped-database backup before an upgrade
+that changes schema, and keep that backup until the new version has been
+verified in production.
+
+The executable proof for this classification lives in
+`tests/storage-recovery.test.ts` (shared-database recovery rehearsal).
+
 ## Rate limits and resource pressure
 
 The in-process rate limiter applies `RATE_LIMIT_REQUESTS` per guild and user

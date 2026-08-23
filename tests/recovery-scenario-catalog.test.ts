@@ -61,10 +61,11 @@ describe('recovery scenario catalog', () => {
   });
 
   it('links recovery gaps to focused defects without treating #279 as one', () => {
-    expect(defectFor('storage-reopen-idempotence')).toBe('#288');
-    expect(defectFor('storage-backup-and-restore')).toBe('#288');
-    expect(defectFor('storage-integrity-check')).toBe('#288');
-    expect(defectFor('storage-rollback-classification')).toBe('#288');
+    // #288 is closed: storage recovery scenarios no longer carry a defect.
+    expect(defectFor('storage-reopen-idempotence')).toBeUndefined();
+    expect(defectFor('storage-backup-and-restore')).toBeUndefined();
+    expect(defectFor('storage-integrity-check')).toBeUndefined();
+    expect(defectFor('storage-rollback-classification')).toBeUndefined();
     expect(defectFor('provider-unavailable-state')).toBe('#289');
     expect(defectFor('provider-recovered-state')).toBe('#289');
     expect(defectFor('provider-openai-published-state')).toBe('#289');
