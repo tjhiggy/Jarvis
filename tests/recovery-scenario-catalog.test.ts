@@ -66,14 +66,15 @@ describe('recovery scenario catalog', () => {
     expect(defectFor('storage-backup-and-restore')).toBeUndefined();
     expect(defectFor('storage-integrity-check')).toBeUndefined();
     expect(defectFor('storage-rollback-classification')).toBeUndefined();
-    expect(defectFor('provider-unavailable-state')).toBe('#289');
-    expect(defectFor('provider-recovered-state')).toBe('#289');
-    expect(defectFor('provider-openai-published-state')).toBe('#289');
-    expect(defectFor('provider-ollama-published-state')).toBe('#289');
-    expect(defectFor('provider-web-search-published-state')).toBe('#289');
-    expect(defectFor('provider-rss-published-state')).toBe('#289');
-    expect(defectFor('provider-sleeper-published-state')).toBe('#289');
-    expect(defectFor('provider-github-published-state')).toBe('#289');
+    // #289 is closed: provider published-state scenarios no longer carry a defect.
+    expect(defectFor('provider-unavailable-state')).toBeUndefined();
+    expect(defectFor('provider-recovered-state')).toBeUndefined();
+    expect(defectFor('provider-openai-published-state')).toBeUndefined();
+    expect(defectFor('provider-ollama-published-state')).toBeUndefined();
+    expect(defectFor('provider-web-search-published-state')).toBeUndefined();
+    expect(defectFor('provider-rss-published-state')).toBeUndefined();
+    expect(defectFor('provider-sleeper-published-state')).toBeUndefined();
+    expect(defectFor('provider-github-published-state')).toBeUndefined();
     expect(defectFor('test-environment-runtime-evidence')).toBeUndefined();
     expect(
       recoveryScenarioCatalog.map((scenario) => scenario.defect),
@@ -81,7 +82,7 @@ describe('recovery scenario catalog', () => {
     expect(
       recoveryScenarioCatalog
         .filter((scenario) => scenario.group === 'provider')
-        .every((scenario) => scenario.defect === '#289'),
+        .every((scenario) => scenario.defect === undefined),
     ).toBe(true);
   });
 
