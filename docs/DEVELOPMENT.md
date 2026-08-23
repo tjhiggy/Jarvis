@@ -70,6 +70,7 @@ npm test
 npm run lint
 npm run format:check
 npm run build
+npm run features:check
 npm run docs:check
 ```
 
@@ -78,6 +79,13 @@ the repository, while `npm run format:check` only verifies it. `npm run lint`
 runs ESLint across the project, `npm run build` type-checks and emits the
 configured TypeScript build, and `npm run docs:check` validates tracked
 documentation and GitHub YAML through PowerShell 7.
+
+The versioned [shipped-feature verification matrix](SHIPPED_FEATURE_VERIFICATION.md)
+is generated from the typed catalog. After changing command ownership,
+configuration, evidence, or smoke coverage, run `npm run features:write` and
+commit the regenerated report. `npm run features:check` is read-only and fails
+when a registered Discord command is missing, duplicated, cites missing
+evidence, or the committed report is stale.
 
 The synthetic local-model comparison is opt-in and never reads Discord data.
 Build first, then run one model at a time so Ollama unloads it before the next:

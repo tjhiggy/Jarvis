@@ -23,7 +23,11 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+      - name: Verify shipped feature inventory
+        run: npm run features:check
       - name: Run tests
         run: npm test
       - name: Build TypeScript
         run: npm run build
+      - name: Validate documentation
+        run: npm run docs:check

@@ -83,6 +83,7 @@ $requiredReadmeLinks = @(
   'docs/RELEASES.md'
   'docs/ROADMAP.md'
   'docs/SECURITY_MODEL.md'
+  'docs/SHIPPED_FEATURE_VERIFICATION.md'
   'docs/TROUBLESHOOTING.md'
   'docs/extensions/README.md'
   'docs/ENGAGEMENT_PRODUCT_SPEC.md'
@@ -639,6 +640,11 @@ if ($errors.Count -gt 0) {
     Write-Error $_ -ErrorAction Continue
   }
   exit 1
+}
+
+& npm run features:check
+if ($LASTEXITCODE -ne 0) {
+  exit $LASTEXITCODE
 }
 
 Write-Output (
