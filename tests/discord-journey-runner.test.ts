@@ -82,4 +82,11 @@ describe('focused Discord journey runner', () => {
     expect(environment.HOME).toBeUndefined();
     expect(environment.DISCORD_JOURNEY_FOCUSED_RUNNER).toBe('true');
   });
+
+  it('does not describe the environment scrub as a filesystem or network sandbox', () => {
+    const environment = createDisposableJourneyEnvironment({});
+    expect(environment.DISCORD_JOURNEY_ENVIRONMENT_BOUNDARY).toBe(
+      'credentials-removed-not-a-sandbox',
+    );
+  });
 });

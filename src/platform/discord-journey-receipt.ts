@@ -92,7 +92,8 @@ function ids(value: unknown): value is string[] {
     value.every(
       (item) =>
         typeof item === 'string' &&
-        /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(item),
+        /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(item) &&
+        !/\d{17,20}/.test(item),
     ) &&
     new Set(value).size === value.length
   );

@@ -68,6 +68,15 @@ describe('Discord journey receipt', () => {
     }
   });
 
+  it('rejects production-shaped identifiers in scenario IDs', () => {
+    expect(() =>
+      sanitizeDiscordJourneyReceipt({
+        ...input(),
+        scenarioIds: ['command-123456789012345678'],
+      }),
+    ).toThrow(/invalid evidence/i);
+  });
+
   it('rejects aggregate counts that do not reconcile', () => {
     expect(() =>
       sanitizeDiscordJourneyReceipt({

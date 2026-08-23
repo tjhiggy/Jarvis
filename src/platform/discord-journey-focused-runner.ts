@@ -24,6 +24,7 @@ export function createDisposableJourneyEnvironment(
     NODE_ENV: 'test',
     NO_COLOR: '1',
     DISCORD_JOURNEY_FOCUSED_RUNNER: 'true',
+    DISCORD_JOURNEY_ENVIRONMENT_BOUNDARY: 'credentials-removed-not-a-sandbox',
   };
   for (const name of [
     'ComSpec',

@@ -128,7 +128,7 @@ function commandEvidence(route: string): DiscordJourneyEvidence {
 function commandJourney(command: PublishedCommandName): DiscordJourney {
   const outcome: DiscordJourneyOutcome = configurationDependent.has(command)
     ? 'configuration-dependent'
-    : 'verified-automated';
+    : 'manual-required';
   return {
     id: `command-${command}`,
     kind: 'command',
@@ -136,8 +136,8 @@ function commandJourney(command: PublishedCommandName): DiscordJourney {
     entryPoint: `/${command}`,
     state:
       outcome === 'configuration-dependent'
-        ? 'Executable unavailable behavior is verified; provider-backed success requires approved deployment configuration.'
-        : 'Available, disabled, empty, and failure behavior is bounded by focused command evidence.',
+        ? 'Supporting regressions exercise unavailable behavior; provider-backed success and exact command state require deployed confirmation.'
+        : 'Supporting regressions exercise related behavior but are not exact named proof of every state for this command.',
     visibility: publicCommands.has(command)
       ? 'public'
       : mixedCommands.has(command)
@@ -145,16 +145,16 @@ function commandJourney(command: PublishedCommandName): DiscordJourney {
         : 'private',
     configuration:
       outcome === 'configuration-dependent'
-        ? 'Synthetic tests verify safe behavior; deployed provider or channel configuration must be confirmed separately.'
-        : 'Synthetic disposable settings are sufficient for automated command evidence.',
+        ? 'Supporting synthetic regressions run with inherited credentials removed; deployed provider or channel configuration must be confirmed separately.'
+        : 'Supporting synthetic regressions run with inherited credentials removed; they do not prove deployed configuration.',
     permission:
-      'Registration and routing enforce the documented member or administrator boundary.',
+      'The referenced permission file is supporting regression coverage, not command-specific proof; confirm the documented member or administrator boundary manually.',
     evidence: commandEvidence(routeEvidence[command]),
     outcome,
     manualObligation:
       outcome === 'configuration-dependent'
-        ? 'Confirm the approved deployed dependency without recording credentials, production identifiers, or content.'
-        : 'Confirm live registration and mobile presentation during release smoke testing.',
+        ? 'Confirm registration, routing, visibility, state, permissions, and the approved deployed dependency without recording credentials, production identifiers, or content.'
+        : 'Confirm registration, routing, visibility, state, permissions, and mobile presentation during release smoke testing.',
   };
 }
 
@@ -195,7 +195,7 @@ export const discordJourneyCatalog: readonly DiscordJourney[] = [
     permission:
       'Actor ownership and administrator boundaries are enforced before mutation.',
     evidence: crossCuttingEvidence('tests/preview-buttons.test.ts'),
-    outcome: 'verified-automated',
+    outcome: 'manual-required',
     manualObligation:
       'Confirm mobile button and modal layout during release smoke testing.',
   },
@@ -210,7 +210,9 @@ export const discordJourneyCatalog: readonly DiscordJourney[] = [
     permission:
       'Failure paths preserve the same authorization boundary as success paths.',
     evidence: crossCuttingEvidence('tests/engagement-safety.test.ts'),
-    outcome: 'verified-automated',
+    outcome: 'manual-required',
+    manualObligation:
+      'Confirm representative disabled, unavailable, empty, duplicate, expired, and retry states against the deployed command surface.',
   },
   {
     id: 'configuration-live-registration-and-destinations',
@@ -251,11 +253,13 @@ export const discordJourneyCatalog: readonly DiscordJourney[] = [
       'Receipts and operational evidence retain bounded aggregate metadata only.',
     visibility: 'not-applicable',
     configuration:
-      'No environment file, network, production database, token, member identity, message content, URL, or production identifier is read.',
+      'Inherited Discord and provider credentials are removed from focused child processes; this does not sandbox filesystem or network access.',
     permission:
-      'Verification runs offline with a disposable allowlisted environment.',
+      'The fixed receipt schema and redaction checks bound persisted QA output; supporting tests do not prove every operational surface.',
     evidence: crossCuttingEvidence('tests/logger.test.ts'),
-    outcome: 'verified-automated',
+    outcome: 'manual-required',
+    manualObligation:
+      'Review deployed logs, metrics, and artifacts for bounded aggregate metadata without recording production content or identifiers.',
   },
   {
     id: 'safety-sanitized-verification-receipt',
@@ -269,6 +273,8 @@ export const discordJourneyCatalog: readonly DiscordJourney[] = [
     permission:
       'The verifier receives only an allowlisted disposable process environment.',
     evidence: crossCuttingEvidence('tests/discord-journey-receipt.test.ts'),
-    outcome: 'verified-automated',
+    outcome: 'manual-required',
+    manualObligation:
+      'Inspect the generated receipt schema and redaction result; file-level execution is supporting evidence, not named assertion proof.',
   },
 ];

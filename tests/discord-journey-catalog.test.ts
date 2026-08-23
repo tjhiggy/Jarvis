@@ -53,4 +53,38 @@ describe('canonical Discord journey catalog', () => {
       ]),
     );
   });
+
+  it('does not claim exact automated command proof from file-level supporting regressions', () => {
+    const commands = discordJourneyCatalog.filter(
+      (journey) => journey.kind === 'command',
+    );
+
+    expect(commands).toHaveLength(36);
+    expect(
+      commands.every((journey) => journey.outcome !== 'verified-automated'),
+    ).toBe(true);
+    expect(
+      commands.every((journey) =>
+        journey.permission.includes('not command-specific proof'),
+      ),
+    ).toBe(true);
+    expect(
+      commands.every((journey) => journey.manualObligation?.trim()),
+    ).toBeTruthy();
+  });
+
+  it('states the verifier boundary without claiming filesystem, network, env-file, or database isolation', () => {
+    const safety = discordJourneyCatalog.find(
+      (journey) => journey.id === 'safety-content-secrets-identifiers',
+    );
+
+    expect(safety?.configuration).toContain(
+      'Inherited Discord and provider credentials are removed',
+    );
+    expect(safety?.configuration).toContain(
+      'does not sandbox filesystem or network access',
+    );
+    expect(safety?.configuration).not.toMatch(/production database|\.env/i);
+    expect(safety?.outcome).not.toBe('verified-automated');
+  });
 });

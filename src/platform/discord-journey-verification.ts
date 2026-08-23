@@ -156,7 +156,7 @@ export function renderDiscordJourneyMatrix(
   return [
     '# Discord Journey Verification Matrix',
     '',
-    'This deterministic matrix owns every registered Discord command and the cross-cutting feature, state, configuration, manual, and safety obligations. Automated evidence uses disposable synthetic state only. Live registration, deployed permissions, and mobile rendering remain explicit non-automated outcomes.',
+    'This deterministic matrix owns every registered Discord command and the cross-cutting feature, state, configuration, manual, and safety obligations. File references are supporting regressions, not exact per-obligation proof unless an exact named assertion is added later. Focused child processes remove inherited credentials, but the verifier does not sandbox filesystem or network access. Live registration, deployed permissions, state, visibility, and mobile rendering remain explicit non-automated outcomes.',
     '',
     table(
       [
@@ -167,7 +167,7 @@ export function renderDiscordJourneyMatrix(
         'Visibility',
         'Configuration',
         'Permission',
-        'Evidence',
+        'Supporting regression files',
         'Outcome',
         'Manual obligation',
         'Defect',

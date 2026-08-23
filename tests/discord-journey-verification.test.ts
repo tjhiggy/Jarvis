@@ -98,4 +98,10 @@ describe('Discord journey validation', () => {
     expect(first).toContain('routing: `tests/commands.test.ts`');
     expect(first).not.toMatch(/[A-Z]:\\|\/Users\//);
   });
+
+  it('labels file references as supporting regressions instead of exact obligation proof', () => {
+    const matrix = renderDiscordJourneyMatrix(valid, commandNames, root);
+    expect(matrix).toContain('Supporting regression files');
+    expect(matrix).toContain('not exact per-obligation proof');
+  });
 });
