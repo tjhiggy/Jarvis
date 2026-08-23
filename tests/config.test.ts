@@ -12,6 +12,50 @@ const validEnv = {
 };
 
 describe('loadConfig', () => {
+  it('defaults the remote Command Deck API to disabled with bounded policy defaults', () => {
+    expect(loadConfig(validEnv).adminConsole?.readApi).toEqual({
+      token: '',
+      allowedOrigins: [],
+      rateLimit: 30,
+      rateWindowMs: 60_000,
+      maxClockSkewMs: 60_000,
+      replayRetentionMs: 60_000,
+    });
+  });
+
+  it('normalizes exact HTTPS Command Deck origins and keeps the read token separate', () => {
+    const config = loadConfig({
+      ...validEnv,
+      ADMIN_CONSOLE_ENABLED: 'true',
+      ADMIN_CONSOLE_TOKEN: 'local-write-token',
+      COMMAND_DECK_API_TOKEN: 'remote-read-token-with-32-characters-minimum',
+      COMMAND_DECK_API_ALLOWED_ORIGINS:
+        ' https://deck.example.test,https://ops.example.test ',
+    });
+    expect(config.adminConsole?.readApi.allowedOrigins).toEqual([
+      'https://deck.example.test',
+      'https://ops.example.test',
+    ]);
+    expect(config.adminConsole?.readApi.token).not.toBe(
+      config.adminConsole?.token,
+    );
+  });
+
+  it.each([
+    { COMMAND_DECK_API_TOKEN: 'weak' },
+    {
+      COMMAND_DECK_API_TOKEN: 'remote-read-token-with-32-characters-minimum',
+      COMMAND_DECK_API_ALLOWED_ORIGINS: 'http://deck.example.test',
+    },
+    {
+      COMMAND_DECK_API_TOKEN: 'same-token-with-32-characters-minimum',
+      ADMIN_CONSOLE_TOKEN: 'same-token-with-32-characters-minimum',
+    },
+    { COMMAND_DECK_API_RATE_LIMIT: '0' },
+  ])('rejects unsafe Command Deck API configuration %#', (unsafe) => {
+    expect(() => loadConfig({ ...validEnv, ...unsafe })).toThrow();
+  });
+
   it('rejects missing required values without exposing supplied secrets', () => {
     expect(() => loadConfig({ OPENAI_API_KEY: 'do-not-print' })).toThrow(
       /DISCORD_TOKEN/,

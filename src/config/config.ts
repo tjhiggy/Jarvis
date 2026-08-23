@@ -12,6 +12,14 @@ export interface AppConfig {
     port: number;
     host: string;
     token: string;
+    readApi: Readonly<{
+      token: string;
+      allowedOrigins: readonly string[];
+      rateLimit: number;
+      rateWindowMs: number;
+      maxClockSkewMs: number;
+      replayRetentionMs: number;
+    }>;
   }>;
   readonly runtimeIdentity?: RuntimeIdentity;
   readonly ai: Readonly<{
@@ -203,6 +211,29 @@ const engagementTimezone = z.preprocess(
   z.string().trim().refine(isValidTimeZone).default('UTC'),
 );
 
+const commandDeckApiOrigins = z.preprocess(
+  (value) =>
+    typeof value !== 'string' || value.trim() === ''
+      ? []
+      : value
+          .split(',')
+          .map((origin) => origin.trim())
+          .filter(Boolean),
+  z
+    .array(
+      z.string().refine((value) => {
+        try {
+          const url = new URL(value);
+          return url.protocol === 'https:' && url.origin === value;
+        } catch {
+          return false;
+        }
+      }, 'Origins must be exact HTTPS origins without paths or credentials.'),
+    )
+    .max(20)
+    .default([]),
+);
+
 const baseEnvironmentSchema = z.object({
   ADMIN_CONSOLE_ENABLED: z.preprocess(
     (value) =>
@@ -216,6 +247,11 @@ const baseEnvironmentSchema = z.object({
     .regex(/^(?:127\.0\.0\.1|localhost)$/)
     .default('127.0.0.1'),
   ADMIN_CONSOLE_TOKEN: z.string().trim().default(''),
+  COMMAND_DECK_API_TOKEN: z.string().trim().default(''),
+  COMMAND_DECK_API_ALLOWED_ORIGINS: commandDeckApiOrigins,
+  COMMAND_DECK_API_RATE_LIMIT: integer(30, 1, 1_000),
+  COMMAND_DECK_API_WINDOW_SECONDS: integer(60, 1, 3_600),
+  COMMAND_DECK_API_MAX_CLOCK_SKEW_SECONDS: integer(60, 1, 300),
   DISCORD_TOKEN: requiredString,
   DISCORD_CLIENT_ID: requiredString,
   DISCORD_GUILD_ID: requiredString,
@@ -446,6 +482,36 @@ const environmentSchema = baseEnvironmentSchema.superRefine(
           'ADMIN_CONSOLE_TOKEN is required when ADMIN_CONSOLE_ENABLED=true.',
       });
     }
+    if (
+      value.COMMAND_DECK_API_TOKEN !== '' &&
+      value.COMMAND_DECK_API_TOKEN.length < 32
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['COMMAND_DECK_API_TOKEN'],
+        message: 'COMMAND_DECK_API_TOKEN must contain at least 32 characters.',
+      });
+    }
+    if (
+      value.COMMAND_DECK_API_ALLOWED_ORIGINS.length > 0 &&
+      value.COMMAND_DECK_API_TOKEN === ''
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['COMMAND_DECK_API_TOKEN'],
+        message: 'Remote Command Deck origins require a dedicated read token.',
+      });
+    }
+    if (
+      value.COMMAND_DECK_API_TOKEN !== '' &&
+      value.COMMAND_DECK_API_TOKEN === value.ADMIN_CONSOLE_TOKEN
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['COMMAND_DECK_API_TOKEN'],
+        message: 'The Command Deck read token must not be the write token.',
+      });
+    }
   },
 );
 
@@ -490,6 +556,17 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
       port: parsed.ADMIN_CONSOLE_PORT,
       host: parsed.ADMIN_CONSOLE_HOST,
       token: parsed.ADMIN_CONSOLE_TOKEN,
+      readApi: Object.freeze({
+        token: parsed.COMMAND_DECK_API_TOKEN,
+        allowedOrigins: Object.freeze([
+          ...new Set(parsed.COMMAND_DECK_API_ALLOWED_ORIGINS),
+        ]),
+        rateLimit: parsed.COMMAND_DECK_API_RATE_LIMIT,
+        rateWindowMs: parsed.COMMAND_DECK_API_WINDOW_SECONDS * 1_000,
+        maxClockSkewMs: parsed.COMMAND_DECK_API_MAX_CLOCK_SKEW_SECONDS * 1_000,
+        replayRetentionMs:
+          parsed.COMMAND_DECK_API_MAX_CLOCK_SKEW_SECONDS * 1_000,
+      }),
     }),
     // Build identity is configuration metadata only. It is never inferred
     // from the host, package manager, or Discord content.
