@@ -80,6 +80,7 @@ $requiredReadmeLinks = @(
   'docs/DEPLOYMENT.md'
   'docs/DISCORD_SETUP.md'
   'docs/OPERATIONS.md'
+  'docs/PLATFORM_RECOVERY_VERIFICATION.md'
   'docs/RELEASES.md'
   'docs/ROADMAP.md'
   'docs/SECURITY_MODEL.md'
@@ -491,6 +492,12 @@ $trackedFiles = @(
 
 foreach ($relativePath in $trackedFiles) {
   $absolutePath = Join-Path $repositoryRoot $relativePath
+  if (-not (Test-Path -LiteralPath $absolutePath)) {
+    if ($relativePath -ne 'docs/IMPLEMENTATION_STATUS.md') {
+      $errors += "${relativePath}: tracked documentation file is missing"
+    }
+    continue
+  }
   $lines = @(Get-Content -LiteralPath $absolutePath)
 
   Add-ContentPatternErrors `
@@ -613,6 +620,20 @@ foreach ($requiredLink in $requiredReadmeLinks) {
   $escapedLink = [regex]::Escape($requiredLink).Replace('/', '[/\\]')
   if ($readmeContent -notmatch "\]\($escapedLink(?:#[^)]+)?\)") {
     $errors += "README.md: missing documentation link '$requiredLink'"
+  }
+}
+
+$implementationStatusRelativePath = 'docs/IMPLEMENTATION_STATUS.md'
+$implementationStatusPath = Join-Path $repositoryRoot $implementationStatusRelativePath
+if (-not (Test-Path -LiteralPath $implementationStatusPath)) {
+  $errors += "${implementationStatusRelativePath}: required implementation status document is missing"
+} else {
+  $implementationStatusContent = Get-Content -LiteralPath $implementationStatusPath -Raw
+  if (
+    $implementationStatusContent -notmatch
+    [regex]::Escape('](PLATFORM_RECOVERY_VERIFICATION.md)')
+  ) {
+    $errors += "${implementationStatusRelativePath}: missing platform recovery verification matrix link"
   }
 }
 

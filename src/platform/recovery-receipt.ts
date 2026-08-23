@@ -1,0 +1,158 @@
+export interface RecoveryReceiptCounts {
+  totalScenarios: number;
+  verifiedScenarios: number;
+  defectLinkedScenarios: number;
+  totalFiles: number;
+  passedFiles: number;
+  failedFiles: number;
+}
+
+export const recoveryReceiptRedactionCanary =
+  'canary-secret-value-do-not-serialize';
+
+export interface RecoveryReceipt {
+  repositoryVersion: string;
+  nodeVersion: string;
+  scenarioIds: string[];
+  testFiles: string[];
+  counts: RecoveryReceiptCounts;
+  durationMs: number;
+  exitStatus: number;
+  redactionPassed: boolean;
+}
+
+export function sanitizeRecoveryReceipt(input: unknown): RecoveryReceipt {
+  if (!isRecord(input)) {
+    throw invalidReceipt();
+  }
+
+  const repositoryVersion = input.repositoryVersion;
+  const nodeVersion = input.nodeVersion;
+  const scenarioIds = input.scenarioIds;
+  const testFiles = input.testFiles;
+  const counts = input.counts;
+  const durationMs = input.durationMs;
+  const exitStatus = input.exitStatus;
+  if (
+    !isRepositoryVersion(repositoryVersion) ||
+    !isNodeVersion(nodeVersion) ||
+    !isScenarioIds(scenarioIds) ||
+    !isTestFiles(testFiles) ||
+    !isCounts(counts) ||
+    !isNonNegativeSafeInteger(durationMs) ||
+    !isExitStatus(exitStatus) ||
+    counts.totalScenarios !== scenarioIds.length ||
+    counts.verifiedScenarios + counts.defectLinkedScenarios !==
+      counts.totalScenarios ||
+    counts.totalFiles !== testFiles.length ||
+    counts.passedFiles + counts.failedFiles !== testFiles.length
+  ) {
+    throw invalidReceipt();
+  }
+
+  const sanitizedReceipt: RecoveryReceipt = {
+    repositoryVersion,
+    nodeVersion,
+    scenarioIds: [...scenarioIds],
+    testFiles: [...testFiles],
+    counts: {
+      totalScenarios: counts.totalScenarios,
+      verifiedScenarios: counts.verifiedScenarios,
+      defectLinkedScenarios: counts.defectLinkedScenarios,
+      totalFiles: counts.totalFiles,
+      passedFiles: counts.passedFiles,
+      failedFiles: counts.failedFiles,
+    },
+    durationMs,
+    exitStatus,
+    redactionPassed: false,
+  };
+
+  return {
+    ...sanitizedReceipt,
+    redactionPassed:
+      containsCanary(input, recoveryReceiptRedactionCanary) &&
+      !JSON.stringify(sanitizedReceipt).includes(
+        recoveryReceiptRedactionCanary,
+      ),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isRepositoryVersion(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(value)
+  );
+}
+
+function isNodeVersion(value: unknown): value is string {
+  return typeof value === 'string' && /^v\d+\.\d+\.\d+$/.test(value);
+}
+
+function isScenarioIds(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (id) =>
+        typeof id === 'string' && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(id),
+    ) &&
+    new Set(value).size === value.length
+  );
+}
+
+function isTestFiles(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (path) =>
+        typeof path === 'string' &&
+        /^tests(?:\/[A-Za-z0-9._-]+)*\/[A-Za-z0-9._-]+\.test\.ts$/.test(path) &&
+        !path.split('/').some((segment) => segment === '.' || segment === '..'),
+    ) &&
+    new Set(value).size === value.length
+  );
+}
+
+function isCounts(value: unknown): value is RecoveryReceiptCounts {
+  return (
+    isRecord(value) &&
+    isNonNegativeSafeInteger(value.totalScenarios) &&
+    isNonNegativeSafeInteger(value.verifiedScenarios) &&
+    isNonNegativeSafeInteger(value.defectLinkedScenarios) &&
+    isNonNegativeSafeInteger(value.totalFiles) &&
+    isNonNegativeSafeInteger(value.passedFiles) &&
+    isNonNegativeSafeInteger(value.failedFiles)
+  );
+}
+
+function containsCanary(value: unknown, canary: string): boolean {
+  if (typeof value === 'string') {
+    return value.includes(canary);
+  }
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsCanary(entry, canary));
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return Object.values(value).some((entry) => containsCanary(entry, canary));
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isExitStatus(value: unknown): value is number {
+  return isNonNegativeSafeInteger(value) && value <= 255;
+}
+
+function invalidReceipt(): Error {
+  return new Error('Sanitized recovery receipt contains invalid evidence.');
+}

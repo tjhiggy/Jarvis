@@ -25,6 +25,10 @@ jobs:
         run: npm ci --legacy-peer-deps
       - name: Verify shipped feature inventory
         run: npm run features:check
+      - name: Verify platform recovery matrix
+        run: npm run recovery:check
+      - name: Run focused platform recovery verification
+        run: npm run recovery:verify
       - name: Run tests
         run: npm test
       - name: Build TypeScript
