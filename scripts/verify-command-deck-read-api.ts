@@ -6,6 +6,7 @@ import {
   startAdminConsole,
   type AdminConsoleSnapshot,
 } from '../src/admin/admin-console.js';
+import type { CommandDeckReadAuditEvent } from '../src/admin/command-deck-read-api.js';
 
 export interface CommandDeckReadApiReceipt {
   readonly schemaVersion: '1.0';
@@ -28,9 +29,11 @@ export async function runCommandDeckReadApiVerification(
 ): Promise<CommandDeckReadApiReceipt> {
   const now = new Date('2026-08-23T20:00:00.000Z');
   const canary = 'command-deck-secret-canary-never-retain';
+  const auditEvents: CommandDeckReadAuditEvent[] = [];
+  const responseBodies: unknown[] = [];
   const server = await startAdminConsole({
     port: 0,
-    snapshot: async () => disposableSnapshot(),
+    snapshot: async () => disposableSnapshot(canary),
     now: () => now,
     readApi: {
       token: canary,
@@ -39,6 +42,7 @@ export async function runCommandDeckReadApiVerification(
       replayRetentionMs: 60_000,
       rateLimit: 2,
       rateWindowMs: 60_000,
+      audit: (event) => auditEvents.push(event),
     },
   });
   try {
@@ -67,6 +71,7 @@ export async function runCommandDeckReadApiVerification(
         error?: { code?: string };
         schemaVersion?: string;
       };
+      responseBodies.push(body);
       return {
         id,
         status: response.status,
@@ -93,19 +98,23 @@ export async function runCommandDeckReadApiVerification(
       await exercise('valid', await request(firstId)),
       await exercise('replayed', await request(firstId)),
     ];
-    await request(randomUUID());
+    await exercise('rate_limit_warmup', await request(randomUUID()));
     scenarios.push(await exercise('rate_limited', await request(randomUUID())));
+
+    const exercisedEvidence = JSON.stringify({ responseBodies, auditEvents });
+    const redactionPassed =
+      !exercisedEvidence.includes(canary) &&
+      !/private member content|operator:|credentialed\.example|authorization|remoteAddress/i.test(
+        exercisedEvidence,
+      );
 
     const receipt: CommandDeckReadApiReceipt = {
       schemaVersion: '1.0',
       scenarios,
-      redactionPassed: true,
+      redactionPassed,
     };
     const serialized = JSON.stringify(receipt, null, 2);
-    if (
-      serialized.includes(canary) ||
-      /authorization|remoteAddress/i.test(serialized)
-    ) {
+    if (!redactionPassed || serialized.includes(canary)) {
       throw new Error(
         'Command Deck API verification produced unsafe evidence.',
       );
@@ -118,7 +127,7 @@ export async function runCommandDeckReadApiVerification(
   }
 }
 
-function disposableSnapshot(): AdminConsoleSnapshot {
+function disposableSnapshot(canary: string): AdminConsoleSnapshot {
   return {
     platform: { version: 'disposable', environment: 'verification' },
     database: 'healthy',
@@ -131,7 +140,12 @@ function disposableSnapshot(): AdminConsoleSnapshot {
     },
     integrations: { rss: 'ready', sleeper: true, github: false },
     metrics: { events: 1, failures: 0 },
-  };
+    token: canary,
+    memberId: '123456789012345678',
+    message: 'private member content',
+    prompt: 'private raw prompt',
+    url: `https://operator:${canary}@credentialed.example/feed`,
+  } as unknown as AdminConsoleSnapshot;
 }
 
 if (

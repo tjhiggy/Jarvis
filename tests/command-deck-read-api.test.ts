@@ -141,6 +141,18 @@ describe('Command Deck read request boundary', () => {
       'invalid_request',
     ],
     [
+      'date-only timestamp',
+      { timestamp: '2026-08-23' },
+      400,
+      'invalid_request',
+    ],
+    [
+      'non-canonical timestamp',
+      { timestamp: '2026-08-23 20:00:00Z' },
+      400,
+      'invalid_request',
+    ],
+    [
       'expired timestamp',
       { timestamp: '2026-08-23T19:58:59.000Z' },
       401,

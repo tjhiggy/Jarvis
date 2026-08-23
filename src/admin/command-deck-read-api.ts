@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import type { AdminConsoleSnapshot } from './admin-console.js';
 
 export interface CommandDeckReadRequest {
@@ -291,7 +291,11 @@ function boundedLabel(value: string, fallback: string): string {
 }
 
 function isIsoTimestamp(value: string | undefined): value is string {
-  return value !== undefined && Number.isFinite(Date.parse(value));
+  return (
+    value !== undefined &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
+    Number.isFinite(Date.parse(value))
+  );
 }
 
 function isUuid(value: string | undefined): value is string {
@@ -311,11 +315,9 @@ function matchesBearerToken(
   const suppliedToken = authorization?.startsWith(prefix)
     ? authorization.slice(prefix.length)
     : '';
-  const supplied = Buffer.from(suppliedToken);
-  const expected = Buffer.from(expectedToken);
-  return (
-    supplied.length === expected.length && timingSafeEqual(supplied, expected)
-  );
+  const supplied = createHash('sha256').update(suppliedToken).digest();
+  const expected = createHash('sha256').update(expectedToken).digest();
+  return timingSafeEqual(supplied, expected);
 }
 
 function classifyOrigin(
