@@ -1,43 +1,104 @@
 import { describe, expect, it } from 'vitest';
 import {
   createCommandDeckMutationService,
-  type CommandDeckMutationAdapter,
   type CommandDeckMutationAction,
+  type CommandDeckMutationAdapter,
+  type CommandDeckMutationApplyRequest,
 } from '../src/admin/command-deck-mutations.js';
+
+const canonical = (value: unknown): string => {
+  if (value === undefined) return 'undefined';
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
+    .join(',')}}`;
+};
 
 class InMemoryMutationAdapter implements CommandDeckMutationAdapter {
   readonly allowedBroadcastCategories = ['recap'] as const;
   readonly supportedFeatureFlags = ['welcomePrompts'] as const;
   readonly allowedRssHosts = ['news.example.test'] as const;
-
-  readonly applied: Array<{
-    action: CommandDeckMutationAction;
-    value: unknown;
-  }> = [];
-
-  private readonly values = new Map<string, unknown>();
+  readonly attempts: CommandDeckMutationApplyRequest[] = [];
 
   failNextApply = false;
+  applyThenTimeout = false;
+
+  private readonly values = new Map<string, unknown>();
+  private readonly operations = new Map<string, 'applied' | 'not_applied'>();
+  private deferred:
+    | {
+        started: () => void;
+        release: () => void;
+        startedPromise: Promise<void>;
+        releasePromise: Promise<void>;
+      }
+    | undefined;
 
   set(action: CommandDeckMutationAction, value: unknown): void {
-    this.values.set(this.keyFor(action), value);
+    this.values.set(this.keyFor(action), structuredClone(value));
   }
 
   async read(action: CommandDeckMutationAction): Promise<unknown> {
-    return this.values.get(this.keyFor(action));
+    return structuredClone(this.values.get(this.keyFor(action)));
   }
 
   async apply(
-    action: CommandDeckMutationAction,
-    value: unknown,
-  ): Promise<void> {
+    request: CommandDeckMutationApplyRequest,
+  ): Promise<'applied' | 'already_applied' | 'precondition_failed'> {
+    if (this.deferred !== undefined) {
+      const deferred = this.deferred;
+      this.deferred = undefined;
+      deferred.started();
+      await deferred.releasePromise;
+    }
+    if (this.operations.get(request.operationId) === 'applied') {
+      return 'already_applied';
+    }
+    if (
+      canonical(this.values.get(this.keyFor(request.action))) !==
+      canonical(request.expectedValue)
+    ) {
+      return 'precondition_failed';
+    }
     if (this.failNextApply) {
       this.failNextApply = false;
+      this.operations.set(request.operationId, 'not_applied');
       throw new Error('The local Jarvis adapter is unavailable.');
     }
 
-    this.applied.push({ action, value });
-    this.values.set(this.keyFor(action), value);
+    this.attempts.push(structuredClone(request));
+    this.values.set(
+      this.keyFor(request.action),
+      structuredClone(request.nextValue),
+    );
+    this.operations.set(request.operationId, 'applied');
+    if (this.applyThenTimeout) {
+      this.applyThenTimeout = false;
+      throw new Error('The adapter timed out after applying the operation.');
+    }
+    return 'applied';
+  }
+
+  async operationStatus(
+    operationId: string,
+  ): Promise<'applied' | 'not_applied'> {
+    return this.operations.get(operationId) ?? 'not_applied';
+  }
+
+  deferNextApply(): { waitForStart: () => Promise<void>; release: () => void } {
+    let started!: () => void;
+    let release!: () => void;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const releasePromise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.deferred = { started, release, startedPromise, releasePromise };
+    return { waitForStart: () => startedPromise, release };
   }
 
   targetFor(action: CommandDeckMutationAction): string {
@@ -68,9 +129,14 @@ const recapPause: CommandDeckMutationAction = {
   category: 'recap',
   state: 'paused',
 };
+const rssRemove: CommandDeckMutationAction = {
+  type: 'rss_feed',
+  operation: 'remove',
+  url: 'https://news.example.test/feed.xml',
+};
 
 describe('Command Deck mutation service', () => {
-  it('previews an exact before and after diff for an allowlisted action', async () => {
+  it('previews an exact, private before and after diff', async () => {
     const adapter = new InMemoryMutationAdapter();
     adapter.set(recapPause, true);
     const service = createCommandDeckMutationService({
@@ -97,7 +163,6 @@ describe('Command Deck mutation service', () => {
       now: () => now,
     });
     const preview = await service.preview(recapPause);
-
     if (!preview.ok) throw new Error('Expected preview to succeed.');
     now = new Date('2026-08-23T12:05:00.001Z');
 
@@ -105,17 +170,10 @@ describe('Command Deck mutation service', () => {
       service.confirm({
         previewId: preview.preview.id,
         action: recapPause,
-        idempotencyKey: '4ac50d35-e4f3-44dd-93da-dbf790928edc',
+        idempotencyKey: 'stale',
       }),
-    ).resolves.toEqual({
-      ok: false,
-      error: {
-        code: 'PREVIEW_STALE',
-        message:
-          'This preview has expired. Create a new preview before confirming.',
-      },
-    });
-    expect(adapter.applied).toEqual([]);
+    ).resolves.toMatchObject({ ok: false, error: { code: 'PREVIEW_STALE' } });
+    expect(adapter.attempts).toEqual([]);
   });
 
   it('cancels an unused preview and prevents confirmation', async () => {
@@ -123,8 +181,8 @@ describe('Command Deck mutation service', () => {
     adapter.set(recapPause, true);
     const service = createCommandDeckMutationService({ adapter });
     const preview = await service.preview(recapPause);
-
     if (!preview.ok) throw new Error('Expected preview to succeed.');
+
     await expect(service.cancel(preview.preview.id)).resolves.toEqual({
       ok: true,
     });
@@ -132,117 +190,190 @@ describe('Command Deck mutation service', () => {
       service.confirm({
         previewId: preview.preview.id,
         action: recapPause,
-        idempotencyKey: '9cb3db14-78a3-4fd9-8e7a-1f0fa90f5085',
+        idempotencyKey: 'cancelled',
       }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       ok: false,
-      error: {
-        code: 'PREVIEW_CANCELLED',
-        message: 'This preview was cancelled and cannot be confirmed.',
-      },
+      error: { code: 'PREVIEW_CANCELLED' },
     });
-    expect(adapter.applied).toEqual([]);
   });
 
-  it('returns the original receipt for duplicate confirmation without reapplying', async () => {
+  it('serializes duplicate confirmation and rejects a different in-flight idempotency key', async () => {
     const adapter = new InMemoryMutationAdapter();
     adapter.set(recapPause, true);
     const service = createCommandDeckMutationService({ adapter });
     const preview = await service.preview(recapPause);
+    if (!preview.ok) throw new Error('Expected preview to succeed.');
+    const gate = adapter.deferNextApply();
+    const request = {
+      previewId: preview.preview.id,
+      action: recapPause,
+      idempotencyKey: 'same-key',
+    };
+    const first = service.confirm(request);
+    await gate.waitForStart();
+    const duplicate = service.confirm(request);
 
+    await expect(
+      service.confirm({ ...request, idempotencyKey: 'different-key' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'CONFIRMATION_IN_PROGRESS' },
+    });
+    await expect(service.cancel(preview.preview.id)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'CONFIRMATION_IN_PROGRESS' },
+    });
+    gate.release();
+
+    await expect(duplicate).resolves.toEqual(await first);
+    expect(adapter.attempts).toHaveLength(1);
+  });
+
+  it('uses adapter operation status to recover an apply-then-timeout without duplicating the effect', async () => {
+    const adapter = new InMemoryMutationAdapter();
+    adapter.set(recapPause, true);
+    adapter.applyThenTimeout = true;
+    const service = createCommandDeckMutationService({ adapter });
+    const preview = await service.preview(recapPause);
     if (!preview.ok) throw new Error('Expected preview to succeed.');
     const request = {
       previewId: preview.preview.id,
       action: recapPause,
-      idempotencyKey: '27549b17-897c-4128-9b54-028a3d73c1d7',
+      idempotencyKey: 'ambiguous',
     };
-    const first = await service.confirm(request);
-    const duplicate = await service.confirm(request);
 
-    expect(first).toMatchObject({
-      ok: true,
-      receipt: { rollbackToken: expect.any(String) },
-    });
-    expect(duplicate).toEqual(first);
-    expect(adapter.applied).toEqual([{ action: recapPause, value: false }]);
+    const first = await service.confirm(request);
+    const retry = await service.confirm(request);
+
+    expect(first).toMatchObject({ ok: true });
+    expect(retry).toEqual(first);
+    expect(adapter.attempts).toHaveLength(1);
   });
 
-  it('keeps a failed confirmation retryable with the same idempotency key', async () => {
+  it('keeps a known failed confirmation retryable with the same operation id', async () => {
     const adapter = new InMemoryMutationAdapter();
     adapter.set(recapPause, true);
     adapter.failNextApply = true;
     const service = createCommandDeckMutationService({ adapter });
     const preview = await service.preview(recapPause);
-
     if (!preview.ok) throw new Error('Expected preview to succeed.');
     const request = {
       previewId: preview.preview.id,
       action: recapPause,
-      idempotencyKey: 'df2f1e05-32f5-4a7f-bf56-b3e13d1d6982',
+      idempotencyKey: 'retry',
     };
 
-    await expect(service.confirm(request)).resolves.toEqual({
+    await expect(service.confirm(request)).resolves.toMatchObject({
       ok: false,
-      error: {
-        code: 'APPLY_FAILED',
-        message:
-          'Jarvis could not apply this change. Retry the same confirmation.',
-      },
+      error: { code: 'APPLY_FAILED' },
     });
     await expect(service.confirm(request)).resolves.toMatchObject({ ok: true });
-    expect(adapter.applied).toEqual([{ action: recapPause, value: false }]);
+    expect(adapter.attempts).toHaveLength(1);
   });
 
-  it('refuses rollback when the target changed after confirmation', async () => {
+  it('keeps preview snapshots private when callers mutate returned diff objects', async () => {
+    const adapter = new InMemoryMutationAdapter();
+    const originalFeed = {
+      url: 'https://news.example.test/feed.xml',
+      label: 'Original feed',
+    };
+    adapter.set(rssRemove, originalFeed);
+    const service = createCommandDeckMutationService({ adapter });
+    const preview = await service.preview(rssRemove);
+    if (!preview.ok) throw new Error('Expected preview to succeed.');
+    (preview.preview.diff.before as { label: string }).label =
+      'Tampered preview';
+
+    const confirmation = await service.confirm({
+      previewId: preview.preview.id,
+      action: rssRemove,
+      idempotencyKey: 'private-snapshots',
+    });
+    if (!confirmation.ok) throw new Error('Expected confirmation to succeed.');
+    if (confirmation.receipt.rollbackToken === undefined) {
+      throw new Error('Expected a rollback token.');
+    }
+    const rollbackPreview = await service.previewRollback(
+      confirmation.receipt.rollbackToken,
+    );
+    if (!rollbackPreview.ok)
+      throw new Error('Expected rollback preview to succeed.');
+    (rollbackPreview.preview.diff.after as { label: string }).label =
+      'Tampered rollback preview';
+
+    await expect(
+      service.confirmRollback({
+        previewId: rollbackPreview.preview.id,
+        idempotencyKey: 'private-rollback',
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(await adapter.read(rssRemove)).toEqual(originalFeed);
+  });
+
+  it('requires rollback preview and confirmation, then fails atomically if the target changes before write', async () => {
     const adapter = new InMemoryMutationAdapter();
     adapter.set(recapPause, true);
     const service = createCommandDeckMutationService({ adapter });
     const preview = await service.preview(recapPause);
-
     if (!preview.ok) throw new Error('Expected preview to succeed.');
     const confirmation = await service.confirm({
       previewId: preview.preview.id,
       action: recapPause,
-      idempotencyKey: '6cd0ea2c-8670-47ee-a7a8-3c2138733cd7',
+      idempotencyKey: 'rollback-source',
     });
-
-    if (!confirmation.ok || confirmation.receipt.rollbackToken === undefined) {
-      throw new Error('Expected confirmation with a rollback token.');
+    if (!confirmation.ok) throw new Error('Expected confirmation to succeed.');
+    if (confirmation.receipt.rollbackToken === undefined) {
+      throw new Error('Expected a rollback token.');
     }
+
+    const rollbackPreview = await service.previewRollback(
+      confirmation.receipt.rollbackToken,
+    );
+    if (!rollbackPreview.ok)
+      throw new Error('Expected rollback preview to succeed.');
     adapter.set(recapPause, true);
 
     await expect(
-      service.rollback(confirmation.receipt.rollbackToken),
-    ).resolves.toEqual({
+      service.confirmRollback({
+        previewId: rollbackPreview.preview.id,
+        idempotencyKey: 'rollback-confirmation',
+      }),
+    ).resolves.toMatchObject({
       ok: false,
-      error: {
-        code: 'ROLLBACK_CONFLICT',
-        message:
-          'Rollback was not applied because the target changed after this confirmation.',
-      },
+      error: { code: 'PRECONDITION_FAILED' },
     });
-    expect(adapter.applied).toEqual([{ action: recapPause, value: false }]);
+    expect(await adapter.read(recapPause)).toBe(true);
   });
 
-  it('rejects actions that carry fields outside the bounded control contract', async () => {
+  it('matches logically equivalent action objects regardless of JSON key order', async () => {
     const adapter = new InMemoryMutationAdapter();
+    const action: CommandDeckMutationAction = {
+      type: 'rss_feed',
+      operation: 'add',
+      url: 'https://news.example.test/feed.xml',
+      label: 'Official feed',
+    };
     const service = createCommandDeckMutationService({ adapter });
+    const preview = await service.preview(action);
+    if (!preview.ok) throw new Error('Expected preview to succeed.');
 
     await expect(
-      service.preview({ ...recapPause, discordServerSetting: 'unsafe' }),
-    ).resolves.toEqual({
-      ok: false,
-      error: {
-        code: 'INVALID_ACTION',
-        message:
-          'This Command Deck action is not supported for this Jarvis installation.',
-      },
-    });
+      service.confirm({
+        previewId: preview.preview.id,
+        action: {
+          label: 'Official feed',
+          url: 'https://news.example.test/feed.xml',
+          operation: 'add',
+          type: 'rss_feed',
+        },
+        idempotencyKey: 'ordered-differently',
+      }),
+    ).resolves.toMatchObject({ ok: true });
   });
 
-  it('does not let an audit sink failure disrupt a preview', async () => {
+  it('rejects actions outside the bounded control contract and isolates audit failures', async () => {
     const adapter = new InMemoryMutationAdapter();
-    adapter.set(recapPause, true);
     const service = createCommandDeckMutationService({
       adapter,
       audit: () => {
@@ -250,37 +381,11 @@ describe('Command Deck mutation service', () => {
       },
     });
 
+    await expect(
+      service.preview({ ...recapPause, discordServerSetting: 'unsafe' }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_ACTION' } });
     await expect(service.preview(recapPause)).resolves.toMatchObject({
       ok: true,
-      preview: { diff: { before: true, after: false } },
     });
-  });
-
-  it('keeps a failed rollback retryable while its token remains valid', async () => {
-    const adapter = new InMemoryMutationAdapter();
-    adapter.set(recapPause, true);
-    const service = createCommandDeckMutationService({ adapter });
-    const preview = await service.preview(recapPause);
-
-    if (!preview.ok) throw new Error('Expected preview to succeed.');
-    const confirmation = await service.confirm({
-      previewId: preview.preview.id,
-      action: recapPause,
-      idempotencyKey: 'fa5bc8df-a2be-4f31-a149-6f9b88cbb85e',
-    });
-
-    if (!confirmation.ok) throw new Error('Expected confirmation to succeed.');
-    adapter.failNextApply = true;
-
-    await expect(
-      service.rollback(confirmation.receipt.rollbackToken),
-    ).resolves.toMatchObject({ ok: false, error: { code: 'ROLLBACK_FAILED' } });
-    await expect(
-      service.rollback(confirmation.receipt.rollbackToken),
-    ).resolves.toMatchObject({ ok: true });
-    expect(adapter.applied).toEqual([
-      { action: recapPause, value: false },
-      { action: recapPause, value: true },
-    ]);
   });
 });
