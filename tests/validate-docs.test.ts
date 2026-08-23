@@ -1,6 +1,13 @@
 import { execFile } from 'node:child_process';
-import { copyFile, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import {
+  chmod,
+  copyFile,
+  mkdtemp,
+  mkdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
+import { delimiter, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
@@ -15,6 +22,10 @@ describe('documentation validation', () => {
     const scriptsDirectory = join(repositoryRoot, 'scripts');
     const docsDirectory = join(repositoryRoot, 'docs');
     const commandDirectory = join(repositoryRoot, 'commands');
+    const gitShimPath = join(
+      commandDirectory,
+      process.platform === 'win32' ? 'git.cmd' : 'git',
+    );
 
     try {
       await Promise.all([
@@ -33,10 +44,15 @@ describe('documentation validation', () => {
         writeFile(join(docsDirectory, 'CONFIGURATION.md'), ''),
         writeFile(join(docsDirectory, 'DEVELOPMENT.md'), ''),
         writeFile(
-          join(commandDirectory, 'git.cmd'),
-          '@echo off\r\necho README.md\r\necho docs/IMPLEMENTATION_STATUS.md\r\n',
+          gitShimPath,
+          process.platform === 'win32'
+            ? '@echo off\r\necho README.md\r\necho docs/IMPLEMENTATION_STATUS.md\r\n'
+            : '#!/bin/sh\nprintf "%s\\n" README.md docs/IMPLEMENTATION_STATUS.md\n',
         ),
       ]);
+      if (process.platform !== 'win32') {
+        await chmod(gitShimPath, 0o755);
+      }
 
       await expect(
         executeFile(
@@ -46,8 +62,8 @@ describe('documentation validation', () => {
             cwd: repositoryRoot,
             env: {
               ...process.env,
-              PATH: `${commandDirectory};${process.env.PATH ?? ''}`,
-              Path: `${commandDirectory};${process.env.Path ?? ''}`,
+              PATH: `${commandDirectory}${delimiter}${process.env.PATH ?? ''}`,
+              Path: `${commandDirectory}${delimiter}${process.env.Path ?? ''}`,
             },
           },
         ),
