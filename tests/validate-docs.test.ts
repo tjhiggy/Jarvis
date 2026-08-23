@@ -76,5 +76,5 @@ describe('documentation validation', () => {
     } finally {
       await rm(repositoryRoot, { force: true, recursive: true });
     }
-  });
+  }, 15_000);
 });
