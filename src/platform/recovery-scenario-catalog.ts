@@ -2,6 +2,50 @@ import type { RecoveryScenario } from './recovery-verification.js';
 
 export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
   {
+    id: 'platform-version-deployment-identity',
+    group: 'platform',
+    claim:
+      'Version and deployment identity use trusted build metadata without exposing host details.',
+    evidence: 'tests/runtime-question.test.ts',
+    recovery:
+      'Confirm the reported version and build identity from trusted metadata before making a rollout decision.',
+  },
+  {
+    id: 'platform-configuration-validation',
+    group: 'platform',
+    claim:
+      'Invalid required configuration is rejected without exposing supplied secrets.',
+    evidence: 'tests/config.test.ts',
+    recovery:
+      'Correct the named configuration category and restart with approved values only.',
+  },
+  {
+    id: 'platform-feature-flags',
+    group: 'platform',
+    claim:
+      'Feature flags preserve safe defaults and reject unsupported overrides.',
+    evidence: 'tests/feature-flags.test.ts',
+    recovery:
+      'Inspect the durable feature state and restore the approved override before resuming work.',
+  },
+  {
+    id: 'platform-global-pause',
+    group: 'platform',
+    claim: 'A persisted global pause blocks broadcast delivery before posting.',
+    evidence: 'tests/broadcast-policy.test.ts',
+    recovery:
+      'Keep the global pause active until policy and destination checks are ready to resume.',
+  },
+  {
+    id: 'platform-operational-audit-records',
+    group: 'platform',
+    claim:
+      'Operational audit records accept bounded metadata and redact content.',
+    evidence: 'tests/moderation-audit.test.ts',
+    recovery:
+      'Review only bounded audit metadata while investigating an operational event.',
+  },
+  {
     id: 'storage-fresh-migration',
     group: 'storage',
     claim:
@@ -23,10 +67,11 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
     id: 'storage-reopen-idempotence',
     group: 'storage',
     claim:
-      'Reopening broadcast storage preserves durable policy without duplicating it.',
+      'Broadcast-store reopen preserves durable policy, but all-schema shared-database reopen remains unverified.',
     evidence: 'tests/broadcast-storage.test.ts',
     recovery:
-      'Close and reopen the disposable store, then confirm the durable policy remains singular.',
+      'Do not claim shared-database reopen readiness until the focused rehearsal defect is resolved.',
+    defect: '#288',
   },
   {
     id: 'storage-restart-recovery',
@@ -119,6 +164,24 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
       'Request shutdown once and wait for the active tick to drain before restart.',
   },
   {
+    id: 'scheduler-cadence-enforcement',
+    group: 'scheduler',
+    claim:
+      'Broadcast policy blocks delivery until the configured minimum cadence has elapsed.',
+    evidence: 'tests/broadcast-policy.test.ts',
+    recovery:
+      'Wait for the configured cadence window instead of forcing a duplicate delivery.',
+  },
+  {
+    id: 'scheduler-suppression-release',
+    group: 'scheduler',
+    claim:
+      'Policy-suppressed event reminders release their claim so they remain retryable.',
+    evidence: 'tests/broadcast-adopters.test.ts',
+    recovery:
+      'Keep delivery suppressed until policy resumes; the released claim can then retry safely.',
+  },
+  {
     id: 'provider-unavailable-state',
     group: 'provider',
     claim:
@@ -126,6 +189,7 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
     evidence: 'tests/ollama-service.test.ts',
     recovery:
       'Restore the provider endpoint, then rerun the focused provider health check.',
+    defect: '#289',
   },
   {
     id: 'provider-recovered-state',
@@ -135,6 +199,66 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
     evidence: 'tests/provider-contract.test.ts',
     recovery:
       'Do not mark the provider recovered until a new safe health snapshot succeeds.',
+    defect: '#289',
+  },
+  {
+    id: 'provider-openai-published-state',
+    group: 'provider',
+    claim:
+      'OpenAI service failures and retries are executable, but published unavailable-to-recovered state is not.',
+    evidence: 'tests/openai-service.test.ts',
+    recovery:
+      'Do not publish OpenAI recovery until a new safe health snapshot succeeds.',
+    defect: '#289',
+  },
+  {
+    id: 'provider-ollama-published-state',
+    group: 'provider',
+    claim:
+      'Ollama service failures are executable, but published unavailable-to-recovered state is not.',
+    evidence: 'tests/ollama-service.test.ts',
+    recovery:
+      'Do not publish Ollama recovery until a new safe health snapshot succeeds.',
+    defect: '#289',
+  },
+  {
+    id: 'provider-web-search-published-state',
+    group: 'provider',
+    claim:
+      'Web-search behavior is executable, but published unavailable-to-recovered state is not.',
+    evidence: 'tests/web-search.test.ts',
+    recovery:
+      'Do not publish web-search recovery until a new safe health snapshot succeeds.',
+    defect: '#289',
+  },
+  {
+    id: 'provider-rss-published-state',
+    group: 'provider',
+    claim:
+      'RSS client behavior is executable, but published unavailable-to-recovered state is not.',
+    evidence: 'tests/rss-notifications.test.ts',
+    recovery:
+      'Do not publish RSS recovery until a new safe health snapshot succeeds.',
+    defect: '#289',
+  },
+  {
+    id: 'provider-sleeper-published-state',
+    group: 'provider',
+    claim:
+      'Sleeper service failures are executable, but published unavailable-to-recovered state is not.',
+    evidence: 'tests/sleeper/sleeper-service.test.ts',
+    recovery:
+      'Do not publish Sleeper recovery until a new safe health snapshot succeeds.',
+    defect: '#289',
+  },
+  {
+    id: 'provider-github-published-state',
+    group: 'provider',
+    claim:
+      'GitHub service failures are executable, but published unavailable-to-recovered state is not.',
+    evidence: 'tests/github-service.test.ts',
+    recovery:
+      'Do not publish GitHub recovery until a new safe health snapshot succeeds.',
     defect: '#289',
   },
   {

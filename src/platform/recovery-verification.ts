@@ -2,6 +2,7 @@ import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 export const requiredRecoveryScenarioGroups = [
+  'platform',
   'storage',
   'scheduler',
   'provider',

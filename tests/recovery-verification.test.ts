@@ -12,6 +12,7 @@ import {
 const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
 
 const validScenarios: RecoveryScenario[] = [
+  scenario('platform-identity', 'platform'),
   scenario('storage-migration', 'storage'),
   scenario('scheduler-lease', 'scheduler'),
   scenario('provider-recovery', 'provider'),
@@ -207,6 +208,7 @@ function scenario(
 
 function fixtureScenarios(evidence: string): RecoveryScenario[] {
   return [
+    scenarioWithEvidence('platform-fixture', 'platform', evidence),
     scenarioWithEvidence('storage-fixture', 'storage', evidence),
     scenarioWithEvidence('scheduler-fixture', 'scheduler', evidence),
     scenarioWithEvidence('provider-fixture', 'provider', evidence),

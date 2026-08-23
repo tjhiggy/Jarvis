@@ -13,6 +13,11 @@ const committedMatrixPath = fileURLToPath(
   new URL('../docs/PLATFORM_RECOVERY_VERIFICATION.md', import.meta.url),
 );
 const requiredIssue279ScenarioIds = [
+  'platform-version-deployment-identity',
+  'platform-configuration-validation',
+  'platform-feature-flags',
+  'platform-global-pause',
+  'platform-operational-audit-records',
   'storage-fresh-migration',
   'storage-legacy-migration',
   'storage-reopen-idempotence',
@@ -26,8 +31,16 @@ const requiredIssue279ScenarioIds = [
   'scheduler-pause-race',
   'scheduler-retry-release',
   'scheduler-draining-shutdown',
+  'scheduler-cadence-enforcement',
+  'scheduler-suppression-release',
   'provider-unavailable-state',
   'provider-recovered-state',
+  'provider-openai-published-state',
+  'provider-ollama-published-state',
+  'provider-web-search-published-state',
+  'provider-rss-published-state',
+  'provider-sleeper-published-state',
+  'provider-github-published-state',
   'sanitization-operational-logs',
   'sanitization-operational-metrics',
   'sanitization-command-deck',
@@ -47,13 +60,27 @@ describe('recovery scenario catalog', () => {
   });
 
   it('links recovery gaps to focused defects without treating #279 as one', () => {
+    expect(defectFor('storage-reopen-idempotence')).toBe('#288');
     expect(defectFor('storage-backup-and-restore')).toBe('#288');
+    expect(defectFor('storage-integrity-check')).toBe('#288');
     expect(defectFor('storage-rollback-classification')).toBe('#288');
+    expect(defectFor('provider-unavailable-state')).toBe('#289');
     expect(defectFor('provider-recovered-state')).toBe('#289');
+    expect(defectFor('provider-openai-published-state')).toBe('#289');
+    expect(defectFor('provider-ollama-published-state')).toBe('#289');
+    expect(defectFor('provider-web-search-published-state')).toBe('#289');
+    expect(defectFor('provider-rss-published-state')).toBe('#289');
+    expect(defectFor('provider-sleeper-published-state')).toBe('#289');
+    expect(defectFor('provider-github-published-state')).toBe('#289');
     expect(defectFor('test-environment-runtime-evidence')).toBeUndefined();
     expect(
       recoveryScenarioCatalog.map((scenario) => scenario.defect),
     ).not.toContain('#279');
+    expect(
+      recoveryScenarioCatalog
+        .filter((scenario) => scenario.group === 'provider')
+        .every((scenario) => scenario.defect === '#289'),
+    ).toBe(true);
   });
 
   it('records the executed sanitized receipt as runtime evidence', () => {
