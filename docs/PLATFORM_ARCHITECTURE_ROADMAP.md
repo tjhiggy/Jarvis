@@ -108,9 +108,8 @@ Each phase requires:
 
 Jarvis will not autonomously learn from raw Discord conversations, execute
 code or shell commands, modify server settings, perform general GitHub writes,
-expose secrets, or grant arbitrary role permissions. The only approved GitHub
-write is administrator-confirmed creation of a labeled issue in one configured
-repository through `/feature-request`.
+expose secrets, grant arbitrary role permissions, or write to GitHub. Feedback
+and feature intake use native GitHub Discussions and issue forms.
 
 The planned v1.6 Sites migration is tracked in GitHub issue #263. Sites is an
 optional presentation and control surface, never the authority for Discord

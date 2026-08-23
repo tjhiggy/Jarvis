@@ -47,7 +47,6 @@
 - Persistence: Health projections contain no message content or secrets.
 - Automated: `tests/application.test.ts`, `tests/config.test.ts`, `tests/admin-console.test.ts`
 - Smoke: Run /status and /config as an administrator and compare the safe identity and readiness values with the Command Deck Overview.
-- Defects: [#285](https://github.com/tjhiggy/Jarvis/issues/285)
 
 ### Approved knowledge and FAQ
 
@@ -143,12 +142,11 @@
 
 - Status: **pass**
 - Owner: `src/github/github-service.ts`
-- Configuration: `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_TOKEN`
+- Configuration: `GITHUB_OWNER`, `GITHUB_REPO`
 - Permissions: Repository, issue, and pull-request reads are fixed to one configured repository; Jarvis has no GitHub write authority.
 - Persistence: GitHub response content is not retained by the integration.
 - Automated: `tests/github-service.test.ts`
 - Smoke: Run each /github read-only subcommand and verify requests cannot target another repository or mutate GitHub state.
-- Defects: [#284](https://github.com/tjhiggy/Jarvis/issues/284)
 
 ### Events, game nights, and crew matchmaking
 

@@ -69,7 +69,6 @@ export const shippedFeatureCatalog = [
     manualSmokeCases: [
       'Run /status and /config as an administrator and compare the safe identity and readiness values with the Command Deck Overview.',
     ],
-    defectIssues: [285],
   },
   {
     id: 'approved-knowledge-and-faq',
@@ -302,7 +301,7 @@ export const shippedFeatureCatalog = [
       commandDeckWorkflows: ['github-readiness'],
     },
     audience: 'member',
-    requiredConfiguration: ['GITHUB_OWNER', 'GITHUB_REPO', 'GITHUB_TOKEN'],
+    requiredConfiguration: ['GITHUB_OWNER', 'GITHUB_REPO'],
     permissionBoundary:
       'Repository, issue, and pull-request reads are fixed to one configured repository; Jarvis has no GitHub write authority.',
     persistenceBehavior:
@@ -311,7 +310,6 @@ export const shippedFeatureCatalog = [
     manualSmokeCases: [
       'Run each /github read-only subcommand and verify requests cannot target another repository or mutate GitHub state.',
     ],
-    defectIssues: [284],
   },
   {
     id: 'events-and-matchmaking',

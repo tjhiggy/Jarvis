@@ -79,6 +79,7 @@ $requiredReadmeLinks = @(
   'docs/DEVELOPMENT.md'
   'docs/DEPLOYMENT.md'
   'docs/DISCORD_SETUP.md'
+  'docs/DISCORD_JOURNEY_VERIFICATION.md'
   'docs/OPERATIONS.md'
   'docs/PLATFORM_RECOVERY_VERIFICATION.md'
   'docs/RELEASES.md'
@@ -634,6 +635,28 @@ if (-not (Test-Path -LiteralPath $implementationStatusPath)) {
     [regex]::Escape('](PLATFORM_RECOVERY_VERIFICATION.md)')
   ) {
     $errors += "${implementationStatusRelativePath}: missing platform recovery verification matrix link"
+  }
+  if (
+    $implementationStatusContent -notmatch
+    [regex]::Escape('](DISCORD_JOURNEY_VERIFICATION.md)')
+  ) {
+    $errors += "${implementationStatusRelativePath}: missing Discord journey verification matrix link"
+  }
+}
+foreach ($staleClaim in @(
+  'no HTTP server or inbound listening port'
+  'Polls disabled produces the eight core commands'
+)) {
+  if ($readmeContent -match [regex]::Escape($staleClaim)) {
+    $errors += "README.md: stale runtime or command-count claim '$staleClaim'"
+  }
+}
+
+$architecturePath = Join-Path $repositoryRoot 'docs/ARCHITECTURE.md'
+if (Test-Path -LiteralPath $architecturePath) {
+  $architectureContent = Get-Content -LiteralPath $architecturePath -Raw
+  if ($architectureContent -match [regex]::Escape('There is no HTTP server or inbound listening port')) {
+    $errors += 'docs/ARCHITECTURE.md: stale claim omits the loopback-only Command Deck server'
   }
 }
 

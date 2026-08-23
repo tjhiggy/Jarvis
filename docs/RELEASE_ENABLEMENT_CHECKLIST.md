@@ -17,6 +17,8 @@ change.
 - [ ] Required Discord permissions, channels, and roles verified in a test
       channel or disposable server.
 - [ ] Happy path, disabled path, retry path, and recovery path exercised.
+- [ ] `journeys:check` and `journeys:verify` pass; any configuration-dependent
+      or manual-required journey has attached deployment evidence.
 - [ ] Smoke-test transcript or screenshots attached to the issue or release.
 
 ## Release safety

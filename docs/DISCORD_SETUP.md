@@ -33,6 +33,12 @@ only their explicitly configured destinations.
 
 Users invoking commands also need Discord's **Use Application Commands** access where their role and channel overrides apply. Do not grant Administrator, Manage Channels, Manage Roles, Manage Messages, moderation, webhook, or other unimplemented powers. The bot cannot use them, and granting them is security theater with teeth.
 
+The repository's [Discord journey verification matrix](DISCORD_JOURNEY_VERIFICATION.md)
+separates synthetic command evidence from deployment reality. After registering
+commands, attach the configuration-dependent permission checks and required
+mobile smoke evidence to the release issue. A green local test cannot prove
+Discord accepted a role override or rendered a component correctly on a phone.
+
 ## Install URL
 
 Use Discord's OAuth2 URL Generator to select the `bot` and `applications.commands` scopes, add only the minimum permissions above, and let the portal calculate the permission integer. Substitute your own values into this template:

@@ -68,6 +68,8 @@ Run the full local quality set before proposing code changes:
 ```powershell
 npm run recovery:check
 npm run recovery:verify
+npm run journeys:check
+npm run journeys:verify
 npm test
 npm run lint
 npm run format:check
@@ -110,6 +112,24 @@ The matrix deliberately leaves unproven recovery behavior visible with a linked
 focused defect, rather than calling it shipped because a related test passes.
 Do not remove or soften those rows without the executable regression that closes
 the cited defect.
+
+### Discord journey verification
+
+The versioned [Discord journey verification matrix](DISCORD_JOURNEY_VERIFICATION.md)
+owns the 36-command journey inventory and the cross-cutting interactive,
+privacy, configuration, safety, and mobile obligations.
+
+- `npm run journeys:check` validates the typed catalog and committed matrix.
+- `npm run journeys:write` regenerates the matrix after an intentional catalog
+  change.
+- `npm run journeys:verify` executes the exact focused tests and writes the
+  sanitized, git-ignored `.artifacts/qa/discord-journeys.json` receipt.
+
+The receipt contains scenario IDs, repository-relative test files, aggregate
+outcomes, duration, exit status, and the redaction result only. It never reads
+live Discord credentials or production data. Automated evidence must not be
+misrepresented as live registration, deployed permission, or mobile-rendering
+evidence.
 
 The versioned [shipped-feature verification matrix](SHIPPED_FEATURE_VERIFICATION.md)
 is generated from the typed catalog. After changing command ownership,
