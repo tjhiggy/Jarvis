@@ -67,11 +67,10 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
     id: 'storage-reopen-idempotence',
     group: 'storage',
     claim:
-      'Broadcast-store reopen preserves durable policy, but all-schema shared-database reopen remains unverified.',
-    evidence: 'tests/broadcast-storage.test.ts',
+      'Shared-database reopen after all schema owners migrate is idempotent and remains integrity-clean.',
+    evidence: 'tests/storage-recovery.test.ts',
     recovery:
-      'Do not claim shared-database reopen readiness until the focused rehearsal defect is resolved.',
-    defect: '#288',
+      'Stop the runtime, reopen against a disposable copy of the shared database, and confirm every store health check still passes.',
   },
   {
     id: 'storage-restart-recovery',
@@ -86,31 +85,28 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
     id: 'storage-integrity-check',
     group: 'storage',
     claim:
-      'SQLite integrity-check rehearsal is not yet covered by an executable recovery test.',
-    evidence: 'tests/storage.test.ts',
+      'SQLite integrity-check passes on a shared database after all schema owners migrate and write synthetic sentinels.',
+    evidence: 'tests/storage-recovery.test.ts',
     recovery:
-      'Do not claim storage integrity readiness until the focused rehearsal defect is resolved.',
-    defect: '#288',
+      'Run PRAGMA integrity_check against a stopped disposable database before accepting a backup.',
   },
   {
     id: 'storage-backup-and-restore',
     group: 'storage',
     claim:
-      'Backup and restore rehearsal is not yet covered by an executable recovery test.',
-    evidence: 'tests/storage.test.ts',
+      'WAL-safe backup of the shared database restores conversation, engagement, poll, reminder, broadcast, and RSS sentinels.',
+    evidence: 'tests/storage-recovery.test.ts',
     recovery:
-      'Do not claim backup or restore readiness until the focused rehearsal defect is resolved.',
-    defect: '#288',
+      'Stop Jarvis, checkpoint WAL, copy the database, restore to a new path, and verify sentinel rows plus integrity.',
   },
   {
     id: 'storage-rollback-classification',
     group: 'storage',
     claim:
-      'Explicit rollback classification is not yet covered by an executable recovery test.',
-    evidence: 'tests/storage.test.ts',
+      'A database with a newer user_version is refused and classified as requiring a pre-upgrade backup restore.',
+    evidence: 'tests/storage-recovery.test.ts',
     recovery:
-      'Use the documented stop, backup, and restore procedure until a focused regression is added.',
-    defect: '#288',
+      'Do not open a newer schema with an older binary. Restore a pre-upgrade backup taken with a matching application version.',
   },
   {
     id: 'scheduler-overlap',
