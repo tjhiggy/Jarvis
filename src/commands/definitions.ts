@@ -260,18 +260,6 @@ interface GitHubSubcommandDefinition {
     readonly min_value: number;
   }[];
 }
-interface FeatureRequestSubcommandDefinition {
-  readonly type: 1;
-  readonly name: 'preview' | 'confirm' | 'cancel';
-  readonly description: string;
-  readonly options: readonly {
-    readonly type: 3;
-    readonly name: 'title' | 'description' | 'draft_id';
-    readonly description: string;
-    readonly required: true;
-    readonly max_length: number;
-  }[];
-}
 interface RssSubcommandDefinition {
   readonly type: 1;
   readonly name: 'add' | 'list' | 'remove' | 'pause' | 'resume';
@@ -337,7 +325,6 @@ export type CommandOptionDefinition =
   | ProactiveSubcommandDefinition
   | BirthdaySubcommandDefinition
   | GitHubSubcommandDefinition
-  | FeatureRequestSubcommandDefinition
   | RssSubcommandDefinition
   | NotificationSubcommandDefinition
   | ImageSubcommandDefinition;

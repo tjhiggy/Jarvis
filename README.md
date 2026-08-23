@@ -423,9 +423,9 @@ but green tests do not make missing coverage magically real.
 
 The [Discord journey verification matrix](docs/DISCORD_JOURNEY_VERIFICATION.md)
 maps every registered command plus interactive, privacy, configuration, and
-mobile obligations to exact focused evidence. `journeys:check` rejects stale or
-unowned rows. `journeys:verify` runs the cited tests and writes only a sanitized,
-git-ignored local receipt. Synthetic evidence does not impersonate a live
+mobile obligations to focused supporting evidence. `journeys:check` rejects stale
+or unowned rows. `journeys:verify` runs the cited tests and writes only a sanitized,
+git-ignored local receipt. Supporting tests do not impersonate a live
 Discord deployment: configuration-dependent and manual mobile checks remain
 plainly marked until their real evidence is attached.
 
