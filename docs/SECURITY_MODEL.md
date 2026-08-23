@@ -1,5 +1,16 @@
 # Security Model
 
+## Command Deck remote-read controls
+
+The remote Command Deck API is off by default and read-only. It uses a dedicated
+32-character-minimum bearer token that cannot equal the local write token,
+constant-time comparison, exact HTTPS origins, UUID replay rejection, timestamp
+freshness, bounded rate limiting, and no-store responses. Its projection excludes
+credentials, Discord message content, prompts, member identifiers, destination
+IDs, and credential-bearing URLs. Audit events retain only outcome, request ID,
+origin class, and observation time. Jarvis remains locally bound; a private
+tunnel is not permission to expose the port publicly.
+
 ## Shipboard broadcast boundary
 
 Scheduled broadcasts are not a general-purpose messaging backdoor. Every

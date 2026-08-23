@@ -1,5 +1,14 @@
 # Jarvis implementation status
 
+## v1.6 Sites migration
+
+- Sites 1/4: private responsive read-only frontend shipped.
+- Sites 2/4: authenticated local Command Deck read API implemented with safe
+  projection, replay/origin/rate controls, audit metadata, disposable verifier,
+  documentation, and localhost fallback.
+- Next: Sites 3/4 adds bounded authenticated controls without expanding Discord
+  administration authority.
+
 This matrix is the source of truth for milestone claims. A feature is only
 **shipped** when its runtime path, tests, documentation, configuration, and
 deployment evidence exist. A contract, projection, or foundation is not a

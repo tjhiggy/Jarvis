@@ -470,6 +470,14 @@ fallback. See the [command surface matrix](docs/COMMAND_SURFACE_MATRIX.md),
 [Sites Command Deck guide](docs/SITES_COMMAND_DECK.md), and the
 [v0.6.0 release checklist](docs/releases/v0.6.0.md).
 
+The v1.6 private Sites migration now includes a disabled-by-default,
+authenticated read API with a strict content-free projection, separate token,
+exact HTTPS origin allowlist, freshness and replay controls, rate limiting, and
+sanitized verification evidence. The localhost Command Deck remains the safe
+fallback while later slices add bounded controls and cutover.
+Run `npm run command-deck-api:verify` for the disposable accepted-and-denied
+request exercise before shipping changes to this boundary.
+
 ## Community Intelligence
 
 v0.7.0 adds deterministic relevance for administrator-approved knowledge,

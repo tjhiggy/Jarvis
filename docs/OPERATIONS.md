@@ -1,5 +1,18 @@
 # Operations
 
+## Private Sites Command Deck read API
+
+Keep Jarvis bound to `127.0.0.1`. Remote Sites access must traverse the approved
+private tunnel and present the dedicated read token, exact HTTPS origin, fresh
+timestamp, and unique request UUID. Verify accepted and denied paths with
+`npm run command-deck-api:verify`; its receipt is content-free release evidence.
+
+`401` means a token mismatch, stale clock, or replay. `403` means the origin is
+not allowlisted. `429` means wait for the configured window. `503` means Jarvis
+could not build a truthful snapshot. Do not weaken the policy to hide an error.
+Use the localhost Command Deck while repairing the private path, and rotate the
+read token after suspected exposure.
+
 ## Engagement controls
 
 Configured engagement administrators may run `/engagement status`, `/engagement pause`, and `/engagement resume`. Status is private and reports only configured features, aggregate record counts, scheduler state, and last-run outcome. `/engagement delete` durably queues bot-owned cards, deletes each card first, and removes the corresponding content row only afterward; administrators may provide a member ID. Its private response separates records removed immediately from card-backed records still queued for bounded retry. Pause suppresses scheduled recap, event-reminder, and trivia-result delivery without deleting records and persists until explicit resume.
