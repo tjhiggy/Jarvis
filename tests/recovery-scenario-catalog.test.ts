@@ -1,10 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import {
-  issue279AcceptanceScenarioIds,
-  recoveryScenarioCatalog,
-} from '../src/platform/recovery-scenario-catalog.js';
+import { recoveryScenarioCatalog } from '../src/platform/recovery-scenario-catalog.js';
 import {
   renderRecoveryMatrix,
   requiredRecoveryScenarioGroups,
@@ -15,6 +12,27 @@ const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
 const committedMatrixPath = fileURLToPath(
   new URL('../docs/PLATFORM_RECOVERY_VERIFICATION.md', import.meta.url),
 );
+const requiredIssue279ScenarioIds = [
+  'storage-fresh-migration',
+  'storage-legacy-migration',
+  'storage-reopen-idempotence',
+  'storage-backup-and-restore',
+  'storage-restart-recovery',
+  'storage-integrity-check',
+  'storage-rollback-classification',
+  'scheduler-overlap',
+  'scheduler-claim-fencing',
+  'scheduler-stale-lease-recovery',
+  'scheduler-pause-race',
+  'scheduler-retry-release',
+  'scheduler-draining-shutdown',
+  'provider-unavailable-state',
+  'provider-recovered-state',
+  'sanitization-operational-logs',
+  'sanitization-operational-metrics',
+  'sanitization-command-deck',
+  'test-environment-runtime-evidence',
+] as const;
 
 describe('recovery scenario catalog', () => {
   it('covers every required recovery group and issue #279 acceptance claim', () => {
@@ -24,8 +42,18 @@ describe('recovery scenario catalog', () => {
       new Set(recoveryScenarioCatalog.map((entry) => entry.group)),
     ).toEqual(new Set(requiredRecoveryScenarioGroups));
     expect(recoveryScenarioCatalog.map((entry) => entry.id)).toEqual(
-      expect.arrayContaining([...issue279AcceptanceScenarioIds]),
+      expect.arrayContaining([...requiredIssue279ScenarioIds]),
     );
+  });
+
+  it('links recovery gaps to focused defects without treating #279 as one', () => {
+    expect(defectFor('storage-backup-and-restore')).toBe('#288');
+    expect(defectFor('storage-rollback-classification')).toBe('#288');
+    expect(defectFor('provider-recovered-state')).toBe('#289');
+    expect(defectFor('test-environment-runtime-evidence')).toBeUndefined();
+    expect(
+      recoveryScenarioCatalog.map((scenario) => scenario.defect),
+    ).not.toContain('#279');
   });
 
   it('points every matrix row at committed executable Vitest evidence', () => {
@@ -40,3 +68,7 @@ describe('recovery scenario catalog', () => {
     );
   });
 });
+
+function defectFor(id: string): string | undefined {
+  return recoveryScenarioCatalog.find((scenario) => scenario.id === id)?.defect;
+}

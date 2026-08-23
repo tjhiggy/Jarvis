@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 export const requiredRecoveryScenarioGroups = [
@@ -20,9 +20,14 @@ export interface RecoveryScenario {
   defect?: string;
 }
 
+export interface RecoveryValidationOptions {
+  realpath?: (path: string) => string;
+}
+
 export function validateRecoveryScenarios(
   scenarios: readonly RecoveryScenario[],
   repositoryRoot: string,
+  options: RecoveryValidationOptions = {},
 ): void {
   const scenarioIds = new Set<string>();
   const representedGroups = new Set<RecoveryScenarioGroup>();
@@ -50,8 +55,13 @@ export function validateRecoveryScenarios(
         `Recovery scenario ${scenario.id} must include recovery guidance.`,
       );
     }
+    validateDefectReference(scenario.defect);
     rejectUnsafeText(scenario);
-    validateEvidencePath(scenario.evidence, repositoryRoot);
+    validateEvidencePath(
+      scenario.evidence,
+      repositoryRoot,
+      options.realpath ?? realpathSync,
+    );
   }
 
   for (const group of requiredRecoveryScenarioGroups) {
@@ -91,17 +101,19 @@ export function renderRecoveryMatrix(
   ].join('\n');
 }
 
-function validateEvidencePath(evidence: string, repositoryRoot: string): void {
+function validateEvidencePath(
+  evidence: string,
+  repositoryRoot: string,
+  realpath: (path: string) => string,
+): void {
   const isTestFile = /^tests(?:\/[^/]+)*\/[^/]+\.test\.ts$/.test(evidence);
+  const hasReservedPathSegment = evidence
+    .split('/')
+    .some((segment) => segment === '.' || segment === '..' || !segment);
   const resolvedRoot = resolve(repositoryRoot);
   const resolvedEvidence = resolve(resolvedRoot, evidence);
-  const relativeEvidence = relative(resolvedRoot, resolvedEvidence);
-  const isContained =
-    relativeEvidence !== '' &&
-    !relativeEvidence.startsWith('..') &&
-    !isAbsolute(relativeEvidence);
 
-  if (!isTestFile || isAbsolute(evidence) || !isContained) {
+  if (isAbsolute(evidence) || hasReservedPathSegment || !isTestFile) {
     throw new Error(
       'Evidence path must be a safe repository-relative tests/**/*.test.ts path.',
     );
@@ -109,6 +121,32 @@ function validateEvidencePath(evidence: string, repositoryRoot: string): void {
 
   if (!existsSync(resolvedEvidence)) {
     throw new Error('Evidence file does not exist.');
+  }
+
+  if (lstatSync(resolvedEvidence).isSymbolicLink()) {
+    throw new Error('Evidence path must not be a symbolic link.');
+  }
+
+  const realRoot = realpath(resolvedRoot);
+  const realEvidence = realpath(resolvedEvidence);
+  const relativeEvidence = relative(realRoot, realEvidence);
+  const isContained =
+    relativeEvidence !== '' &&
+    relativeEvidence !== '..' &&
+    !relativeEvidence.startsWith('../') &&
+    !relativeEvidence.startsWith('..\\') &&
+    !isAbsolute(relativeEvidence);
+
+  if (!isContained) {
+    throw new Error(
+      'Resolved evidence path must remain inside the repository.',
+    );
+  }
+}
+
+function validateDefectReference(defect: string | undefined): void {
+  if (defect !== undefined && !/^#[1-9]\d*$/.test(defect)) {
+    throw new Error('Defect reference must be a #<positive integer>.');
   }
 }
 

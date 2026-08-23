@@ -1,25 +1,5 @@
 import type { RecoveryScenario } from './recovery-verification.js';
 
-export const issue279AcceptanceScenarioIds = [
-  'storage-fresh-migration',
-  'storage-legacy-migration',
-  'storage-restart-recovery',
-  'storage-backup-and-restore',
-  'storage-rollback-classification',
-  'scheduler-overlap',
-  'scheduler-claim-fencing',
-  'scheduler-stale-lease-recovery',
-  'scheduler-pause-race',
-  'scheduler-retry-release',
-  'scheduler-draining-shutdown',
-  'provider-unavailable-state',
-  'provider-recovered-state',
-  'sanitization-operational-logs',
-  'sanitization-operational-metrics',
-  'sanitization-command-deck',
-  'test-environment-runtime-evidence',
-] as const;
-
 export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
   {
     id: 'storage-fresh-migration',
@@ -40,6 +20,15 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
       'Stop the runtime, back up the database, then reproduce the migration on a disposable copy.',
   },
   {
+    id: 'storage-reopen-idempotence',
+    group: 'storage',
+    claim:
+      'Reopening broadcast storage preserves durable policy without duplicating it.',
+    evidence: 'tests/broadcast-storage.test.ts',
+    recovery:
+      'Close and reopen the disposable store, then confirm the durable policy remains singular.',
+  },
+  {
     id: 'storage-restart-recovery',
     group: 'storage',
     claim:
@@ -49,6 +38,16 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
       'Restart against a disposable database and confirm only durable state reconciliation runs.',
   },
   {
+    id: 'storage-integrity-check',
+    group: 'storage',
+    claim:
+      'SQLite integrity-check rehearsal is not yet covered by an executable recovery test.',
+    evidence: 'tests/storage.test.ts',
+    recovery:
+      'Do not claim storage integrity readiness until the focused rehearsal defect is resolved.',
+    defect: '#288',
+  },
+  {
     id: 'storage-backup-and-restore',
     group: 'storage',
     claim:
@@ -56,7 +55,7 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
     evidence: 'tests/storage.test.ts',
     recovery:
       'Do not claim backup or restore readiness until the focused rehearsal defect is resolved.',
-    defect: '#279',
+    defect: '#288',
   },
   {
     id: 'storage-rollback-classification',
@@ -66,7 +65,7 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
     evidence: 'tests/storage.test.ts',
     recovery:
       'Use the documented stop, backup, and restore procedure until a focused regression is added.',
-    defect: '#279',
+    defect: '#288',
   },
   {
     id: 'scheduler-overlap',
@@ -136,7 +135,7 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
     evidence: 'tests/provider-contract.test.ts',
     recovery:
       'Do not mark the provider recovered until a new safe health snapshot succeeds.',
-    defect: '#279',
+    defect: '#289',
   },
   {
     id: 'sanitization-operational-logs',
@@ -171,6 +170,5 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
     evidence: 'tests/recovery-verification.test.ts',
     recovery:
       'Do not attach runtime evidence until the focused verifier writes a sanitized receipt.',
-    defect: '#279',
   },
 ];
