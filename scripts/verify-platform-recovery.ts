@@ -193,6 +193,7 @@ function disposableTestEnvironment(): NodeJS.ProcessEnv {
     CI: 'true',
     NODE_ENV: 'test',
     NO_COLOR: '1',
+    PLATFORM_RECOVERY_FOCUSED_RUNNER: 'true',
   };
   const allowedNames = [
     'ComSpec',

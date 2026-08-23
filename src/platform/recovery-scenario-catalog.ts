@@ -166,9 +166,9 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
     id: 'test-environment-runtime-evidence',
     group: 'sanitization',
     claim:
-      'The sanitized focused runtime receipt is pending the dedicated verifier slice.',
-    evidence: 'tests/recovery-verification.test.ts',
+      'The focused verifier writes a sanitized local receipt after executing the exact catalog evidence set.',
+    evidence: 'tests/recovery-receipt.test.ts',
     recovery:
-      'Do not attach runtime evidence until the focused verifier writes a sanitized receipt.',
+      'Run the focused verifier and inspect only its aggregate receipt and redaction result.',
   },
 ];

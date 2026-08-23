@@ -56,6 +56,19 @@ describe('recovery scenario catalog', () => {
     ).not.toContain('#279');
   });
 
+  it('records the executed sanitized receipt as runtime evidence', () => {
+    const runtimeEvidence = recoveryScenarioCatalog.find(
+      (scenario) => scenario.id === 'test-environment-runtime-evidence',
+    );
+
+    expect(runtimeEvidence).toMatchObject({
+      claim:
+        'The focused verifier writes a sanitized local receipt after executing the exact catalog evidence set.',
+      evidence: 'tests/recovery-receipt.test.ts',
+    });
+    expect(runtimeEvidence?.defect).toBeUndefined();
+  });
+
   it('points every matrix row at committed executable Vitest evidence', () => {
     for (const scenario of recoveryScenarioCatalog) {
       expect(existsSync(`${repositoryRoot}${scenario.evidence}`)).toBe(true);

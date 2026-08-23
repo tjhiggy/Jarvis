@@ -10,6 +10,8 @@ import {
 import { sanitizeRecoveryReceipt } from '../src/platform/recovery-receipt.js';
 
 const executeFile = promisify(execFile);
+const isFocusedRecoveryRun =
+  process.env.PLATFORM_RECOVERY_FOCUSED_RUNNER === 'true';
 
 describe('recovery receipt sanitization', () => {
   it('keeps only allowlisted aggregate evidence when given unsafe diagnostic data', () => {
@@ -144,26 +146,30 @@ describe('recovery receipt sanitization', () => {
     expect(result.stdout).toMatch(/platform recovery check passed/i);
   });
 
-  it('writes a content-free receipt for the unique catalog evidence files', async () => {
-    const result = await executeFile(
-      process.execPath,
-      ['--import', 'tsx', 'scripts/verify-platform-recovery.ts'],
-      { cwd: process.cwd() },
-    );
-    const serializedReceipt = await readFile(
-      resolve(process.cwd(), '.artifacts/qa/platform-recovery.json'),
-      'utf8',
-    );
-    const receipt = JSON.parse(serializedReceipt) as {
-      testFiles: string[];
-      redactionPassed: boolean;
-    };
+  it.skipIf(isFocusedRecoveryRun)(
+    'writes a content-free receipt for the unique catalog evidence files',
+    async () => {
+      const result = await executeFile(
+        process.execPath,
+        ['--import', 'tsx', 'scripts/verify-platform-recovery.ts'],
+        { cwd: process.cwd() },
+      );
+      const serializedReceipt = await readFile(
+        resolve(process.cwd(), '.artifacts/qa/platform-recovery.json'),
+        'utf8',
+      );
+      const receipt = JSON.parse(serializedReceipt) as {
+        testFiles: string[];
+        redactionPassed: boolean;
+      };
 
-    expect(result.stdout).toMatch(/platform recovery verification passed/i);
-    expect(receipt.redactionPassed).toBe(true);
-    expect(new Set(receipt.testFiles).size).toBe(receipt.testFiles.length);
-    expect(serializedReceipt).not.toMatch(
-      /canary|authorization|https?:|C:\\\\Users|private member/i,
-    );
-  }, 60_000);
+      expect(result.stdout).toMatch(/platform recovery verification passed/i);
+      expect(receipt.redactionPassed).toBe(true);
+      expect(new Set(receipt.testFiles).size).toBe(receipt.testFiles.length);
+      expect(serializedReceipt).not.toMatch(
+        /canary|authorization|https?:|C:\\\\Users|private member/i,
+      );
+    },
+    60_000,
+  );
 });
