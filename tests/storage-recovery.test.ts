@@ -283,7 +283,9 @@ describe('shared SQLite backup, restore, integrity, and rollback rehearsal', () 
 function runIntegrityCheck(databasePath: string): string {
   const database = new Database(databasePath, { readonly: true });
   try {
-    const result = database.pragma('integrity_check', { simple: true }) as string;
+    const result = database.pragma('integrity_check', {
+      simple: true,
+    }) as string;
     return result;
   } finally {
     database.close();

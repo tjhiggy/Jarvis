@@ -40,8 +40,13 @@ export class SQLiteConversationStore implements ConversationStore {
 
     mkdirSync(dirname(databasePath), { recursive: true });
     this.database = new Database(databasePath);
-    this.configure();
-    this.migrate();
+    try {
+      this.configure();
+      this.migrate();
+    } catch (error) {
+      this.database.close();
+      throw error;
+    }
 
     this.appendStatement = this.database.prepare(`
       INSERT INTO conversation_messages (
