@@ -23,6 +23,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+      - name: Install Sites Command Deck dependencies
+        run: npm ci --prefix sites/command-deck
       - name: Verify shipped feature inventory
         run: npm run features:check
       - name: Verify platform recovery matrix
@@ -37,5 +39,10 @@ jobs:
         run: npm test
       - name: Build TypeScript
         run: npm run build
+      - name: Verify Sites Command Deck
+        run: |
+          npm test --prefix sites/command-deck
+          npm run lint --prefix sites/command-deck
+          npm run build --prefix sites/command-deck
       - name: Validate documentation
         run: npm run docs:check

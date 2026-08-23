@@ -466,7 +466,8 @@ allowlisted channel by friendly name, compose a bounded MuthaShip broadcast,
 preview the exact public card, then confirm or cancel. Confirmation is
 single-use and failed delivery remains retryable. Discord `/post` remains the
 fallback. See the [command surface matrix](docs/COMMAND_SURFACE_MATRIX.md),
-[Command Deck guide](docs/ADMIN_CONSOLE.md), and
+[Command Deck guide](docs/ADMIN_CONSOLE.md),
+[Sites Command Deck guide](docs/SITES_COMMAND_DECK.md), and the
 [v0.6.0 release checklist](docs/releases/v0.6.0.md).
 
 ## Community Intelligence
