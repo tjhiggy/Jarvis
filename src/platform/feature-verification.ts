@@ -75,6 +75,9 @@ const formatCommands = (commands: readonly string[]): string =>
     ? commands.map((command) => `\`/${command}\``).join(', ')
     : 'None';
 
+export const normalizeFeatureVerificationReport = (report: string): string =>
+  report.replace(/\r\n/g, '\n');
+
 const validateRecordShape = (
   record: FeatureVerificationRecord,
 ): readonly FeatureVerificationFinding[] => {

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  normalizeFeatureVerificationReport,
   renderFeatureVerificationReport,
   validateFeatureCatalog,
   type FeatureVerificationRecord,
@@ -41,6 +42,12 @@ const repositoryFixture = async (): Promise<string> => {
 };
 
 describe('feature verification', () => {
+  it('normalizes Windows and Unix report line endings to the same value', () => {
+    expect(normalizeFeatureVerificationReport('first\r\nsecond\r\n')).toBe(
+      normalizeFeatureVerificationReport('first\nsecond\n'),
+    );
+  });
+
   it('reports an unowned registered command', async () => {
     const result = await validateFeatureCatalog(
       [record()],

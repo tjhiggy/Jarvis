@@ -5,6 +5,7 @@ import { format } from 'prettier';
 import { adminConsoleWorkflows } from '../src/admin/admin-console-workflows.js';
 import { createCommandDefinitions } from '../src/commands/definitions.js';
 import {
+  normalizeFeatureVerificationReport,
   renderFeatureVerificationReport,
   validateFeatureCatalog,
 } from '../src/platform/feature-verification.js';
@@ -70,7 +71,10 @@ if (writeMode) {
     );
   }
 
-  if (committedReport !== report) {
+  if (
+    normalizeFeatureVerificationReport(committedReport) !==
+    normalizeFeatureVerificationReport(report)
+  ) {
     throw new Error(
       'The shipped-feature report is stale. Run npm run features:write and commit the result.',
     );
