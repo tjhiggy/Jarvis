@@ -21,6 +21,9 @@
     "recovery:check": "tsx scripts/verify-platform-recovery.ts --check",
     "recovery:write": "tsx scripts/verify-platform-recovery.ts --write",
     "recovery:verify": "tsx scripts/verify-platform-recovery.ts",
+    "journeys:check": "tsx scripts/verify-discord-journeys.ts --check",
+    "journeys:write": "tsx scripts/verify-discord-journeys.ts --write",
+    "journeys:verify": "tsx scripts/verify-discord-journeys.ts",
     "model:evaluate": "node dist/src/evaluation/run-model-evaluation.js",
     "register-commands": "tsx scripts/register-commands.ts"
   },
