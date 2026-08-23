@@ -24,10 +24,12 @@
 ### Task 1: Safe versioned projection
 
 **Files:**
+
 - Create: `src/admin/command-deck-read-api.ts`
 - Create: `tests/command-deck-read-api.test.ts`
 
 **Interfaces:**
+
 - Consumes: `AdminConsoleSnapshot` from `src/admin/admin-console.ts`.
 - Produces: `CommandDeckReadSnapshot`, `projectCommandDeckReadSnapshot(snapshot, observedAt)`.
 
@@ -40,10 +42,12 @@
 ### Task 2: Authentication, replay, origin, and rate policy
 
 **Files:**
+
 - Modify: `src/admin/command-deck-read-api.ts`
 - Modify: `tests/command-deck-read-api.test.ts`
 
 **Interfaces:**
+
 - Produces: `CommandDeckReadPolicy`, `CommandDeckReadAuditEvent`, and `createCommandDeckReadBoundary(policy)` with `authorize(request, now)` and expiring in-memory request state.
 
 - [ ] **Step 1: Write failing table-driven tests** for valid loopback and allowed-origin requests plus missing bearer token, wrong token, malformed UUID, invalid timestamp, expired timestamp, future timestamp, replay, disallowed origin, absent remote origin, and fixed-window rate limit.
@@ -55,10 +59,12 @@
 ### Task 3: HTTP endpoint and local fallback
 
 **Files:**
+
 - Modify: `src/admin/admin-console.ts`
 - Modify: `tests/admin-console.test.ts`
 
 **Interfaces:**
+
 - Extends `startAdminConsole` with optional `readApi` policy and audit dependencies.
 - Serves `GET /api/v1/command-deck/snapshot` only after boundary authorization.
 
@@ -71,6 +77,7 @@
 ### Task 4: Configuration and runtime wiring
 
 **Files:**
+
 - Modify: `src/config/config.ts`
 - Modify: `src/index.ts`
 - Modify: `.env.example`
@@ -78,6 +85,7 @@
 - Modify: `tests/application.test.ts`
 
 **Interfaces:**
+
 - Adds `COMMAND_DECK_API_TOKEN`, `COMMAND_DECK_API_ALLOWED_ORIGINS`, `COMMAND_DECK_API_RATE_LIMIT`, `COMMAND_DECK_API_WINDOW_SECONDS`, and `COMMAND_DECK_API_MAX_CLOCK_SKEW_SECONDS`.
 
 - [ ] **Step 1: Write failing configuration tests** for defaults, HTTPS origin normalization, invalid origins, weak/missing token while enabled, invalid bounds, and secret separation from `ADMIN_CONSOLE_TOKEN`.
@@ -89,6 +97,7 @@
 ### Task 5: Operations documentation and disposable exercise
 
 **Files:**
+
 - Modify: `docs/SITES_COMMAND_DECK.md`
 - Modify: `docs/CONFIGURATION.md`
 - Modify: `docs/OPERATIONS.md`
@@ -101,6 +110,7 @@
 - Modify: `package.json`
 
 **Interfaces:**
+
 - Adds `npm run command-deck-api:verify`, which starts a disposable loopback console, exercises valid and denied requests, checks safe receipts, and never reads production configuration.
 
 - [ ] **Step 1: Write a failing smoke test** requiring a sanitized JSON receipt for success, malformed, unauthorized, expired, replayed, cross-origin, and rate-limited requests.
@@ -112,9 +122,11 @@
 ### Task 6: Release gate, review, PR, and issue closure
 
 **Files:**
+
 - Review all files changed from `origin/main`.
 
 **Interfaces:**
+
 - Produces PR and closure evidence for issue #276; updates parent #263.
 
 - [ ] **Step 1: Run full verification:** `npm test`, `npm run build`, `npm run lint`, `npm run format:check`, `npm run docs:check`, `npm audit --audit-level=high`, `npm run command-deck-api:verify`, and `git diff --check`.
@@ -122,4 +134,3 @@
 - [ ] **Step 3: Request independent code review** against this plan and fix every Critical or Important finding with a failing regression test first.
 - [ ] **Step 4: Push, create the PR, wait for CI, merge, delete the feature branch, and verify `main` contains the merge.**
 - [ ] **Step 5: Exercise the endpoint against a disposable Jarvis runtime**, attach sanitized receipts to #276, close #276, and update #263 with the next dependency (#275).
-

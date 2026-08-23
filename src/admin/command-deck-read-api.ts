@@ -1,9 +1,118 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { AdminConsoleSnapshot } from './admin-console.js';
 
-export type CommandDeckReadState =
-  | 'healthy'
-  | 'degraded'
-  | 'unavailable';
+export interface CommandDeckReadRequest {
+  readonly authorization?: string | undefined;
+  readonly origin?: string | undefined;
+  readonly requestId?: string | undefined;
+  readonly timestamp?: string | undefined;
+  readonly remoteAddress?: string | undefined;
+}
+
+export type CommandDeckReadFailureCode =
+  | 'invalid_request'
+  | 'unauthorized'
+  | 'expired_request'
+  | 'replayed_request'
+  | 'origin_denied'
+  | 'rate_limited';
+
+export type CommandDeckReadAuthorization =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly status: 400 | 401 | 403 | 429;
+      readonly code: CommandDeckReadFailureCode;
+    };
+
+export interface CommandDeckReadAuditEvent {
+  readonly outcome: 'authorized' | CommandDeckReadFailureCode;
+  readonly requestId?: string;
+  readonly originClass: 'loopback' | 'allowed_remote' | 'denied_remote';
+  readonly observedAt: string;
+}
+
+export interface CommandDeckReadBoundaryPolicy {
+  readonly token: string;
+  readonly allowedOrigins: readonly string[];
+  readonly maxClockSkewMs: number;
+  readonly replayRetentionMs: number;
+  readonly rateLimit: number;
+  readonly rateWindowMs: number;
+  readonly audit?: (event: CommandDeckReadAuditEvent) => void;
+}
+
+export function createCommandDeckReadBoundary(
+  policy: CommandDeckReadBoundaryPolicy,
+) {
+  const replayCache = new Map<string, number>();
+  let rateWindowStartedAt = 0;
+  let acceptedInWindow = 0;
+
+  return {
+    authorize(
+      request: CommandDeckReadRequest,
+      now: Date,
+    ): CommandDeckReadAuthorization {
+      const nowMs = now.getTime();
+      const originClass = classifyOrigin(request, policy.allowedOrigins);
+      const finish = (
+        result: CommandDeckReadAuthorization,
+      ): CommandDeckReadAuthorization => {
+        policy.audit?.({
+          outcome: result.ok ? 'authorized' : result.code,
+          ...(isUuid(request.requestId)
+            ? { requestId: request.requestId }
+            : {}),
+          originClass,
+          observedAt: now.toISOString(),
+        });
+        return result;
+      };
+
+      if (!isUuid(request.requestId) || !isIsoTimestamp(request.timestamp)) {
+        return finish({ ok: false, status: 400, code: 'invalid_request' });
+      }
+      if (!matchesBearerToken(request.authorization, policy.token)) {
+        return finish({ ok: false, status: 401, code: 'unauthorized' });
+      }
+      if (originClass === 'denied_remote') {
+        return finish({ ok: false, status: 403, code: 'origin_denied' });
+      }
+
+      const requestedAt = Date.parse(request.timestamp);
+      if (Math.abs(nowMs - requestedAt) > policy.maxClockSkewMs) {
+        return finish({ ok: false, status: 401, code: 'expired_request' });
+      }
+
+      for (const [requestId, acceptedAt] of replayCache) {
+        if (nowMs - acceptedAt > policy.replayRetentionMs) {
+          replayCache.delete(requestId);
+        }
+      }
+      if (replayCache.has(request.requestId)) {
+        return finish({ ok: false, status: 401, code: 'replayed_request' });
+      }
+
+      if (
+        rateWindowStartedAt === 0 ||
+        nowMs - rateWindowStartedAt >= policy.rateWindowMs
+      ) {
+        rateWindowStartedAt = nowMs;
+        acceptedInWindow = 0;
+      }
+      if (acceptedInWindow >= policy.rateLimit) {
+        return finish({ ok: false, status: 429, code: 'rate_limited' });
+      }
+
+      acceptedInWindow += 1;
+      replayCache.set(request.requestId, nowMs);
+      return finish({ ok: true });
+    },
+  };
+}
+
+export type CommandDeckReadState = 'healthy' | 'degraded' | 'unavailable';
 export type ConfigurationState = 'configured' | 'disabled';
 
 export interface CommandDeckReadSnapshot {
@@ -73,9 +182,7 @@ export function projectCommandDeckReadSnapshot(
       id: category.category,
       state: category.state,
       health:
-        category.health === 'ready'
-          ? ('healthy' as const)
-          : category.health,
+        category.health === 'ready' ? ('healthy' as const) : category.health,
       ...(isIsoTimestamp(category.lastSuccessAt)
         ? { lastSuccessAt: category.lastSuccessAt }
         : {}),
@@ -185,4 +292,48 @@ function boundedLabel(value: string, fallback: string): string {
 
 function isIsoTimestamp(value: string | undefined): value is string {
   return value !== undefined && Number.isFinite(Date.parse(value));
+}
+
+function isUuid(value: string | undefined): value is string {
+  return (
+    value !== undefined &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
+}
+
+function matchesBearerToken(
+  authorization: string | undefined,
+  expectedToken: string,
+): boolean {
+  const prefix = 'Bearer ';
+  const suppliedToken = authorization?.startsWith(prefix)
+    ? authorization.slice(prefix.length)
+    : '';
+  const supplied = Buffer.from(suppliedToken);
+  const expected = Buffer.from(expectedToken);
+  return (
+    supplied.length === expected.length && timingSafeEqual(supplied, expected)
+  );
+}
+
+function classifyOrigin(
+  request: CommandDeckReadRequest,
+  allowedOrigins: readonly string[],
+): CommandDeckReadAuditEvent['originClass'] {
+  if (isLoopback(request.remoteAddress) && request.origin === undefined) {
+    return 'loopback';
+  }
+  return request.origin !== undefined && allowedOrigins.includes(request.origin)
+    ? 'allowed_remote'
+    : 'denied_remote';
+}
+
+function isLoopback(address: string | undefined): boolean {
+  return (
+    address === '127.0.0.1' ||
+    address === '::1' ||
+    address === '::ffff:127.0.0.1'
+  );
 }

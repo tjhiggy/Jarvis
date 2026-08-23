@@ -55,4 +55,3 @@ in-memory and expires automatically.
 Disable the read API token and allowed origins, remove the Sites tunnel binding,
 and redeploy the previous Sites version. The local Command Deck continues to
 work throughout rollback.
-
