@@ -3,6 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
+import {
+  classifyRecoveryMatrixReadError,
+  runFocusedRecoveryEvidence,
+} from '../src/platform/recovery-focused-runner.js';
 import { sanitizeRecoveryReceipt } from '../src/platform/recovery-receipt.js';
 
 const executeFile = promisify(execFile);
@@ -19,10 +23,11 @@ describe('recovery receipt sanitization', () => {
         'tests/reminder-scheduler.test.ts',
       ],
       counts: {
-        scenarios: 2,
-        testFiles: 2,
-        passedTestFiles: 2,
-        failedTestFiles: 0,
+        totalScenarios: 2,
+        totalFiles: 2,
+        passedFiles: 2,
+        failedFiles: 0,
+        nestedCanary: canary,
       },
       durationMs: 1234,
       exitStatus: 0,
@@ -48,10 +53,10 @@ describe('recovery receipt sanitization', () => {
         'tests/reminder-scheduler.test.ts',
       ],
       counts: {
-        scenarios: 2,
-        testFiles: 2,
-        passedTestFiles: 2,
-        failedTestFiles: 0,
+        totalScenarios: 2,
+        totalFiles: 2,
+        passedFiles: 2,
+        failedFiles: 0,
       },
       durationMs: 1234,
       exitStatus: 0,
@@ -71,16 +76,62 @@ describe('recovery receipt sanitization', () => {
         scenarioIds: ['123456789012345678'],
         testFiles: ['C:\\private\\evidence.test.ts'],
         counts: {
-          scenarios: 1,
-          testFiles: 1,
-          passedTestFiles: 1,
-          failedTestFiles: 0,
+          totalScenarios: 1,
+          totalFiles: 1,
+          passedFiles: 1,
+          failedFiles: 0,
         },
         durationMs: -1,
         exitStatus: 0,
         redactionPassed: true,
       }),
     ).toThrow(/sanitized recovery receipt/i);
+  });
+
+  it('aggregates one passing and one failing unique evidence file independently', async () => {
+    const runVitest = async (testFile: string) =>
+      testFile === 'tests/failing-evidence.test.ts' ? 1 : 0;
+
+    const result = await runFocusedRecoveryEvidence(
+      [
+        {
+          id: 'storage-fresh-migration',
+          evidence: 'tests/passing-evidence.test.ts',
+        },
+        {
+          id: 'scheduler-overlap',
+          evidence: 'tests/passing-evidence.test.ts',
+        },
+        {
+          id: 'provider-unavailable-state',
+          evidence: 'tests/failing-evidence.test.ts',
+        },
+      ],
+      runVitest,
+    );
+
+    expect(result.counts).toEqual({
+      totalScenarios: 3,
+      totalFiles: 2,
+      passedFiles: 1,
+      failedFiles: 1,
+    });
+    expect(result.exitStatus).toBe(1);
+    expect(result.testFiles).toEqual([
+      'tests/failing-evidence.test.ts',
+      'tests/passing-evidence.test.ts',
+    ]);
+  });
+
+  it('distinguishes a missing recovery matrix from a sanitized read failure', () => {
+    expect(classifyRecoveryMatrixReadError({ code: 'ENOENT' }).message).toMatch(
+      /matrix is missing/i,
+    );
+    expect(
+      classifyRecoveryMatrixReadError(
+        new Error('C:\\Users\\Jim\\private\\canary-secret-value'),
+      ).message,
+    ).toBe('The platform recovery matrix could not be read.');
   });
 
   it('checks the committed recovery matrix without writing it', async () => {
@@ -114,5 +165,5 @@ describe('recovery receipt sanitization', () => {
     expect(serializedReceipt).not.toMatch(
       /canary|authorization|https?:|C:\\\\Users|private member/i,
     );
-  });
+  }, 60_000);
 });

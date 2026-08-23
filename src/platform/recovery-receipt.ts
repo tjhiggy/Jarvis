@@ -1,8 +1,8 @@
 export interface RecoveryReceiptCounts {
-  scenarios: number;
-  testFiles: number;
-  passedTestFiles: number;
-  failedTestFiles: number;
+  totalScenarios: number;
+  totalFiles: number;
+  passedFiles: number;
+  failedFiles: number;
 }
 
 export interface RecoveryReceipt {
@@ -39,9 +39,9 @@ export function sanitizeRecoveryReceipt(input: unknown): RecoveryReceipt {
     !isNonNegativeSafeInteger(durationMs) ||
     !isExitStatus(exitStatus) ||
     typeof redactionPassed !== 'boolean' ||
-    counts.scenarios !== scenarioIds.length ||
-    counts.testFiles !== testFiles.length ||
-    counts.passedTestFiles + counts.failedTestFiles !== testFiles.length
+    counts.totalScenarios !== scenarioIds.length ||
+    counts.totalFiles !== testFiles.length ||
+    counts.passedFiles + counts.failedFiles !== testFiles.length
   ) {
     throw invalidReceipt();
   }
@@ -51,7 +51,12 @@ export function sanitizeRecoveryReceipt(input: unknown): RecoveryReceipt {
     nodeVersion,
     scenarioIds: [...scenarioIds],
     testFiles: [...testFiles],
-    counts: { ...counts },
+    counts: {
+      totalScenarios: counts.totalScenarios,
+      totalFiles: counts.totalFiles,
+      passedFiles: counts.passedFiles,
+      failedFiles: counts.failedFiles,
+    },
     durationMs,
     exitStatus,
     redactionPassed,
@@ -102,10 +107,10 @@ function isTestFiles(value: unknown): value is string[] {
 function isCounts(value: unknown): value is RecoveryReceiptCounts {
   return (
     isRecord(value) &&
-    isNonNegativeSafeInteger(value.scenarios) &&
-    isNonNegativeSafeInteger(value.testFiles) &&
-    isNonNegativeSafeInteger(value.passedTestFiles) &&
-    isNonNegativeSafeInteger(value.failedTestFiles)
+    isNonNegativeSafeInteger(value.totalScenarios) &&
+    isNonNegativeSafeInteger(value.totalFiles) &&
+    isNonNegativeSafeInteger(value.passedFiles) &&
+    isNonNegativeSafeInteger(value.failedFiles)
   );
 }
 

@@ -5,6 +5,10 @@ import { dirname, resolve } from 'node:path';
 
 import { recoveryScenarioCatalog } from '../src/platform/recovery-scenario-catalog.js';
 import {
+  classifyRecoveryMatrixReadError,
+  runFocusedRecoveryEvidence,
+} from '../src/platform/recovery-focused-runner.js';
+import {
   sanitizeRecoveryReceipt,
   type RecoveryReceipt,
 } from '../src/platform/recovery-receipt.js';
@@ -62,7 +66,7 @@ async function run(): Promise<void> {
   }
 
   console.log(
-    `Platform recovery verification passed for ${receipt.counts.scenarios} scenarios and ${receipt.counts.testFiles} focused test files.`,
+    `Platform recovery verification passed for ${receipt.counts.totalScenarios} scenarios and ${receipt.counts.totalFiles} focused test files.`,
   );
 }
 
@@ -93,10 +97,8 @@ async function validateCommittedMatrix(matrix: string): Promise<void> {
   let committedMatrix: string;
   try {
     committedMatrix = await readFile(matrixPath, 'utf8');
-  } catch {
-    throw new Error(
-      'The platform recovery matrix is missing. Run npm run recovery:write.',
-    );
+  } catch (error) {
+    throw classifyRecoveryMatrixReadError(error);
   }
 
   if (committedMatrix !== matrix) {
@@ -108,27 +110,21 @@ async function validateCommittedMatrix(matrix: string): Promise<void> {
 
 async function runFocusedVerification(): Promise<RecoveryReceipt> {
   const scenarioIds = recoveryScenarioCatalog.map((scenario) => scenario.id);
-  const testFiles = [
-    ...new Set(recoveryScenarioCatalog.map((scenario) => scenario.evidence)),
-  ].sort((left, right) => left.localeCompare(right));
   const startedAt = process.hrtime.bigint();
-  const exitStatus = await runVitest(testFiles);
+  const result = await runFocusedRecoveryEvidence(
+    recoveryScenarioCatalog,
+    runVitest,
+  );
   const durationMs = Number((process.hrtime.bigint() - startedAt) / 1_000_000n);
-  const passedTestFiles = exitStatus === 0 ? testFiles.length : 0;
 
   const receipt = sanitizeRecoveryReceipt({
     repositoryVersion: await readRepositoryVersion(),
     nodeVersion: process.version,
     scenarioIds,
-    testFiles,
-    counts: {
-      scenarios: scenarioIds.length,
-      testFiles: testFiles.length,
-      passedTestFiles,
-      failedTestFiles: testFiles.length - passedTestFiles,
-    },
+    testFiles: result.testFiles,
+    counts: result.counts,
     durationMs,
-    exitStatus,
+    exitStatus: result.exitStatus,
     redactionPassed: true,
   });
   const serializedReceipt = JSON.stringify(receipt);
@@ -163,7 +159,7 @@ async function readRepositoryVersion(): Promise<string> {
   return packageManifest.version;
 }
 
-function runVitest(testFiles: readonly string[]): Promise<number> {
+function runVitest(testFile: string): Promise<number> {
   const vitestPackagePath = fileURLToPath(
     import.meta.resolve('vitest/package.json'),
   );
@@ -172,7 +168,7 @@ function runVitest(testFiles: readonly string[]): Promise<number> {
   return new Promise((resolveExitStatus, reject) => {
     const child = spawn(
       process.execPath,
-      [vitestEntrypoint, 'run', '--silent=true', ...testFiles],
+      [vitestEntrypoint, 'run', '--silent=true', testFile],
       {
         cwd: repositoryRoot,
         env: disposableTestEnvironment(),
