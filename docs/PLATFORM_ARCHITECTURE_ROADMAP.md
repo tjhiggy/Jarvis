@@ -43,7 +43,7 @@ Deck. Existing Discord command behavior remains unchanged.
 | 1.1     | Community Expansion                  | Released. Persistent teams and the bounded MuthaShip Coin ledger foundation. Trading, cards, moderation automation, and new integrations are sequenced into v1.2 and later.         |
 | 1.2     | Expansion Systems                    | Released as `v1.2.0` on 2026-08-13. Bounded moderation policies, REST/webhook boundaries, tournament policy, and GitHub Discussions-native intake.                                  |
 | 1.3     | Community Operations                 | Released as `v1.3.0` on 2026-08-13. Command Deck operations, reproducible release readiness, Docker evaluation, support tickets, dashboards, and activity reporting.                |
-| 1.4     | Economy and Progression              | Released as `v1.4.0` on 2026-08-13. Privacy-safe progression and economy foundations. The Sites migration was not completed and is carried forward to v1.6. |
+| 1.4     | Economy and Progression              | Released as `v1.4.0` on 2026-08-13. Privacy-safe progression and economy foundations. The Sites migration was not completed and is carried forward to v1.6.                         |
 | 1.5     | Community Games and Entertainment    | Released as `v1.5.0` on 2026-08-13. Bounded, allowlisted entertainment catalog foundations with explicit delivery and moderation boundaries.                                        |
 | 1.6     | Next Community Platform Enhancements | Planned. Scope is defined through the GitHub roadmap and must meet the same release gates before implementation is called shipped.                                                  |
 

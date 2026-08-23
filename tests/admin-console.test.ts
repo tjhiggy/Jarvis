@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { adminConsoleWorkflows } from '../src/admin/admin-console-workflows.js';
 import {
   startAdminConsole,
   type AdminConsoleSnapshot,
@@ -55,6 +56,9 @@ describe('admin console', () => {
     expect(page).toContain('Jarvis Command Deck');
     expect(page).toContain('aria-label="Command Deck navigation"');
     expect(page).toContain('data-view="overview"');
+    for (const workflow of adminConsoleWorkflows) {
+      expect(page).toContain(workflow.id);
+    }
     expect(page).toContain('New transmission');
     expect(page).toContain('All systems nominal');
     expect(page).toContain('/assets/command-deck/jarvis-icon.png');

@@ -16,6 +16,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "docs:check": "pwsh -NoProfile -File scripts/validate-docs.ps1",
+    "features:check": "tsx scripts/check-shipped-features.ts",
+    "features:write": "tsx scripts/check-shipped-features.ts --write",
     "model:evaluate": "node dist/src/evaluation/run-model-evaluation.js",
     "register-commands": "tsx scripts/register-commands.ts"
   },
