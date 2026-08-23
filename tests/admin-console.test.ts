@@ -6,6 +6,79 @@ import {
 } from '../src/admin/admin-console.js';
 
 describe('admin console', () => {
+  it('serves the authenticated, projected Command Deck snapshot with no-store headers', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => basicSnapshot(),
+      readApi: {
+        token: 'dedicated-read-token-with-enough-entropy',
+        allowedOrigins: [],
+        maxClockSkewMs: 60_000,
+        replayRetentionMs: 60_000,
+        rateLimit: 30,
+        rateWindowMs: 60_000,
+      },
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const endpoint = `${consoleUrl(console)}/api/v1/command-deck/snapshot`;
+    const response = await fetch(endpoint, {
+      headers: readHeaders('c248ad5f-1b62-4ed0-8caa-ab516cf9ea19'),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(await response.json()).toMatchObject({
+      schemaVersion: '1.0',
+      observedAt: '2026-08-23T20:00:00.000Z',
+      release: { version: '1.6.0', environment: 'test' },
+      audit: { state: 'ready' },
+    });
+    await console.close();
+  });
+
+  it('returns versioned safe errors for unauthorized and unsupported read API requests', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => basicSnapshot(),
+      readApi: {
+        token: 'dedicated-read-token-with-enough-entropy',
+        allowedOrigins: [],
+        maxClockSkewMs: 60_000,
+        replayRetentionMs: 60_000,
+        rateLimit: 30,
+        rateWindowMs: 60_000,
+      },
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const endpoint = `${consoleUrl(console)}/api/v1/command-deck/snapshot`;
+
+    const unauthorized = await fetch(endpoint, {
+      headers: {
+        ...readHeaders('c248ad5f-1b62-4ed0-8caa-ab516cf9ea19'),
+        authorization: 'Bearer wrong',
+      },
+    });
+    expect(unauthorized.status).toBe(401);
+    expect(await unauthorized.json()).toEqual({
+      schemaVersion: '1.0',
+      observedAt: '2026-08-23T20:00:00.000Z',
+      error: { code: 'unauthorized', message: 'Request denied.' },
+    });
+
+    const method = await fetch(endpoint, {
+      method: 'POST',
+      headers: readHeaders('624a631d-d623-42f9-ab52-613757c994fe'),
+    });
+    expect(method.status).toBe(405);
+    expect(method.headers.get('allow')).toBe('GET');
+    expect(await method.json()).toMatchObject({
+      schemaVersion: '1.0',
+      error: { code: 'method_not_allowed' },
+    });
+    await console.close();
+  });
+
   it('serves a secret-free dashboard and JSON snapshot on localhost', async () => {
     const snapshot: AdminConsoleSnapshot = {
       platform: { version: '0.2.0', environment: 'test' },
@@ -562,6 +635,37 @@ describe('admin console', () => {
     await console.close();
   });
 });
+
+function basicSnapshot(): AdminConsoleSnapshot {
+  return {
+    platform: { version: '1.6.0', environment: 'test' },
+    database: 'healthy',
+    engagement: { enabled: true, features: ['trivia'] },
+    providers: {
+      ai: 'ollama',
+      openAiConfigured: false,
+      ollamaConfigured: true,
+      webSearchConfigured: false,
+    },
+    integrations: { rss: 'ready', sleeper: true, github: false },
+    metrics: { events: 4, failures: 0 },
+  };
+}
+
+function consoleUrl(console: Awaited<ReturnType<typeof startAdminConsole>>) {
+  const address = console.server.address();
+  const port =
+    typeof address === 'object' && address !== null ? address.port : 0;
+  return `http://127.0.0.1:${port}`;
+}
+
+function readHeaders(requestId: string): Record<string, string> {
+  return {
+    authorization: 'Bearer dedicated-read-token-with-enough-entropy',
+    'x-command-deck-request-id': requestId,
+    'x-command-deck-timestamp': '2026-08-23T20:00:00.000Z',
+  };
+}
 
 function safeSnapshot(): AdminConsoleSnapshot {
   return {
