@@ -24,6 +24,7 @@
     "journeys:check": "tsx scripts/verify-discord-journeys.ts --check",
     "journeys:write": "tsx scripts/verify-discord-journeys.ts --write",
     "journeys:verify": "tsx scripts/verify-discord-journeys.ts",
+    "command-deck-api:verify": "tsx scripts/verify-command-deck-read-api.ts",
     "model:evaluate": "node dist/src/evaluation/run-model-evaluation.js",
     "register-commands": "tsx scripts/register-commands.ts"
   },

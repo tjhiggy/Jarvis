@@ -18,6 +18,13 @@ images. With `ADMIN_CONSOLE_TOKEN`, it also provides
 bounded, confirmed operator workflows. It does not expose tokens, conversation
 content, or Discord server-management controls.
 
+An optional, separately authenticated read-only API supports the private Sites
+Command Deck. It is disabled when `COMMAND_DECK_API_TOKEN` is blank and uses a
+dedicated token, exact HTTPS origin allowlist, freshness window, replay defense,
+rate limiting, metadata-only audit, and a strict safe projection. See the
+[Sites Command Deck guide](SITES_COMMAND_DECK.md). The local `/api/status` route
+remains the loopback fallback and is not the remote Sites contract.
+
 The Overview is the operator's first-stop health surface. It shows the current
 platform identity, aggregate command events and failures, feature adoption,
 integration readiness, and the next obvious action. The Operations section

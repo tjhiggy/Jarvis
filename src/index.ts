@@ -1343,6 +1343,24 @@ export const createApplication = async (
       adminConsole = await startAdminConsole({
         port: config.adminConsole.port,
         host: config.adminConsole.host,
+        readApi:
+          config.adminConsole.readApi.token === ''
+            ? undefined
+            : {
+                ...config.adminConsole.readApi,
+                audit: (event) => {
+                  logger?.info(
+                    {
+                      operation: 'command_deck_read',
+                      outcome: event.outcome,
+                      requestId: event.requestId,
+                      originClass: event.originClass,
+                      observedAt: event.observedAt,
+                    },
+                    'Command Deck read request recorded.',
+                  );
+                },
+              },
         postControl:
           config.adminConsole.token === '' || delegatedPostService === undefined
             ? undefined
