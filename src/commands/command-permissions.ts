@@ -19,7 +19,8 @@ export const commandPermissionRules: readonly CommandPermissionRule[] = [
     notes: 'Allowed channel and input checks still apply.',
   },
   {
-    command: '/forget, /reminder, /birthday, /lfg, /roles',
+    command:
+      '/forget, /reminder, /birthday, /lfg, /roles, /introduce, /suggest, /event list, /event details',
     scope: 'member',
     notes: 'User-owned data or explicitly allowlisted engagement choices only.',
   },
@@ -30,7 +31,7 @@ export const commandPermissionRules: readonly CommandPermissionRule[] = [
   },
   {
     command:
-      '/engagement, /config, /game-night, /event, /suggest, /introduce, /delegated-post',
+      '/engagement, /config, /game-night, /event create, /event cancel, /post',
     scope: 'configured-admin',
     notes:
       'Requires the configured administrator role allowlist and feature-specific gates.',

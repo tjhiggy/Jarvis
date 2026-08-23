@@ -26,4 +26,25 @@ describe('command permission contract', () => {
     expect(summary).toContain('POLL_ADMIN_USER_IDS');
     expect(summary).not.toContain('token');
   });
+
+  it('matches the registered member and administrator command boundaries', () => {
+    const member = commandPermissionRules.find(
+      (rule) => rule.scope === 'member' && rule.command.includes('/introduce'),
+    );
+    const administrator = commandPermissionRules.find(
+      (rule) =>
+        rule.scope === 'configured-admin' && rule.command.includes('/post'),
+    );
+
+    expect(member?.command).toContain('/event list');
+    expect(member?.command).toContain('/event details');
+    expect(administrator?.command).toContain('/event create');
+    expect(administrator?.command).toContain('/event cancel');
+    expect(administrator?.command).not.toContain('/delegated-post');
+    expect(
+      commandPermissionRules.some((rule) =>
+        rule.command.includes('/feature-request'),
+      ),
+    ).toBe(false);
+  });
 });

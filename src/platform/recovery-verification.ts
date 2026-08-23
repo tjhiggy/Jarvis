@@ -9,6 +9,9 @@ export const requiredRecoveryScenarioGroups = [
   'sanitization',
 ] as const;
 
+export const normalizeRecoveryMatrix = (matrix: string): string =>
+  matrix.replace(/\r\n/g, '\n');
+
 export type RecoveryScenarioGroup =
   (typeof requiredRecoveryScenarioGroups)[number];
 

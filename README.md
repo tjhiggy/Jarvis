@@ -42,8 +42,8 @@ enhancements.
 
 Jarvis does not moderate Discord, create roles, change channels, or edit content owned
 by others, execute shell commands, access arbitrary files, or grant itself tools.
-Its only GitHub write is the administrator-confirmed `/feature-request` workflow,
-which can create a labeled issue in one configured repository. The contracts in `src/extensions/contracts.ts` are inert
+Jarvis has no GitHub write capability. Feedback and feature intake use native
+GitHub Discussions and issue forms. The contracts in `src/extensions/contracts.ts` are inert
 design seams. Calling them "integrations" would be marketing with a fake
 mustache.
 
@@ -76,8 +76,9 @@ permissions, automated evidence, and a manual smoke case.
 
 ## Architecture at a glance
 
-Jarvis is a layered modular monolith with no HTTP server or inbound listening
-port:
+Jarvis is a layered modular monolith. Its Discord runtime uses the outbound
+Gateway connection, while the optional Command Deck binds an HTTP server to
+loopback only. It exposes no public ingress:
 
 1. `discord.js` receives outbound Discord Gateway events and interactions.
 2. Discord adapters derive request context and enforce server, channel, thread,
@@ -148,9 +149,12 @@ Then use this four-command local quick start:
    npm run register-commands
    ```
 
-   Polls disabled produces the eight core commands. Configuring both poll
-   credentials adds `/poll` and `/poll-close`. The script replaces only this
-   application's commands in the configured development guild.
+   The script registers the canonical definitions from
+   `src/commands/definitions.ts`; optional configuration can add gated commands.
+   The generated [shipped-feature verification matrix](docs/SHIPPED_FEATURE_VERIFICATION.md)
+   records the current inventory instead of freezing another stale count in
+   prose. The script replaces only this application's commands in the configured
+   development guild.
 
 4. Start the development watcher.
 
@@ -232,7 +236,6 @@ gate reduce risk but cannot make language-model output infallible; use
 | `/poll-close poll_id:<id>`                                                                                                     | Configured administrators close an open poll early. Available only when polls are enabled.                                                                           |
 | `/birthday set`, `/birthday show`, `/birthday delete`                                                                          | Members opt in to a month-and-day birthday announcement, view it privately, or delete it. Announcements use the configured birthday channel.                         |
 | `/github repository`, `/github issue`, `/github pull-request`                                                                  | Reads metadata from the configured GitHub repository.                                                                                                                |
-| `/feature-request preview`, `/feature-request confirm`, `/feature-request cancel`                                              | Configured administrators privately review and create one labeled issue in the approved repository. No other GitHub mutation is available.                           |
 | `/roles`                                                                                                                       | Shows the explicitly allowlisted self-service roles. Jarvis can assign only configured roles below its bot role.                                                     |
 | `/profile create`, `/profile view`, `/profile edit`, `/profile hide`, `/profile show`, `/profile delete`                       | Creates an opt-in, server-scoped crew profile through private confirmation. Hidden or missing profiles share one neutral response.                                   |
 | `/engagement proactive preview`, `/engagement proactive enable`, `/engagement proactive pause`, `/engagement proactive status` | Administrators preview or control proactive posts. Delivery is disabled by default and remains bounded by the configured activity channel, quiet hours, and cadence. |
@@ -372,10 +375,9 @@ author may run `/suggestion delete id:<id>` to remove their untriaged SQLite
 record and bot-owned card. Administrator archive is a separate moderation
 action that deliberately preserves history for the configured retention period.
 For external tooling, export this retained data through an approved read-only
-triage process. The separate `/feature-request` workflow has narrowly scoped,
-administrator-only issue-create authority for the configured repository; it
-cannot edit or close issues, manage pull requests, change labels beyond its two
-approved intake labels, or modify repository settings. `/trivia start`
+triage process. Feedback and feature intake use native GitHub Discussions and
+issue forms; Jarvis cannot create, edit, close, label, or otherwise mutate
+GitHub issues or pull requests. `/trivia start`
 opens one optional, one-minute curated local question in
 `ENGAGEMENT_ACTIVITY_CHANNEL_ID`. Answer buttons accept one human answer each,
 never mention users or roles, and return a private acknowledgement. Jarvis
@@ -396,6 +398,8 @@ The standard quality gate is:
 ```powershell
 npm run recovery:check
 npm run recovery:verify
+npm run journeys:check
+npm run journeys:verify
 npm test
 npm run lint
 npm run format:check
@@ -416,6 +420,14 @@ message content. Its counts distinguish verified scenarios from defect-linked
 scenarios. Linked recovery defects remain visible in the matrix instead of
 being waved away because a neighboring test happened to pass. Shocking concept,
 but green tests do not make missing coverage magically real.
+
+The [Discord journey verification matrix](docs/DISCORD_JOURNEY_VERIFICATION.md)
+maps every registered command plus interactive, privacy, configuration, and
+mobile obligations to focused supporting evidence. `journeys:check` rejects stale
+or unowned rows. `journeys:verify` runs the cited tests and writes only a sanitized,
+git-ignored local receipt. Supporting tests do not impersonate a live
+Discord deployment: configuration-dependent and manual mobile checks remain
+plainly marked until their real evidence is attached.
 
 `docs:check` deterministically inspects tracked Markdown and YAML, rejects
 unfinished markers and likely credentials, resolves repository links, and

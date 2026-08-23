@@ -18,6 +18,13 @@ write the local sanitized receipt. Rows linked to focused defects remain
 unverified recovery work, not shipped claims, until their executable evidence is
 added and the matrix is regenerated.
 
+The executable [Discord journey verification matrix](DISCORD_JOURNEY_VERIFICATION.md)
+owns command routing, visibility, state, authorization, configuration, and
+manual-mobile obligations. Run `npm run journeys:check` for canonical inventory
+validation and `npm run journeys:verify` for the focused synthetic evidence and
+sanitized local receipt. Configuration-dependent and manual-required rows are
+not shipped evidence until their real deployment records are attached.
+
 ## Current status
 
 | Area                              | Status                    | What is actually available                                                                                                         | What remains                                                                              |

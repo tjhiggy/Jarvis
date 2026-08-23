@@ -209,12 +209,10 @@ including the read-only MCP context contract, exist as declarations only; they
 do not implement tools or grant authority. The persona cannot grant those
 powers.
 
-The sole GitHub write boundary is `/feature-request`: a configured engagement
-administrator privately previews and confirms creation of one issue in the
-single configured repository. Jarvis supplies fixed `needs-triage` and
-`discord-request` labels. It cannot edit or close issues, mutate pull requests,
-choose arbitrary labels or repositories, or change repository settings. The
-fine-grained token should grant only repository Issues read/write access.
+Jarvis has no GitHub write boundary. The fixed-repository `/github` integration
+is read-only, and feedback or feature intake uses native GitHub Discussions and
+issue forms outside the bot runtime. Any optional fine-grained token must grant
+metadata read only.
 
 The unsupported-action classifier improves clarity and avoids wasting provider
 calls on obvious requests Jarvis cannot perform. It must never be treated as a
