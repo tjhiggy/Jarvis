@@ -181,81 +181,73 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
     id: 'provider-unavailable-state',
     group: 'provider',
     claim:
-      'An unavailable Ollama server becomes a bounded service error after retries.',
-    evidence: 'tests/ollama-service.test.ts',
+      'Published provider health snapshots report unavailable when runtime probes fail.',
+    evidence: 'tests/provider-recovery.test.ts',
     recovery:
-      'Restore the provider endpoint, then rerun the focused provider health check.',
-    defect: '#289',
+      'Restore the provider endpoint, then confirm a new safe health snapshot reports ready.',
   },
   {
     id: 'provider-recovered-state',
     group: 'provider',
     claim:
-      'Provider recovery transition is not yet covered by an executable recovery test.',
-    evidence: 'tests/provider-contract.test.ts',
+      'Published provider health snapshots transition unavailable to ready after a successful probe.',
+    evidence: 'tests/provider-recovery.test.ts',
     recovery:
       'Do not mark the provider recovered until a new safe health snapshot succeeds.',
-    defect: '#289',
   },
   {
     id: 'provider-openai-published-state',
     group: 'provider',
     claim:
-      'OpenAI service failures and retries are executable, but published unavailable-to-recovered state is not.',
-    evidence: 'tests/openai-service.test.ts',
+      'OpenAI published availability follows the safe runtime health snapshot, not configuration presence alone.',
+    evidence: 'tests/provider-recovery.test.ts',
     recovery:
       'Do not publish OpenAI recovery until a new safe health snapshot succeeds.',
-    defect: '#289',
   },
   {
     id: 'provider-ollama-published-state',
     group: 'provider',
     claim:
-      'Ollama service failures are executable, but published unavailable-to-recovered state is not.',
-    evidence: 'tests/ollama-service.test.ts',
+      'Ollama published availability follows the safe runtime health snapshot, not configuration presence alone.',
+    evidence: 'tests/provider-recovery.test.ts',
     recovery:
       'Do not publish Ollama recovery until a new safe health snapshot succeeds.',
-    defect: '#289',
   },
   {
     id: 'provider-web-search-published-state',
     group: 'provider',
     claim:
-      'Web-search behavior is executable, but published unavailable-to-recovered state is not.',
-    evidence: 'tests/web-search.test.ts',
+      'Web-search published availability follows the safe runtime health snapshot, not configuration presence alone.',
+    evidence: 'tests/provider-recovery.test.ts',
     recovery:
       'Do not publish web-search recovery until a new safe health snapshot succeeds.',
-    defect: '#289',
   },
   {
     id: 'provider-rss-published-state',
     group: 'provider',
     claim:
-      'RSS client behavior is executable, but published unavailable-to-recovered state is not.',
-    evidence: 'tests/rss-notifications.test.ts',
+      'RSS published availability follows configured-and-runtime-available health state.',
+    evidence: 'tests/provider-recovery.test.ts',
     recovery:
       'Do not publish RSS recovery until a new safe health snapshot succeeds.',
-    defect: '#289',
   },
   {
     id: 'provider-sleeper-published-state',
     group: 'provider',
     claim:
-      'Sleeper service failures are executable, but published unavailable-to-recovered state is not.',
-    evidence: 'tests/sleeper/sleeper-service.test.ts',
+      'Sleeper published availability follows the safe runtime health snapshot, not configuration presence alone.',
+    evidence: 'tests/provider-recovery.test.ts',
     recovery:
       'Do not publish Sleeper recovery until a new safe health snapshot succeeds.',
-    defect: '#289',
   },
   {
     id: 'provider-github-published-state',
     group: 'provider',
     claim:
-      'GitHub service failures are executable, but published unavailable-to-recovered state is not.',
-    evidence: 'tests/github-service.test.ts',
+      'GitHub published availability follows the safe runtime health snapshot, not configuration presence alone.',
+    evidence: 'tests/provider-recovery.test.ts',
     recovery:
       'Do not publish GitHub recovery until a new safe health snapshot succeeds.',
-    defect: '#289',
   },
   {
     id: 'sanitization-operational-logs',
