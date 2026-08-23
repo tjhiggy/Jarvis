@@ -1,11 +1,10 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import type {
   ApprovedKnowledgeCatalog,
   KnowledgeResult,
 } from './approved-knowledge.js';
 import { rankKnowledgeResults } from './approved-knowledge.js';
+import { openSqliteDatabase } from '../storage/open-sqlite-database.js';
 
 export interface KnowledgeAdminEntry {
   readonly id: string;
@@ -19,11 +18,9 @@ export class SQLiteKnowledgeApprovalStore {
   private readonly database: Database.Database;
 
   constructor(databasePath: string) {
-    if (databasePath !== ':memory:')
-      mkdirSync(dirname(databasePath), { recursive: true });
-    this.database = new Database(databasePath);
-    this.database.pragma('journal_mode = WAL');
-    this.database.exec(`
+    this.database = openSqliteDatabase(databasePath);
+    try {
+      this.database.exec(`
       CREATE TABLE IF NOT EXISTS knowledge_approvals (
         guild_id TEXT NOT NULL,
         entry_id TEXT NOT NULL,
@@ -32,6 +29,10 @@ export class SQLiteKnowledgeApprovalStore {
         PRIMARY KEY (guild_id, entry_id)
       )
     `);
+    } catch (error) {
+      this.database.close();
+      throw error;
+    }
   }
 
   async list(

@@ -1,5 +1,3 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import {
   ReminderActiveLimitError,
@@ -13,6 +11,7 @@ import type {
   ReminderStatusCounts,
   ReminderView,
 } from './reminder-types.js';
+import { openSqliteDatabase } from '../storage/open-sqlite-database.js';
 
 interface ReminderRow {
   id: string;
@@ -48,10 +47,14 @@ export class SQLiteReminderStore implements ReminderStore {
   private closed = false;
 
   constructor(databasePath: string) {
-    mkdirSync(dirname(databasePath), { recursive: true });
-    this.database = new Database(databasePath);
-    this.configure();
-    this.migrate();
+    this.database = openSqliteDatabase(databasePath);
+    try {
+      this.migrate();
+    } catch (error) {
+      this.database.close();
+      this.closed = true;
+      throw error;
+    }
     this.createTransaction = this.database.transaction(
       (input: CreateReminderInput, activeLimit: number): ReminderView => {
         const activeCount = this.database
@@ -428,13 +431,6 @@ export class SQLiteReminderStore implements ReminderStore {
       this.database.close();
       this.closed = true;
     }
-  }
-
-  private configure(): void {
-    this.database.pragma('journal_mode = WAL');
-    this.database.pragma('foreign_keys = ON');
-    this.database.pragma('busy_timeout = 5000');
-    this.database.pragma('synchronous = NORMAL');
   }
 
   private migrate(): void {
