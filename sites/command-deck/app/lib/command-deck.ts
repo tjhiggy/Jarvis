@@ -37,6 +37,11 @@ export type OverallSummary = {
   attentionCount: number;
 };
 
+export type OverviewCopy = {
+  lead: string;
+  follow: string;
+};
+
 const serviceStates = new Set<ServiceState>([
   'healthy',
   'degraded',
@@ -278,4 +283,15 @@ export function getOverallSummary(
   )
     return { state: 'degraded', label: 'Attention needed', attentionCount };
   return { state: 'healthy', label: 'Operational', attentionCount };
+}
+
+export function getOverviewCopy(state: ServiceState): OverviewCopy {
+  if (state === 'unavailable')
+    return {
+      lead: 'A system is offline.',
+      follow: 'The deck has the receipts.',
+    };
+  if (state === 'degraded' || state === 'stale')
+    return { lead: 'The ship is moving.', follow: 'A system needs eyes.' };
+  return { lead: 'The ship is steady.', follow: 'All systems are nominal.' };
 }

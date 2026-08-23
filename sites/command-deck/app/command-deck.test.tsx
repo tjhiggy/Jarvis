@@ -8,6 +8,7 @@ import {
   commandDeckFixture,
   getCommandDeckSnapshot,
   getOverallSummary,
+  getOverviewCopy,
   getSnapshotFreshness,
   validateCommandDeckSnapshot,
 } from './lib/command-deck';
@@ -75,6 +76,15 @@ describe('Command Deck snapshot contract', () => {
       label: 'Service disruption',
       attentionCount: 2,
     });
+  });
+
+  it.each([
+    ['healthy', 'All systems are nominal.'],
+    ['degraded', 'A system needs eyes.'],
+    ['stale', 'A system needs eyes.'],
+    ['unavailable', 'The deck has the receipts.'],
+  ] as const)('derives truthful %s overview copy', (state, expected) => {
+    expect(getOverviewCopy(state).follow).toBe(expected);
   });
 });
 

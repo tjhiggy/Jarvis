@@ -5,6 +5,7 @@ import { useState } from 'react';
 import {
   getCommandDeckSnapshot,
   getOverallSummary,
+  getOverviewCopy,
   getSnapshotFreshness,
   type ReadOnlyArea,
   type ResilientViewState,
@@ -31,15 +32,16 @@ const stateLabels = {
 function Overview() {
   const freshness = getSnapshotFreshness(snapshot);
   const summary = getOverallSummary(snapshot);
+  const overviewCopy = getOverviewCopy(summary.state);
   return (
     <>
       <div className="banner">
         <div>
           <p className="eyebrow">Platform intelligence</p>
           <h2>
-            A system is offline.
+            {overviewCopy.lead}
             <br />
-            The deck has the receipts.
+            {overviewCopy.follow}
           </h2>
           <p>
             Jarvis is connected, community services are active, and the latest
