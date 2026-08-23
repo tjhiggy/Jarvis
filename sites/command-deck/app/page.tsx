@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useState } from 'react';
 import {
   getCommandDeckSnapshot,
+  getOverallSummary,
   getSnapshotFreshness,
   type ReadOnlyArea,
   type ResilientViewState,
@@ -29,15 +30,16 @@ const stateLabels = {
 
 function Overview() {
   const freshness = getSnapshotFreshness(snapshot);
+  const summary = getOverallSummary(snapshot);
   return (
     <>
       <div className="banner">
         <div>
           <p className="eyebrow">Platform intelligence</p>
           <h2>
-            The ship is steady.
+            A system is offline.
             <br />
-            One system needs eyes.
+            The deck has the receipts.
           </h2>
           <p>
             Jarvis is connected, community services are active, and the latest
@@ -45,23 +47,23 @@ function Overview() {
           </p>
         </div>
         <div className="banner-stat">
-          <strong>99.98%</strong>
-          <span>Platform availability</span>
+          <strong>{summary.attentionCount}</strong>
+          <span>Systems need attention</span>
         </div>
       </div>
       <section className="status-strip" aria-label="Current platform summary">
         <article>
-          <span className="status-icon healthy">✓</span>
+          <span className={`status-icon ${summary.state}`}>!</span>
           <div>
             <small>Overall status</small>
-            <strong>Operational</strong>
+            <strong>{summary.label}</strong>
           </div>
         </article>
         <article>
           <span className="status-icon degraded">!</span>
           <div>
             <small>Open attention</small>
-            <strong>1 integration</strong>
+            <strong>{summary.attentionCount} integrations</strong>
           </div>
         </article>
         <article>
@@ -301,6 +303,7 @@ export default function Home() {
               key={item}
               className={activeArea === item ? 'active' : ''}
               onClick={() => setActiveArea(item)}
+              aria-pressed={activeArea === item}
             >
               <span aria-hidden="true">
                 {String(index + 1).padStart(2, '0')}

@@ -7,6 +7,7 @@ import Home, { ResilientState } from './page';
 import {
   commandDeckFixture,
   getCommandDeckSnapshot,
+  getOverallSummary,
   getSnapshotFreshness,
   validateCommandDeckSnapshot,
 } from './lib/command-deck';
@@ -50,6 +51,31 @@ describe('Command Deck snapshot contract', () => {
       }),
     ).toThrow(/contract version/i);
   });
+
+  it.each([
+    [{ ...commandDeckFixture, generatedAt: 'not-a-date' }, /generatedAt/i],
+    [
+      { ...commandDeckFixture, operationStates: ['kaboom'] },
+      /operation state/i,
+    ],
+    [
+      {
+        ...commandDeckFixture,
+        services: [{ ...commandDeckFixture.services[0], state: 'mystery' }],
+      },
+      /service state/i,
+    ],
+  ])('rejects malformed runtime payloads', (payload, message) => {
+    expect(() => validateCommandDeckSnapshot(payload)).toThrow(message);
+  });
+
+  it('derives the honest overall state from service health', () => {
+    expect(getOverallSummary(commandDeckFixture)).toEqual({
+      state: 'unavailable',
+      label: 'Service disruption',
+      attentionCount: 2,
+    });
+  });
 });
 
 describe('Command Deck overview', () => {
@@ -71,6 +97,7 @@ describe('Command Deck overview', () => {
 
     expect(screen.getByText(/data delayed/i)).toBeInTheDocument();
     expect(screen.getByText(/^unavailable$/i)).toBeInTheDocument();
+    expect(screen.getByText('Service disruption')).toBeInTheDocument();
     expect(screen.getByText(/snapshot age: \d+ minutes/i)).toBeInTheDocument();
     expect(screen.queryByText(/token|secret|prompt/i)).not.toBeInTheDocument();
   });
@@ -86,6 +113,10 @@ describe('Command Deck overview', () => {
       ['Settings', 'Configuration posture'],
     ]) {
       fireEvent.click(screen.getByRole('button', { name: area }));
+      expect(screen.getByRole('button', { name: area })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
       expect(
         screen.getByRole('heading', { name: heading }),
       ).toBeInTheDocument();

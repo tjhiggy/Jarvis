@@ -31,6 +31,38 @@ export type CommandDeckSnapshot = {
   }>;
 };
 
+export type OverallSummary = {
+  state: ServiceState;
+  label: string;
+  attentionCount: number;
+};
+
+const serviceStates = new Set<ServiceState>([
+  'healthy',
+  'degraded',
+  'stale',
+  'unavailable',
+]);
+const resilientViewStates = new Set<ResilientViewState>([
+  'loading',
+  'empty',
+  'unavailable',
+  'unauthorized',
+]);
+const readOnlyAreas: ReadOnlyArea[] = [
+  'Community',
+  'Broadcasts',
+  'Integrations',
+  'Settings',
+];
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim().length > 0;
+const isNonNegativeNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
 const cards = (...values: Array<[string, string, string]>) =>
   values.map(([name, metric, state]) => ({ name, metric, state }));
 
@@ -130,25 +162,78 @@ export const commandDeckFixture: CommandDeckSnapshot = {
 export function validateCommandDeckSnapshot(
   value: unknown,
 ): CommandDeckSnapshot {
-  if (!value || typeof value !== 'object')
-    throw new Error('Snapshot is required.');
-  const snapshot = value as Partial<CommandDeckSnapshot>;
+  if (!isRecord(value)) throw new Error('Snapshot is required.');
+  const snapshot = value;
   if (snapshot.contractVersion !== '1.0')
     throw new Error('Unsupported contract version.');
-  const areas = snapshot.areas;
   if (
-    !snapshot.release ||
-    !Array.isArray(snapshot.services) ||
-    !snapshot.activity ||
-    !areas ||
-    !['Community', 'Broadcasts', 'Integrations', 'Settings'].every((area) =>
-      Array.isArray(areas[area as ReadOnlyArea]?.cards),
-    ) ||
-    !Array.isArray(snapshot.operationStates) ||
-    !Array.isArray(snapshot.timeline)
-  ) {
-    throw new Error('Snapshot is incomplete.');
+    !isNonEmptyString(snapshot.generatedAt) ||
+    !Number.isFinite(Date.parse(snapshot.generatedAt))
+  )
+    throw new Error('Snapshot generatedAt must be a valid timestamp.');
+
+  if (!isRecord(snapshot.release)) throw new Error('Release is incomplete.');
+  for (const field of ['version', 'environment', 'commit']) {
+    if (!isNonEmptyString(snapshot.release[field]))
+      throw new Error(`Release ${field} is required.`);
   }
+
+  if (!Array.isArray(snapshot.services))
+    throw new Error('Services are required.');
+  for (const service of snapshot.services) {
+    if (!isRecord(service)) throw new Error('Service entry is invalid.');
+    if (!serviceStates.has(service.state as ServiceState))
+      throw new Error('Service state is invalid.');
+    for (const field of ['name', 'detail', 'metric']) {
+      if (!isNonEmptyString(service[field]))
+        throw new Error(`Service ${field} is required.`);
+    }
+  }
+
+  if (!isRecord(snapshot.activity)) throw new Error('Activity is required.');
+  if (
+    !isNonNegativeNumber(snapshot.activity.events) ||
+    !isNonNegativeNumber(snapshot.activity.failures) ||
+    !isNonNegativeNumber(snapshot.activity.windowDays) ||
+    snapshot.activity.windowDays === 0
+  )
+    throw new Error('Activity metrics are invalid.');
+
+  if (!isRecord(snapshot.areas)) throw new Error('Areas are required.');
+  for (const areaName of readOnlyAreas) {
+    const area = snapshot.areas[areaName];
+    if (!isRecord(area) || !Array.isArray(area.cards))
+      throw new Error(`${areaName} area is incomplete.`);
+    for (const field of ['eyebrow', 'title', 'intro']) {
+      if (!isNonEmptyString(area[field]))
+        throw new Error(`${areaName} ${field} is required.`);
+    }
+    for (const card of area.cards) {
+      if (!isRecord(card)) throw new Error(`${areaName} card is invalid.`);
+      for (const field of ['name', 'metric', 'state']) {
+        if (!isNonEmptyString(card[field]))
+          throw new Error(`${areaName} card ${field} is required.`);
+      }
+    }
+  }
+
+  if (!Array.isArray(snapshot.operationStates))
+    throw new Error('Operation states are required.');
+  for (const state of snapshot.operationStates) {
+    if (!resilientViewStates.has(state as ResilientViewState))
+      throw new Error('Operation state is invalid.');
+  }
+
+  if (!Array.isArray(snapshot.timeline))
+    throw new Error('Timeline is required.');
+  for (const event of snapshot.timeline) {
+    if (!isRecord(event)) throw new Error('Timeline event is invalid.');
+    if (!isNonEmptyString(event.event) || !isNonEmptyString(event.source))
+      throw new Error('Timeline event is incomplete.');
+    if (event.outcome !== 'success' && event.outcome !== 'review')
+      throw new Error('Timeline outcome is invalid.');
+  }
+
   return snapshot as CommandDeckSnapshot;
 }
 
@@ -172,4 +257,25 @@ export function getSnapshotFreshness(
     ageMinutes,
     state: ageMinutes > 10 ? ('stale' as const) : ('fresh' as const),
   };
+}
+
+export function getOverallSummary(
+  snapshot: CommandDeckSnapshot,
+): OverallSummary {
+  const attentionCount = snapshot.services.filter(
+    ({ state }) => state !== 'healthy',
+  ).length;
+  if (snapshot.services.some(({ state }) => state === 'unavailable'))
+    return {
+      state: 'unavailable',
+      label: 'Service disruption',
+      attentionCount,
+    };
+  if (
+    snapshot.services.some(
+      ({ state }) => state === 'degraded' || state === 'stale',
+    )
+  )
+    return { state: 'degraded', label: 'Attention needed', attentionCount };
+  return { state: 'healthy', label: 'Operational', attentionCount };
 }
