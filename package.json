@@ -18,6 +18,9 @@
     "docs:check": "pwsh -NoProfile -File scripts/validate-docs.ps1",
     "features:check": "tsx scripts/check-shipped-features.ts",
     "features:write": "tsx scripts/check-shipped-features.ts --write",
+    "recovery:check": "tsx scripts/verify-platform-recovery.ts --check",
+    "recovery:write": "tsx scripts/verify-platform-recovery.ts --write",
+    "recovery:verify": "tsx scripts/verify-platform-recovery.ts",
     "model:evaluate": "node dist/src/evaluation/run-model-evaluation.js",
     "register-commands": "tsx scripts/register-commands.ts"
   },

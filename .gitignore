@@ -8,6 +8,7 @@ node_modules/
 dist/
 coverage/
 data/
+.artifacts/qa/
 
 # Local databases and logs
 *.db
