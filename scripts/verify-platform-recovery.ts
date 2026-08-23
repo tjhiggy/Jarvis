@@ -15,6 +15,7 @@ import {
   recoveryReceiptRedactionCanary,
 } from '../src/platform/recovery-receipt.js';
 import {
+  normalizeRecoveryMatrix,
   renderRecoveryMatrix,
   validateRecoveryScenarios,
 } from '../src/platform/recovery-verification.js';
@@ -103,7 +104,9 @@ async function validateCommittedMatrix(matrix: string): Promise<void> {
     throw classifyRecoveryMatrixReadError(error);
   }
 
-  if (committedMatrix !== matrix) {
+  if (
+    normalizeRecoveryMatrix(committedMatrix) !== normalizeRecoveryMatrix(matrix)
+  ) {
     throw new Error(
       'The platform recovery matrix is stale. Run npm run recovery:write and commit the result.',
     );

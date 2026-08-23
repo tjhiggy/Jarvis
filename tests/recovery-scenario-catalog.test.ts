@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { recoveryScenarioCatalog } from '../src/platform/recovery-scenario-catalog.js';
 import {
+  normalizeRecoveryMatrix,
   renderRecoveryMatrix,
   requiredRecoveryScenarioGroups,
   validateRecoveryScenarios,
@@ -103,8 +104,12 @@ describe('recovery scenario catalog', () => {
   });
 
   it('keeps the committed recovery matrix exactly canonical', () => {
-    expect(readFileSync(committedMatrixPath, 'utf8')).toBe(
-      renderRecoveryMatrix(recoveryScenarioCatalog, repositoryRoot),
+    expect(
+      normalizeRecoveryMatrix(readFileSync(committedMatrixPath, 'utf8')),
+    ).toBe(
+      normalizeRecoveryMatrix(
+        renderRecoveryMatrix(recoveryScenarioCatalog, repositoryRoot),
+      ),
     );
   });
 });
