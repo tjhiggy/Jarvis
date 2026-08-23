@@ -188,7 +188,7 @@ p {
   color: #c8c0e9;
   font-size: 11px;
 }
-.top-actions button {
+.operator-mark {
   width: 40px;
   height: 40px;
   padding: 3px;
@@ -196,7 +196,7 @@ p {
   border-radius: 50%;
   background: #171623;
 }
-.top-actions img {
+.operator-mark img {
   border-radius: 50%;
 }
 .banner {
@@ -385,6 +385,14 @@ p {
   background: var(--warning);
   box-shadow: 0 0 10px rgba(255, 180, 84, 0.5);
 }
+.service-orb.stale {
+  background: var(--warning);
+  box-shadow: 0 0 10px rgba(255, 180, 84, 0.5);
+}
+.service-orb.unavailable {
+  background: #f36b9e;
+  box-shadow: 0 0 10px rgba(243, 107, 158, 0.45);
+}
 .state {
   padding: 5px 8px;
   border-radius: 999px;
@@ -399,6 +407,17 @@ p {
 .state.degraded {
   color: var(--warning);
   background: rgba(255, 180, 84, 0.08);
+}
+.state.stale {
+  color: var(--warning);
+  background: rgba(255, 180, 84, 0.08);
+}
+.state.unavailable {
+  color: #f36b9e;
+  background: rgba(243, 107, 158, 0.08);
+}
+.panel-heading > .stale {
+  color: var(--warning);
 }
 .release-badge {
   color: var(--cyan) !important;
@@ -702,5 +721,6 @@ p {
   }
   * {
     transition: none !important;
+    animation: none !important;
   }
 }

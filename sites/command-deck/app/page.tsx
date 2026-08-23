@@ -2,7 +2,14 @@
 
 import Image from 'next/image';
 import { useState } from 'react';
-import { commandDeckFixture as snapshot } from './lib/command-deck';
+import {
+  getCommandDeckSnapshot,
+  getSnapshotFreshness,
+  type ReadOnlyArea,
+  type ResilientViewState,
+} from './lib/command-deck';
+
+const snapshot = getCommandDeckSnapshot();
 
 const navigation = [
   'Overview',
@@ -21,6 +28,7 @@ const stateLabels = {
 };
 
 function Overview() {
+  const freshness = getSnapshotFreshness(snapshot);
   return (
     <>
       <div className="banner">
@@ -78,7 +86,9 @@ function Overview() {
               <p className="eyebrow">Live systems</p>
               <h2>Platform health</h2>
             </div>
-            <span>Last updated 8 minutes ago</span>
+            <span className={freshness.state}>
+              Snapshot age: {freshness.ageMinutes} minutes
+            </span>
           </div>
           <div className="service-list">
             {snapshot.services.map((service) => (
@@ -136,70 +146,8 @@ function Overview() {
   );
 }
 
-const areaData: Record<
-  Exclude<Area, 'Overview' | 'Operations'>,
-  {
-    eyebrow: string;
-    title: string;
-    intro: string;
-    cards: Array<[string, string, string]>;
-  }
-> = {
-  Community: {
-    eyebrow: 'Engagement intelligence',
-    title: 'Community pulse',
-    intro: 'A content-free view of participation trends across the MuthaShip.',
-    cards: [
-      ['Introductions', '12 this month', 'Healthy'],
-      ['Suggestions', '4 open', 'Review queue'],
-      ['Trivia', '68% participation', 'Trending up'],
-      ['Events', '3 upcoming', 'Scheduler healthy'],
-    ],
-  },
-  Broadcasts: {
-    eyebrow: 'Transmission log',
-    title: 'Broadcast history',
-    intro:
-      'Safe delivery receipts and destinations. Message bodies remain where they belong: out of this deck.',
-    cards: [
-      ['Latest delivery', 'Test channel', 'Delivered'],
-      ['Scheduled posts', '2 queued', 'Ready'],
-      ['Failed deliveries', '0 this week', 'Clear'],
-      ['Allowed channels', '3 configured', 'Bounded'],
-    ],
-  },
-  Integrations: {
-    eyebrow: 'Connected services',
-    title: 'Connected systems',
-    intro:
-      'Readiness, freshness, and safe operational detail for every external integration.',
-    cards: [
-      ['Discord', 'Gateway online', 'Operational'],
-      ['Sleeper Fantasy', 'League synced', 'Ready'],
-      ['Xbox RSS', 'Feed delayed', 'Review'],
-      ['SQLite', 'Local store healthy', 'Operational'],
-    ],
-  },
-  Settings: {
-    eyebrow: 'Read-only configuration',
-    title: 'Configuration posture',
-    intro:
-      'What is enabled, what is bounded, and what still requires local administration.',
-    cards: [
-      ['Feature flags', '4 enabled', 'Configured'],
-      ['Destinations', '3 allowlisted', 'Bounded'],
-      ['Data retention', 'Policy active', 'Compliant'],
-      ['Write controls', 'Unavailable here', 'Read-only'],
-    ],
-  },
-};
-
-function AreaView({
-  area,
-}: {
-  area: Exclude<Area, 'Overview' | 'Operations'>;
-}) {
-  const data = areaData[area];
+function AreaView({ area }: { area: ReadOnlyArea }) {
+  const data = snapshot.areas[area];
   return (
     <section className="area-view">
       <div className="area-hero">
@@ -208,11 +156,11 @@ function AreaView({
         <p>{data.intro}</p>
       </div>
       <div className="area-grid">
-        {data.cards.map(([name, metric, state]) => (
-          <article className="panel area-card" key={name}>
-            <small>{name}</small>
-            <strong>{metric}</strong>
-            <span>{state}</span>
+        {data.cards.map((card) => (
+          <article className="panel area-card" key={card.name}>
+            <small>{card.name}</small>
+            <strong>{card.metric}</strong>
+            <span>{card.state}</span>
           </article>
         ))}
       </div>
@@ -224,11 +172,11 @@ function AreaView({
           </div>
           <span>Safe metadata only</span>
         </div>
-        {data.cards.map(([name, metric, state]) => (
-          <div className="table-row" key={name}>
-            <strong>{name}</strong>
-            <span>{metric}</span>
-            <b>{state}</b>
+        {data.cards.map((card) => (
+          <div className="table-row" key={card.name}>
+            <strong>{card.name}</strong>
+            <span>{card.metric}</span>
+            <b>{card.state}</b>
           </div>
         ))}
       </div>
@@ -236,7 +184,54 @@ function AreaView({
   );
 }
 
+const resilientCopy: Record<
+  ResilientViewState,
+  { title: string; detail: string; icon: string }
+> = {
+  loading: {
+    title: 'Loading snapshot',
+    detail: 'Retrieving bounded operational data',
+    icon: '',
+  },
+  empty: {
+    title: 'No recent records',
+    detail: 'The selected period is empty',
+    icon: '∅',
+  },
+  unavailable: {
+    title: 'Source unavailable',
+    detail: 'Last known safe state is preserved',
+    icon: '!',
+  },
+  unauthorized: {
+    title: 'Access restricted',
+    detail: 'This view is not authorized',
+    icon: '×',
+  },
+};
+
+export function ResilientState({ state }: { state: ResilientViewState }) {
+  const copy = resilientCopy[state];
+  return (
+    <article
+      className={`panel state-demo ${state === 'unauthorized' ? 'restricted' : state}`}
+      role="status"
+    >
+      {state === 'loading' ? (
+        <span aria-hidden="true" />
+      ) : (
+        <b aria-hidden="true">{copy.icon}</b>
+      )}
+      <div>
+        <strong>{copy.title}</strong>
+        <small>{copy.detail}</small>
+      </div>
+    </article>
+  );
+}
+
 function Operations() {
+  const freshness = getSnapshotFreshness(snapshot);
   return (
     <section className="area-view">
       <div className="area-hero">
@@ -248,34 +243,9 @@ function Operations() {
         </p>
       </div>
       <div className="state-grid">
-        <article className="panel state-demo loading">
-          <span />
-          <div>
-            <strong>Loading snapshot</strong>
-            <small>Retrieving bounded operational data</small>
-          </div>
-        </article>
-        <article className="panel state-demo">
-          <b>∅</b>
-          <div>
-            <strong>No recent records</strong>
-            <small>The selected period is empty</small>
-          </div>
-        </article>
-        <article className="panel state-demo unavailable">
-          <b>!</b>
-          <div>
-            <strong>Source unavailable</strong>
-            <small>Last known safe state is preserved</small>
-          </div>
-        </article>
-        <article className="panel state-demo restricted">
-          <b>×</b>
-          <div>
-            <strong>Access restricted</strong>
-            <small>This view is not authorized</small>
-          </div>
-        </article>
+        {snapshot.operationStates.map((state) => (
+          <ResilientState key={state} state={state} />
+        ))}
       </div>
       <div className="panel area-table">
         <div className="panel-heading">
@@ -283,23 +253,19 @@ function Operations() {
             <p className="eyebrow">System events</p>
             <h2>Latest safe activity</h2>
           </div>
-          <span>Last updated 8 minutes ago</span>
+          <span className={freshness.state}>
+            Snapshot age: {freshness.ageMinutes} minutes
+          </span>
         </div>
-        <div className="table-row">
-          <strong>Scheduler completed</strong>
-          <span>Engagement engine</span>
-          <b>Success</b>
-        </div>
-        <div className="table-row">
-          <strong>RSS freshness warning</strong>
-          <span>Xbox Wire</span>
-          <b className="warn">Review</b>
-        </div>
-        <div className="table-row">
-          <strong>Snapshot published</strong>
-          <span>Command Deck</span>
-          <b>Success</b>
-        </div>
+        {snapshot.timeline.map((event) => (
+          <div className="table-row" key={event.event}>
+            <strong>{event.event}</strong>
+            <span>{event.source}</span>
+            <b className={event.outcome === 'review' ? 'warn' : ''}>
+              {event.outcome === 'review' ? 'Review' : 'Success'}
+            </b>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -359,14 +325,17 @@ export default function Home() {
           </div>
           <div className="top-actions">
             <span className="readonly-pill">Read-only operations view</span>
-            <button type="button" aria-label="Open operator profile">
+            <span
+              className="operator-mark"
+              aria-label="Jarvis platform identity"
+            >
               <Image
                 src="/jarvis-discord-icon.png"
                 alt=""
                 width={34}
                 height={34}
               />
-            </button>
+            </span>
           </div>
         </header>
         {activeArea === 'Overview' ? (

@@ -3,9 +3,11 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import Home from './page';
+import Home, { ResilientState } from './page';
 import {
   commandDeckFixture,
+  getCommandDeckSnapshot,
+  getSnapshotFreshness,
   validateCommandDeckSnapshot,
 } from './lib/command-deck';
 
@@ -16,6 +18,28 @@ describe('Command Deck snapshot contract', () => {
     expect(validateCommandDeckSnapshot(commandDeckFixture)).toEqual(
       commandDeckFixture,
     );
+    expect(Object.keys(commandDeckFixture.areas)).toEqual([
+      'Community',
+      'Broadcasts',
+      'Integrations',
+      'Settings',
+    ]);
+    expect(getCommandDeckSnapshot()).toEqual(commandDeckFixture);
+  });
+
+  it('derives fresh and stale outcomes from the generated timestamp', () => {
+    expect(
+      getSnapshotFreshness(
+        commandDeckFixture,
+        new Date('2026-08-23T12:16:00-04:00'),
+      ).state,
+    ).toBe('fresh');
+    expect(
+      getSnapshotFreshness(
+        commandDeckFixture,
+        new Date('2026-08-23T12:25:00-04:00'),
+      ).state,
+    ).toBe('stale');
   });
 
   it('rejects unsupported contract versions', () => {
@@ -45,8 +69,9 @@ describe('Command Deck overview', () => {
   it('surfaces degraded and stale states without exposing secrets', () => {
     render(<Home />);
 
-    expect(screen.getByText(/attention needed/i)).toBeInTheDocument();
-    expect(screen.getByText(/last updated 8 minutes ago/i)).toBeInTheDocument();
+    expect(screen.getByText(/data delayed/i)).toBeInTheDocument();
+    expect(screen.getByText(/^unavailable$/i)).toBeInTheDocument();
+    expect(screen.getByText(/snapshot age: \d+ minutes/i)).toBeInTheDocument();
     expect(screen.queryByText(/token|secret|prompt/i)).not.toBeInTheDocument();
   });
 
@@ -75,5 +100,15 @@ describe('Command Deck overview', () => {
     expect(screen.getByText('No recent records')).toBeInTheDocument();
     expect(screen.getByText('Source unavailable')).toBeInTheDocument();
     expect(screen.getByText('Access restricted')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['loading', 'Loading snapshot'],
+    ['empty', 'No recent records'],
+    ['unavailable', 'Source unavailable'],
+    ['unauthorized', 'Access restricted'],
+  ] as const)('renders the %s runtime state', (state, message) => {
+    render(<ResilientState state={state} />);
+    expect(screen.getByText(message)).toBeInTheDocument();
   });
 });
