@@ -9,6 +9,7 @@ export default tseslint.config(
       'node_modules/**',
       'data/**',
       '.worktrees/**',
+      'sites/command-deck/**',
     ],
   },
   js.configs.recommended,

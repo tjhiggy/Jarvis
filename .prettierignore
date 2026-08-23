@@ -4,4 +4,10 @@ node_modules/
 data/
 .superpowers/
 .worktrees/
+sites/command-deck/node_modules/
+sites/command-deck/.next/
+sites/command-deck/.vinext/
+sites/command-deck/.wrangler/
+sites/command-deck/dist/
+sites/command-deck/next-env.d.ts
 package-lock.json
