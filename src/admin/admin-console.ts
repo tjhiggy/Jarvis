@@ -13,6 +13,11 @@ import type {
   BroadcastPolicyState,
 } from '../notifications/broadcast-store.js';
 import { adminConsoleWorkflowManifest } from './admin-console-workflows.js';
+import {
+  createCommandDeckReadBoundary,
+  projectCommandDeckReadSnapshot,
+  type CommandDeckReadBoundaryPolicy,
+} from './command-deck-read-api.js';
 import { buildAdminObservabilityProjection } from './observability.js';
 
 type BroadcastRuntimeHealth = 'ready' | 'degraded' | 'unavailable';
@@ -258,10 +263,15 @@ export const startAdminConsole = (options: {
   readonly rssControl?: AdminConsoleRssControl | undefined;
   readonly broadcastControl?: AdminConsoleBroadcastControl | undefined;
   readonly postControl?: AdminConsolePostControl | undefined;
+  readonly readApi?: CommandDeckReadBoundaryPolicy | undefined;
   readonly now?: () => Date;
 }): Promise<AdminConsole> => {
   const host = options.host ?? '127.0.0.1';
   const now = options.now ?? (() => new Date());
+  const readBoundary =
+    options.readApi === undefined
+      ? undefined
+      : createCommandDeckReadBoundary(options.readApi);
   const confirmations = new Map<
     string,
     {
@@ -296,6 +306,91 @@ export const startAdminConsole = (options: {
   };
   const server = createServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (path === '/api/v1/command-deck/snapshot') {
+      const observedAt = now();
+      const writeReadApiJson = (
+        status: number,
+        body: Record<string, unknown>,
+        extraHeaders: Record<string, string> = {},
+      ): void => {
+        response.writeHead(status, {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+          vary: 'Origin',
+          ...extraHeaders,
+        });
+        response.end(
+          JSON.stringify({
+            schemaVersion: '1.0',
+            observedAt: observedAt.toISOString(),
+            ...body,
+          }),
+        );
+      };
+      if (request.method !== 'GET') {
+        writeReadApiJson(
+          405,
+          {
+            error: {
+              code: 'method_not_allowed',
+              message: 'Only GET is supported.',
+            },
+          },
+          { allow: 'GET' },
+        );
+        return;
+      }
+      if (readBoundary === undefined) {
+        writeReadApiJson(404, {
+          error: { code: 'not_configured', message: 'Request denied.' },
+        });
+        return;
+      }
+      if (
+        Number(request.headers['content-length'] ?? 0) > 0 ||
+        request.headers['transfer-encoding'] !== undefined
+      ) {
+        writeReadApiJson(400, {
+          error: { code: 'invalid_request', message: 'Request denied.' },
+        });
+        return;
+      }
+      const authorization = readBoundary.authorize(
+        {
+          authorization: request.headers.authorization,
+          origin: headerValue(request.headers.origin),
+          requestId: headerValue(request.headers['x-command-deck-request-id']),
+          timestamp: headerValue(request.headers['x-command-deck-timestamp']),
+          remoteAddress: request.socket.remoteAddress,
+        },
+        observedAt,
+      );
+      if (!authorization.ok) {
+        writeReadApiJson(authorization.status, {
+          error: { code: authorization.code, message: 'Request denied.' },
+        });
+        return;
+      }
+      try {
+        const snapshot = projectCommandDeckReadSnapshot(
+          safeSnapshot(await options.snapshot()),
+          observedAt,
+        );
+        response.writeHead(200, {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+          vary: 'Origin',
+        });
+        response.end(JSON.stringify(snapshot));
+      } catch {
+        writeReadApiJson(503, {
+          error: { code: 'unavailable', message: 'Command Deck unavailable.' },
+        });
+      }
+      return;
+    }
     if (request.method === 'GET' && path.startsWith('/assets/command-deck/')) {
       const asset =
         path === '/assets/command-deck/jarvis-icon.png'
@@ -633,3 +728,7 @@ const isLocalRequest = (request: IncomingMessage): boolean =>
   request.socket.remoteAddress === '127.0.0.1' ||
   request.socket.remoteAddress === '::1' ||
   request.socket.remoteAddress === '::ffff:127.0.0.1';
+
+const headerValue = (
+  value: string | readonly string[] | undefined,
+): string | undefined => (typeof value === 'string' ? value : undefined);
