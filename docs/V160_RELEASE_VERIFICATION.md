@@ -3,6 +3,11 @@
 This is the #280 closeout ledger for the v1.6 working revision. It separates
 executable evidence from operator-owned deployment proof.
 
+**Publication:** tag `v1.6.0` and GitHub release
+https://github.com/tjhiggy/Jarvis/releases/tag/v1.6.0 on merge commit
+`d401dbf` from #302. Production deploy and live Discord/Sites smoke remain
+operator-owned.
+
 ## Automated gates
 
 | Gate                 | Command                                                        | Result required before merge                                    |
