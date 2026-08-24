@@ -433,6 +433,62 @@ describe('Command Deck safe controls', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('retries a failed cancellation, then enables confirmation for a new preview', async () => {
+    let previews = 0;
+    let cancellations = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/catalog'))
+        return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith('/preview')) {
+        previews += 1;
+        return Promise.resolve(
+          jsonResponse({ preview: { ...preview, id: `preview-${previews}` } }),
+        );
+      }
+      if (url.endsWith('/cancel')) {
+        cancellations += 1;
+        return Promise.resolve(
+          cancellations === 1
+            ? jsonResponse(
+                { error: { code: 'unavailable', message: 'cancel failed' } },
+                503,
+              )
+            : jsonResponse({ cancelled: true }),
+        );
+      }
+      return Promise.resolve(
+        jsonResponse({
+          receipt: {
+            id: 'receipt',
+            confirmedAt: '2026-08-23T00:00:00.000Z',
+            target: 'broadcast:daily',
+          },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SettingsControls />);
+    unlockControls();
+    await screen.findByText('Safe controls ready');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview broadcast change' }),
+    );
+    await screen.findByRole('button', { name: 'Cancel preview' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel preview' }));
+    await screen.findByRole('button', { name: 'Retry cancellation' });
+    expect(
+      screen.getByRole('button', { name: 'Confirm change' }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry cancellation' }));
+    await screen.findByText('Preview cancelled. No change was sent.');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview broadcast change' }),
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Confirm change' }),
+    ).toBeEnabled();
+  });
+
   it('clears a stale confirmation preview instead of offering a dead retry', async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith('/catalog'))
