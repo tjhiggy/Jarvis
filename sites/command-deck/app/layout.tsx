@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
+import { resolveCommandDeckApiBaseUrl } from './lib/command-deck';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -23,11 +24,21 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const commandDeckApiBaseUrl = resolveCommandDeckApiBaseUrl(
+    process.env.COMMAND_DECK_API_BASE_URL,
+  );
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        {commandDeckApiBaseUrl === undefined ? null : (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `window.__COMMAND_DECK_API_BASE_URL__=${JSON.stringify(commandDeckApiBaseUrl)};`,
+            }}
+          />
+        )}
         {children}
       </body>
     </html>

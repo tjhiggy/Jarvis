@@ -30,6 +30,7 @@ const catalog = {
     broadcastCategories: ['daily'],
     featureFlags: ['trivia'],
     rssHosts: ['news.example.test'],
+    rssFeeds: [],
   },
 };
 
@@ -187,6 +188,35 @@ describe('Command Deck overview', () => {
 });
 
 describe('Command Deck safe controls', () => {
+  it('uses only a validated configured API origin instead of the deployed Sites origin', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse(catalog)));
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <SettingsControls apiBaseUrl="https://jarvis-tunnel.example.test" />,
+    );
+    unlockControls();
+    await screen.findByText('Safe controls ready');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://jarvis-tunnel.example.test/api/v1/command-deck/config/catalog',
+      expect.any(Object),
+    );
+  });
+
+  it('fails closed when the configured API base is not approved', async () => {
+    render(
+      <SettingsControls apiBaseUrl="https://operator:password@evil.example" />,
+    );
+    unlockControls();
+    expect(
+      await screen.findByText(
+        'Safe controls are unavailable until a valid API address is configured.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Preview broadcast change' }),
+    ).toBeDisabled();
+  });
+
   it('keeps write controls locked until an active-tab access code loads the real catalog', async () => {
     let resolveCatalog: ((response: Response) => void) | undefined;
     const fetchMock = vi.fn(
@@ -209,7 +239,7 @@ describe('Command Deck safe controls', () => {
 
     await screen.findByText('Safe controls ready');
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/command-deck/config/catalog',
+      'http://127.0.0.1:8787/api/v1/command-deck/config/catalog',
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
@@ -299,6 +329,137 @@ describe('Command Deck safe controls', () => {
         label: 'MuthaShip news',
       },
     ]);
+  });
+
+  it('previews removal of an existing catalog RSS feed without accepting a free-form target', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/catalog'))
+        return Promise.resolve(
+          jsonResponse({
+            ...catalog,
+            actions: {
+              ...catalog.actions,
+              rssFeeds: [
+                {
+                  url: 'https://news.example.test/existing.xml',
+                  label: 'Existing feed',
+                },
+              ],
+            },
+          }),
+        );
+      return Promise.resolve(jsonResponse({ preview }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SettingsControls />);
+    unlockControls();
+    await screen.findByText('Safe controls ready');
+    fireEvent.change(screen.getByLabelText('Existing RSS feed'), {
+      target: { value: 'https://news.example.test/existing.xml' },
+    });
+    expect(
+      screen.getByRole('button', { name: 'Preview RSS removal' }),
+    ).toBeEnabled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview RSS removal' }),
+    );
+    await screen.findByText('Before: enabled');
+    const [, options] = fetchMock.mock.calls.find(([url]) =>
+      String(url).endsWith('/preview'),
+    )!;
+    expect(JSON.parse(String(options?.body)).action).toEqual({
+      type: 'rss_feed',
+      operation: 'remove',
+      url: 'https://news.example.test/existing.xml',
+    });
+  });
+
+  it('locks every preview family while a preview is in flight or awaiting confirmation', async () => {
+    let resolvePreview: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/catalog'))
+        return Promise.resolve(jsonResponse(catalog));
+      return new Promise<Response>((resolve) => {
+        resolvePreview = resolve;
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SettingsControls />);
+    unlockControls();
+    await screen.findByText('Safe controls ready');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview broadcast change' }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Preview feature change' }),
+    ).toBeDisabled();
+    resolvePreview?.(jsonResponse({ preview }));
+    await screen.findByRole('button', { name: 'Confirm change' });
+    expect(
+      screen.getByRole('button', { name: 'Preview RSS change' }),
+    ).toBeDisabled();
+  });
+
+  it('re-locks and discards a pending preview after unauthorized write access', async () => {
+    let calls = 0;
+    const fetchMock = vi.fn((url: string) => {
+      calls += 1;
+      if (url.endsWith('/catalog'))
+        return Promise.resolve(jsonResponse(catalog));
+      if (calls === 2) return Promise.resolve(jsonResponse({ preview }));
+      return Promise.resolve(
+        jsonResponse({ error: { code: 'unauthorized' } }, 401),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SettingsControls />);
+    unlockControls();
+    await screen.findByText('Safe controls ready');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview broadcast change' }),
+    );
+    await screen.findByRole('button', { name: 'Confirm change' });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm change' }));
+    expect(
+      await screen.findByText(
+        'Access restricted. Check the active-tab write access code.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Change access code' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Confirm change' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('distinguishes a permanent safe rejection from a retryable failure', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/catalog'))
+        return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith('/preview'))
+        return Promise.resolve(jsonResponse({ preview }));
+      return Promise.resolve(
+        jsonResponse({ error: { code: 'invalid_action' } }, 400),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SettingsControls />);
+    unlockControls();
+    await screen.findByText('Safe controls ready');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview broadcast change' }),
+    );
+    await screen.findByRole('button', { name: 'Confirm change' });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm change' }));
+    expect(
+      await screen.findByText(
+        'Jarvis rejected this change. No retry is available.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Retry confirmation' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps a confirmation visibly in progress until Jarvis returns a receipt', async () => {

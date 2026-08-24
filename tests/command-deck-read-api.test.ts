@@ -17,6 +17,14 @@ describe('Command Deck read projection', () => {
         broadcastCategories: ['rss', 'invalid category', 'rss'],
         featureFlags: ['trivia', 'invalid flag', 'trivia'],
         rssHosts: ['feeds.example.test', 'not a host', 'feeds.example.test'],
+        rssFeeds: [
+          { url: 'https://feeds.example.test/crew.xml', label: 'Crew feed' },
+          { url: 'https://evil.example.test/crew.xml', label: 'Wrong host' },
+          {
+            url: 'https://user:password@feeds.example.test/feed.xml',
+            label: 'Unsafe',
+          },
+        ],
       }),
     ).toEqual({
       schemaVersion: '1.0',
@@ -24,6 +32,9 @@ describe('Command Deck read projection', () => {
         broadcastCategories: ['rss'],
         featureFlags: ['trivia'],
         rssHosts: ['feeds.example.test'],
+        rssFeeds: [
+          { url: 'https://feeds.example.test/crew.xml', label: 'Crew feed' },
+        ],
       },
     });
   });

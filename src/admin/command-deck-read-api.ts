@@ -5,6 +5,10 @@ export interface CommandDeckMutationCatalog {
   readonly broadcastCategories: readonly string[];
   readonly featureFlags: readonly string[];
   readonly rssHosts: readonly string[];
+  readonly rssFeeds?: readonly {
+    readonly url: string;
+    readonly label: string;
+  }[];
 }
 
 export interface CommandDeckMutationCatalogResponse {
@@ -13,6 +17,10 @@ export interface CommandDeckMutationCatalogResponse {
     readonly broadcastCategories: readonly string[];
     readonly featureFlags: readonly string[];
     readonly rssHosts: readonly string[];
+    readonly rssFeeds: readonly {
+      readonly url: string;
+      readonly label: string;
+    }[];
   };
 }
 
@@ -34,8 +42,32 @@ export function projectCommandDeckMutationCatalog(
         catalog.rssHosts,
         /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/,
       ),
+      rssFeeds: (catalog.rssFeeds ?? [])
+        .filter((feed) => isAllowedCatalogRssFeed(feed, catalog.rssHosts))
+        .map((feed) => ({ url: feed.url, label: feed.label.trim() }))
+        .slice(0, 50),
     },
   };
+}
+
+function isAllowedCatalogRssFeed(
+  feed: { readonly url: string; readonly label: string },
+  hosts: readonly string[],
+): boolean {
+  if (typeof feed.url !== 'string' || typeof feed.label !== 'string')
+    return false;
+  try {
+    const url = new URL(feed.url);
+    return (
+      url.protocol === 'https:' &&
+      url.username === '' &&
+      url.password === '' &&
+      hosts.includes(url.hostname) &&
+      /^[^\r\n]{1,120}$/.test(feed.label.trim())
+    );
+  } catch {
+    return false;
+  }
 }
 
 export interface CommandDeckReadRequest {

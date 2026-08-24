@@ -690,6 +690,58 @@ describe('admin console', () => {
     await console.close();
   });
 
+  it('serves mutation CORS only to the exact configured Sites origin', async () => {
+    const origin = 'https://deck.example.test';
+    const api = mutationApi();
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      mutationApi: {
+        ...api,
+        authorization: { ...api.authorization, allowedOrigins: [origin] },
+      },
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const endpoint = `${consoleUrl(console)}/api/v1/command-deck/config/catalog`;
+    const preflight = await fetch(endpoint, {
+      method: 'OPTIONS',
+      headers: {
+        origin,
+        'access-control-request-method': 'GET',
+        'access-control-request-headers':
+          'authorization,x-command-deck-request-id,x-command-deck-timestamp',
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe(origin);
+    expect(preflight.headers.get('access-control-allow-methods')).toBe(
+      'GET, OPTIONS',
+    );
+    expect(preflight.headers.get('access-control-allow-headers')).toContain(
+      'Authorization',
+    );
+
+    const allowed = await fetch(endpoint, {
+      headers: {
+        ...mutationHeaders('6596d1fb-d6bb-4a27-89fd-5b8a9634ce05'),
+        origin,
+      },
+    });
+    expect(allowed.status).toBe(200);
+    expect(allowed.headers.get('access-control-allow-origin')).toBe(origin);
+
+    const denied = await fetch(endpoint, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://evil.example',
+        'access-control-request-method': 'GET',
+      },
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.headers.get('access-control-allow-origin')).toBeNull();
+    await console.close();
+  });
+
   it('keeps mutation requests bounded, replay-safe, and receipt-driven', async () => {
     const applied: string[] = [];
     const console = await startAdminConsole({

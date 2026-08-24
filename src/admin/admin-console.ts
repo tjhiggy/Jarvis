@@ -409,6 +409,15 @@ export const createCommandDeckRuntimeMutationApi = (
       broadcastCategories: adapter.allowedBroadcastCategories,
       featureFlags: adapter.supportedFeatureFlags,
       rssHosts: adapter.allowedRssHosts,
+      rssFeeds:
+        options.rssStorage === undefined
+          ? []
+          : options.rssStorage
+              .listFeeds(options.guildId)
+              .filter((feed) =>
+                isAllowedRssUrl(feed.url, adapter.allowedRssHosts),
+              )
+              .map((feed) => ({ url: feed.url, label: feed.label })),
     },
     service: createCommandDeckMutationService({
       adapter,
@@ -1002,6 +1011,14 @@ export const startAdminConsole = (options: {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
     if (path.startsWith('/api/v1/command-deck/config/')) {
       const observedAt = now();
+      const api = options.mutationApi;
+      const origin = headerValue(request.headers.origin);
+      const corsOrigin =
+        api !== undefined &&
+        origin !== undefined &&
+        api.authorization.allowedOrigins.includes(origin)
+          ? origin
+          : undefined;
       const writeMutationJson = (
         status: number,
         body: Record<string, unknown>,
@@ -1012,6 +1029,9 @@ export const startAdminConsole = (options: {
           'cache-control': 'no-store',
           'x-content-type-options': 'nosniff',
           vary: 'Origin',
+          ...(corsOrigin === undefined
+            ? {}
+            : { 'access-control-allow-origin': corsOrigin }),
           ...extraHeaders,
         });
         response.end(
@@ -1022,7 +1042,6 @@ export const startAdminConsole = (options: {
           }),
         );
       };
-      const api = options.mutationApi;
       const allowedMethods =
         path === '/api/v1/command-deck/config/catalog' ? 'GET' : 'POST';
       if (
@@ -1039,18 +1058,43 @@ export const startAdminConsole = (options: {
         });
         return;
       }
+      if (api === undefined || mutationBoundary === undefined) {
+        writeMutationJson(404, {
+          error: { code: 'not_configured', message: 'Request denied.' },
+        });
+        return;
+      }
+      if (request.method === 'OPTIONS') {
+        const requestedMethod = headerValue(
+          request.headers['access-control-request-method'],
+        );
+        if (corsOrigin === undefined || requestedMethod !== allowedMethods) {
+          request.resume();
+          writeMutationJson(403, {
+            error: { code: 'origin_denied', message: 'Request denied.' },
+          });
+          return;
+        }
+        request.resume();
+        response.writeHead(204, {
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+          vary: 'Origin',
+          'access-control-allow-origin': corsOrigin,
+          'access-control-allow-methods': `${allowedMethods}, OPTIONS`,
+          'access-control-allow-headers':
+            'Authorization, Content-Type, Idempotency-Key, X-Command-Deck-Request-Id, X-Command-Deck-Timestamp',
+          'access-control-max-age': '600',
+        });
+        response.end();
+        return;
+      }
       if (request.method !== allowedMethods) {
         writeMutationJson(
           405,
           { error: { code: 'method_not_allowed', message: 'Request denied.' } },
           { allow: allowedMethods },
         );
-        return;
-      }
-      if (api === undefined || mutationBoundary === undefined) {
-        writeMutationJson(404, {
-          error: { code: 'not_configured', message: 'Request denied.' },
-        });
         return;
       }
       const authorization = mutationBoundary.authorize(

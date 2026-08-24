@@ -623,7 +623,8 @@ p {
 }
 .control-status.unauthorized,
 .control-status.stale,
-.control-status.retryable {
+.control-status.retryable,
+.control-status.permanent {
   color: #ffd2e1;
   border-color: rgba(243, 107, 158, 0.5);
   background: rgba(243, 107, 158, 0.1);

@@ -314,6 +314,7 @@ export type CommandDeckMutationCatalog = {
   broadcastCategories: string[];
   featureFlags: string[];
   rssHosts: string[];
+  rssFeeds: Array<{ url: string; label: string }>;
 };
 
 export type CommandDeckPreview = {
@@ -335,6 +336,28 @@ export type CommandDeckApiResult<T> =
   | { ok: false; status: number; code: string; message: string };
 
 const commandDeckConfigPath = '/api/v1/command-deck/config';
+
+export function resolveCommandDeckApiBaseUrl(
+  value: unknown,
+): string | undefined {
+  if (typeof value !== 'string' || value.trim() === '') return undefined;
+  try {
+    const url = new URL(value);
+    const loopback = ['127.0.0.1', '::1', 'localhost'].includes(url.hostname);
+    if (
+      url.username !== '' ||
+      url.password !== '' ||
+      url.search !== '' ||
+      url.hash !== '' ||
+      url.pathname !== '/' ||
+      (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback))
+    )
+      return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
 
 const createRequestId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
@@ -374,13 +397,22 @@ const errorResult = (
 };
 
 async function commandDeckRequest<T>(
+  apiBaseUrl: string | undefined,
   token: string,
   path: string,
   options: { method: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string },
 ): Promise<CommandDeckApiResult<T>> {
+  if (apiBaseUrl === undefined)
+    return {
+      ok: false,
+      status: 400,
+      code: 'invalid_api_base',
+      message:
+        'Safe controls are unavailable until a valid API address is configured.',
+    };
   let response: Response;
   try {
-    response = await fetch(`${commandDeckConfigPath}${path}`, {
+    response = await fetch(`${apiBaseUrl}${commandDeckConfigPath}${path}`, {
       method: options.method,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -422,18 +454,20 @@ async function commandDeckRequest<T>(
 }
 
 export async function getCommandDeckMutationCatalog(
+  apiBaseUrl: string | undefined,
   token: string,
 ): Promise<CommandDeckApiResult<CommandDeckMutationCatalog>> {
   const result = await commandDeckRequest<{
     actions?: CommandDeckMutationCatalog;
-  }>(token, '/catalog', { method: 'GET' });
+  }>(apiBaseUrl, token, '/catalog', { method: 'GET' });
   if (!result.ok) return result;
   const actions = result.value.actions;
   if (
     actions === undefined ||
     !Array.isArray(actions.broadcastCategories) ||
     !Array.isArray(actions.featureFlags) ||
-    !Array.isArray(actions.rssHosts)
+    !Array.isArray(actions.rssHosts) ||
+    !Array.isArray(actions.rssFeeds)
   )
     return {
       ok: false,
@@ -445,10 +479,12 @@ export async function getCommandDeckMutationCatalog(
 }
 
 export async function previewCommandDeckMutation(
+  apiBaseUrl: string | undefined,
   token: string,
   action: CommandDeckMutationAction,
 ): Promise<CommandDeckApiResult<CommandDeckPreview>> {
   const result = await commandDeckRequest<{ preview?: CommandDeckPreview }>(
+    apiBaseUrl,
     token,
     '/preview',
     { method: 'POST', body: { action } },
@@ -466,10 +502,12 @@ export async function previewCommandDeckMutation(
 }
 
 export async function cancelCommandDeckPreview(
+  apiBaseUrl: string | undefined,
   token: string,
   previewId: string,
 ): Promise<CommandDeckApiResult<undefined>> {
   const result = await commandDeckRequest<{ cancelled?: boolean }>(
+    apiBaseUrl,
     token,
     '/cancel',
     { method: 'POST', body: { previewId } },
@@ -487,6 +525,7 @@ export async function cancelCommandDeckPreview(
 }
 
 export async function confirmCommandDeckMutation(
+  apiBaseUrl: string | undefined,
   token: string,
   previewId: string,
   action: CommandDeckMutationAction | undefined,
@@ -494,6 +533,7 @@ export async function confirmCommandDeckMutation(
   rollback = false,
 ): Promise<CommandDeckApiResult<CommandDeckReceipt>> {
   const result = await commandDeckRequest<{ receipt?: CommandDeckReceipt }>(
+    apiBaseUrl,
     token,
     rollback ? '/rollback' : '/confirm',
     {
@@ -515,10 +555,12 @@ export async function confirmCommandDeckMutation(
 }
 
 export async function previewCommandDeckRollback(
+  apiBaseUrl: string | undefined,
   token: string,
   rollbackToken: string,
 ): Promise<CommandDeckApiResult<CommandDeckPreview>> {
   const result = await commandDeckRequest<{ preview?: CommandDeckPreview }>(
+    apiBaseUrl,
     token,
     '/rollback',
     { method: 'POST', body: { rollbackToken } },

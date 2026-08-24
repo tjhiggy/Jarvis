@@ -13,6 +13,7 @@ import {
   getSnapshotFreshness,
   previewCommandDeckMutation,
   previewCommandDeckRollback,
+  resolveCommandDeckApiBaseUrl,
   type CommandDeckApiResult,
   type CommandDeckMutationAction,
   type CommandDeckMutationCatalog,
@@ -252,6 +253,7 @@ type ControlPhase =
   | 'preview'
   | 'confirming'
   | 'retryable'
+  | 'permanent'
   | 'unauthorized'
   | 'stale'
   | 'succeeded'
@@ -273,6 +275,7 @@ const controlCopy: Record<ControlPhase, string> = {
   preview: 'Preview ready. Review the exact change before confirming.',
   confirming: 'Confirming with Jarvis. Do not close this tab.',
   retryable: 'Jarvis could not apply this change. Retry the same confirmation.',
+  permanent: 'Jarvis rejected this change. No retry is available.',
   unauthorized: 'Access restricted. Check the active-tab write access code.',
   stale: 'Preview expired or changed. Create a new preview.',
   succeeded: 'Change succeeded.',
@@ -295,7 +298,10 @@ const readableValue = (value: unknown): string => {
 };
 
 function requestFailure<T>(result: CommandDeckApiResult<T>): {
-  phase: Extract<ControlPhase, 'unauthorized' | 'stale' | 'retryable'>;
+  phase: Extract<
+    ControlPhase,
+    'unauthorized' | 'stale' | 'retryable' | 'permanent'
+  >;
   detail: string;
 } {
   if (result.ok) throw new Error('Expected a Command Deck request failure.');
@@ -308,6 +314,14 @@ function requestFailure<T>(result: CommandDeckApiResult<T>): {
     result.code === 'preview_cancelled'
   )
     return { phase: 'stale', detail: controlCopy.stale };
+  if (result.code === 'invalid_api_base')
+    return { phase: 'permanent', detail: result.message };
+  if (
+    result.status >= 400 &&
+    result.status < 500 &&
+    result.code !== 'rate_limited'
+  )
+    return { phase: 'permanent', detail: controlCopy.permanent };
   return { phase: 'retryable', detail: result.message };
 }
 
@@ -332,7 +346,15 @@ function ControlCard({
   );
 }
 
-export function SettingsControls() {
+export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
+  const runtimeApiBaseUrl =
+    apiBaseUrl ??
+    (globalThis as { __COMMAND_DECK_API_BASE_URL__?: unknown })
+      .__COMMAND_DECK_API_BASE_URL__ ??
+    (typeof location !== 'undefined' && location.hostname === 'localhost'
+      ? 'http://127.0.0.1:8787'
+      : undefined);
+  const safeApiBaseUrl = resolveCommandDeckApiBaseUrl(runtimeApiBaseUrl);
   const [tokenDraft, setTokenDraft] = useState('');
   const [writeToken, setWriteToken] = useState<string>();
   const [catalog, setCatalog] = useState<CommandDeckMutationCatalog>();
@@ -348,17 +370,40 @@ export function SettingsControls() {
   const [featureEnabled, setFeatureEnabled] = useState(true);
   const [rssUrl, setRssUrl] = useState('');
   const [rssLabel, setRssLabel] = useState('');
+  const [rssFeedUrl, setRssFeedUrl] = useState('');
+
+  const relock = (detail = controlCopy.locked) => {
+    setWriteToken(undefined);
+    setCatalog(undefined);
+    setPending(undefined);
+    setReceipt(undefined);
+    setTokenDraft('');
+    setBroadcastCategory('');
+    setFeature('');
+    setRssFeedUrl('');
+    setPhase(detail === controlCopy.locked ? 'locked' : 'unauthorized');
+    setDetail(detail);
+  };
+
+  const handleFailure = <T,>(result: CommandDeckApiResult<T>) => {
+    const failure = requestFailure(result);
+    if (failure.phase === 'unauthorized') {
+      relock(failure.detail);
+      return;
+    }
+    if (failure.phase === 'permanent') setPending(undefined);
+    setPhase(failure.phase);
+    setDetail(failure.detail);
+  };
 
   const unlock = async () => {
     const token = tokenDraft.trim();
     if (token === '') return;
     setPhase('loading');
     setDetail(controlCopy.loading);
-    const result = await getCommandDeckMutationCatalog(token);
+    const result = await getCommandDeckMutationCatalog(safeApiBaseUrl, token);
     if (!result.ok) {
-      const failure = requestFailure(result);
-      setPhase(failure.phase);
-      setDetail(failure.detail);
+      handleFailure(result);
       return;
     }
     setWriteToken(token);
@@ -374,11 +419,13 @@ export function SettingsControls() {
     if (writeToken === undefined) return;
     setPhase('loading');
     setDetail('Preparing an exact preview with Jarvis.');
-    const result = await previewCommandDeckMutation(writeToken, action);
+    const result = await previewCommandDeckMutation(
+      safeApiBaseUrl,
+      writeToken,
+      action,
+    );
     if (!result.ok) {
-      const failure = requestFailure(result);
-      setPhase(failure.phase);
-      setDetail(failure.detail);
+      handleFailure(result);
       return;
     }
     setPending({
@@ -396,13 +443,12 @@ export function SettingsControls() {
     setPhase('loading');
     setDetail('Cancelling preview with Jarvis.');
     const result = await cancelCommandDeckPreview(
+      safeApiBaseUrl,
       writeToken,
       pending.preview.id,
     );
     if (!result.ok) {
-      const failure = requestFailure(result);
-      setPhase(failure.phase);
-      setDetail(failure.detail);
+      handleFailure(result);
       return;
     }
     setPending(undefined);
@@ -415,6 +461,7 @@ export function SettingsControls() {
     setPhase('confirming');
     setDetail(controlCopy.confirming);
     const result = await confirmCommandDeckMutation(
+      safeApiBaseUrl,
       writeToken,
       pending.preview.id,
       pending.action,
@@ -422,9 +469,7 @@ export function SettingsControls() {
       pending.rollback,
     );
     if (!result.ok) {
-      const failure = requestFailure(result);
-      setPhase(failure.phase);
-      setDetail(failure.detail);
+      handleFailure(result);
       return;
     }
     setPending(undefined);
@@ -443,13 +488,12 @@ export function SettingsControls() {
     setPhase('loading');
     setDetail('Preparing a compensating rollback preview with Jarvis.');
     const result = await previewCommandDeckRollback(
+      safeApiBaseUrl,
       writeToken,
       receipt.rollbackToken,
     );
     if (!result.ok) {
-      const failure = requestFailure(result);
-      setPhase(failure.phase);
-      setDetail(failure.detail);
+      handleFailure(result);
       return;
     }
     setPending({
@@ -499,7 +543,9 @@ export function SettingsControls() {
             />
           </label>
           <button type="submit" disabled={tokenDraft.trim() === ''}>
-            Unlock controls
+            {phase === 'unauthorized'
+              ? 'Change access code'
+              : 'Unlock controls'}
           </button>
           <small>The access code stays in this tab&apos;s memory only.</small>
         </form>
@@ -542,6 +588,8 @@ export function SettingsControls() {
             disabled={
               !controlsReady ||
               broadcastCategory === '' ||
+              pending !== undefined ||
+              phase === 'loading' ||
               phase === 'confirming'
             }
             onClick={() =>
@@ -586,7 +634,11 @@ export function SettingsControls() {
           <button
             type="button"
             disabled={
-              !controlsReady || feature === '' || phase === 'confirming'
+              !controlsReady ||
+              feature === '' ||
+              pending !== undefined ||
+              phase === 'loading' ||
+              phase === 'confirming'
             }
             onClick={() =>
               void previewChange({
@@ -632,6 +684,8 @@ export function SettingsControls() {
               !controlsReady ||
               rssUrl.trim() === '' ||
               rssLabel.trim() === '' ||
+              pending !== undefined ||
+              phase === 'loading' ||
               phase === 'confirming'
             }
             onClick={() =>
@@ -644,6 +698,42 @@ export function SettingsControls() {
             }
           >
             Preview RSS change
+          </button>
+          <label>
+            Existing RSS feed
+            <select
+              value={rssFeedUrl}
+              onChange={(event) => setRssFeedUrl(event.target.value)}
+              disabled={
+                !controlsReady || pending !== undefined || phase === 'loading'
+              }
+            >
+              <option value="">Select an existing feed</option>
+              {(catalog?.rssFeeds ?? []).map((feed) => (
+                <option key={feed.url} value={feed.url}>
+                  {feed.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={
+              !controlsReady ||
+              rssFeedUrl === '' ||
+              pending !== undefined ||
+              phase === 'loading' ||
+              phase === 'confirming'
+            }
+            onClick={() =>
+              void previewChange({
+                type: 'rss_feed',
+                operation: 'remove',
+                url: rssFeedUrl,
+              })
+            }
+          >
+            Preview RSS removal
           </button>
         </ControlCard>
       </div>

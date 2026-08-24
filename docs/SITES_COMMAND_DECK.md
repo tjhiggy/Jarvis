@@ -63,11 +63,15 @@ API, authorization, confirmation, audit, and rollback work is complete.
    `COMMAND_DECK_API_TOKEN` in Jarvis and the private Sites server secret store.
 2. Set `COMMAND_DECK_API_ALLOWED_ORIGINS` to the exact private Sites HTTPS
    origin, without a path or trailing slash.
-3. Keep `ADMIN_CONSOLE_HOST=127.0.0.1`. Publish only through the approved private
+3. Set the Sites runtime-only `COMMAND_DECK_API_BASE_URL` to that approved
+   HTTPS tunnel origin (or a loopback origin for local use). The browser accepts
+   only an origin without credentials, path, query, or fragment; it never falls
+   back to the deployed Sites origin. This value is an address, not a token.
+4. Keep `ADMIN_CONSOLE_HOST=127.0.0.1`. Publish only through the approved private
    tunnel. Never change Jarvis to a public bind.
-4. Restart Jarvis, run `npm run command-deck-api:verify`, then test the Sites
+5. Restart Jarvis, run `npm run command-deck-api:verify`, then test the Sites
    loading, unavailable, unauthorized, and stale states.
-5. To rotate, update both secret stores, restart Jarvis, verify Sites, and revoke
+6. To rotate, update both secret stores, restart Jarvis, verify Sites, and revoke
    the old value. A mismatch fails closed with `401 unauthorized`.
 
 The disposable verifier never reads production configuration. It starts an
