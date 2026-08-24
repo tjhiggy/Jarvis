@@ -707,6 +707,7 @@ describe('createApplication', () => {
         broadcastCategories: ['rss'],
         featureFlags: [...SUPPORTED_FEATURE_FLAGS],
         rssHosts: ['feeds.example.test'],
+        rssFeeds: [],
       });
       expect(mutationApi?.authorization.token).toBe(
         'local-admin-token-with-32-characters-minimum',
