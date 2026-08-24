@@ -1,6 +1,43 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { AdminConsoleSnapshot } from './admin-console.js';
 
+export interface CommandDeckMutationCatalog {
+  readonly broadcastCategories: readonly string[];
+  readonly featureFlags: readonly string[];
+  readonly rssHosts: readonly string[];
+}
+
+export interface CommandDeckMutationCatalogResponse {
+  readonly schemaVersion: '1.0';
+  readonly actions: {
+    readonly broadcastCategories: readonly string[];
+    readonly featureFlags: readonly string[];
+    readonly rssHosts: readonly string[];
+  };
+}
+
+export function projectCommandDeckMutationCatalog(
+  catalog: CommandDeckMutationCatalog,
+): CommandDeckMutationCatalogResponse {
+  return {
+    schemaVersion: '1.0',
+    actions: {
+      broadcastCategories: boundedCatalogValues(
+        catalog.broadcastCategories,
+        /^[a-z][a-z0-9_]{0,63}$/,
+      ),
+      featureFlags: boundedCatalogValues(
+        catalog.featureFlags,
+        /^[a-z][a-z0-9_]{0,63}$/,
+      ),
+      rssHosts: boundedCatalogValues(
+        catalog.rssHosts,
+        /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/,
+      ),
+    },
+  };
+}
+
 export interface CommandDeckReadRequest {
   readonly authorization?: string | undefined;
   readonly origin?: string | undefined;
@@ -283,6 +320,16 @@ export function projectCommandDeckReadSnapshot(
 function boundedCount(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.min(1_000_000_000, Math.max(0, Math.floor(value)));
+}
+
+function boundedCatalogValues(
+  values: readonly string[],
+  pattern: RegExp,
+): readonly string[] {
+  return [...new Set(values.filter((value) => pattern.test(value)))].slice(
+    0,
+    50,
+  );
 }
 
 function boundedLabel(value: string, fallback: string): string {

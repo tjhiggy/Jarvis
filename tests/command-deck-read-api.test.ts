@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AdminConsoleSnapshot } from '../src/admin/admin-console.js';
 import {
   createCommandDeckReadBoundary,
+  projectCommandDeckMutationCatalog,
   projectCommandDeckReadSnapshot,
   type CommandDeckReadAuditEvent,
   type CommandDeckReadRequest,
@@ -10,6 +11,23 @@ import {
 const observedAt = new Date('2026-08-23T20:00:00.000Z');
 
 describe('Command Deck read projection', () => {
+  it('projects a bounded mutation catalog without unsafe target values', () => {
+    expect(
+      projectCommandDeckMutationCatalog({
+        broadcastCategories: ['rss', 'invalid category', 'rss'],
+        featureFlags: ['trivia', 'invalid flag', 'trivia'],
+        rssHosts: ['feeds.example.test', 'not a host', 'feeds.example.test'],
+      }),
+    ).toEqual({
+      schemaVersion: '1.0',
+      actions: {
+        broadcastCategories: ['rss'],
+        featureFlags: ['trivia'],
+        rssHosts: ['feeds.example.test'],
+      },
+    });
+  });
+
   it('projects a versioned, bounded operational snapshot', () => {
     const result = projectCommandDeckReadSnapshot(safeSnapshot(), observedAt);
 

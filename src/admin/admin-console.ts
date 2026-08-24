@@ -15,9 +15,17 @@ import type {
 import { adminConsoleWorkflowManifest } from './admin-console-workflows.js';
 import {
   createCommandDeckReadBoundary,
+  projectCommandDeckMutationCatalog,
   projectCommandDeckReadSnapshot,
+  type CommandDeckMutationCatalog,
   type CommandDeckReadBoundaryPolicy,
 } from './command-deck-read-api.js';
+import type {
+  CommandDeckMutationAction,
+  CommandDeckMutationCancelResult,
+  CommandDeckMutationConfirmResult,
+  CommandDeckMutationPreviewResult,
+} from './command-deck-mutations.js';
 import { buildAdminObservabilityProjection } from './observability.js';
 
 type BroadcastRuntimeHealth = 'ready' | 'degraded' | 'unavailable';
@@ -148,6 +156,19 @@ export interface AdminConsolePostControl {
   }) => Promise<void>;
 }
 
+export interface AdminConsoleMutationService {
+  preview(input: unknown): Promise<CommandDeckMutationPreviewResult>;
+  confirm(input: unknown): Promise<CommandDeckMutationConfirmResult>;
+  cancel(previewId: string): Promise<CommandDeckMutationCancelResult>;
+  previewRollback(token: string): Promise<CommandDeckMutationPreviewResult>;
+  confirmRollback(input: unknown): Promise<CommandDeckMutationConfirmResult>;
+}
+
+export interface AdminConsoleMutationApi {
+  readonly catalog: CommandDeckMutationCatalog;
+  readonly service: AdminConsoleMutationService;
+}
+
 const rssIntegrationStatus = (
   status: AdminConsoleSnapshot['integrations']['rss'],
 ): string => {
@@ -264,6 +285,7 @@ export const startAdminConsole = (options: {
   readonly broadcastControl?: AdminConsoleBroadcastControl | undefined;
   readonly postControl?: AdminConsolePostControl | undefined;
   readonly readApi?: CommandDeckReadBoundaryPolicy | undefined;
+  readonly mutationApi?: AdminConsoleMutationApi | undefined;
   readonly now?: () => Date;
 }): Promise<AdminConsole> => {
   const host = options.host ?? '127.0.0.1';
@@ -306,6 +328,159 @@ export const startAdminConsole = (options: {
   };
   const server = createServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (path.startsWith('/api/v1/command-deck/config/')) {
+      const observedAt = now();
+      const writeMutationJson = (
+        status: number,
+        body: Record<string, unknown>,
+        extraHeaders: Record<string, string> = {},
+      ): void => {
+        response.writeHead(status, {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+          vary: 'Origin',
+          ...extraHeaders,
+        });
+        response.end(
+          JSON.stringify({
+            schemaVersion: '1.0',
+            observedAt: observedAt.toISOString(),
+            ...body,
+          }),
+        );
+      };
+      const api = options.mutationApi;
+      const allowedMethods =
+        path === '/api/v1/command-deck/config/catalog' ? 'GET' : 'POST';
+      if (
+        ![
+          '/api/v1/command-deck/config/catalog',
+          '/api/v1/command-deck/config/preview',
+          '/api/v1/command-deck/config/confirm',
+          '/api/v1/command-deck/config/cancel',
+          '/api/v1/command-deck/config/rollback',
+        ].includes(path)
+      ) {
+        writeMutationJson(404, {
+          error: { code: 'not_found', message: 'Request denied.' },
+        });
+        return;
+      }
+      if (request.method !== allowedMethods) {
+        writeMutationJson(
+          405,
+          { error: { code: 'method_not_allowed', message: 'Request denied.' } },
+          { allow: allowedMethods },
+        );
+        return;
+      }
+      if (api === undefined || readBoundary === undefined) {
+        writeMutationJson(404, {
+          error: { code: 'not_configured', message: 'Request denied.' },
+        });
+        return;
+      }
+      const authorization = readBoundary.authorize(
+        {
+          authorization: request.headers.authorization,
+          origin: headerValue(request.headers.origin),
+          requestId: headerValue(request.headers['x-command-deck-request-id']),
+          timestamp: headerValue(request.headers['x-command-deck-timestamp']),
+          remoteAddress: request.socket.remoteAddress,
+        },
+        observedAt,
+      );
+      if (!authorization.ok) {
+        request.resume();
+        writeMutationJson(authorization.status, {
+          error: { code: authorization.code, message: 'Request denied.' },
+        });
+        return;
+      }
+      if (path === '/api/v1/command-deck/config/catalog') {
+        writeMutationJson(200, {
+          actions: projectCommandDeckMutationCatalog(api.catalog).actions,
+        });
+        return;
+      }
+      if (
+        !headerValue(request.headers['content-type'])?.startsWith(
+          'application/json',
+        )
+      ) {
+        request.resume();
+        writeMutationJson(400, {
+          error: { code: 'invalid_request', message: 'Request denied.' },
+        });
+        return;
+      }
+      const body = await readBoundedJson(request, 4096);
+      if (!body.ok) {
+        writeMutationJson(body.status, {
+          error: { code: body.code, message: 'Request denied.' },
+        });
+        return;
+      }
+      if (path === '/api/v1/command-deck/config/preview') {
+        writeMutationResult(
+          writeMutationJson,
+          await api.service.preview(actionField(body.value)),
+        );
+        return;
+      }
+      if (path === '/api/v1/command-deck/config/cancel') {
+        const previewId = textField(body.value, 'previewId');
+        if (previewId === undefined) {
+          writeMutationJson(400, {
+            error: { code: 'invalid_request', message: 'Request denied.' },
+          });
+          return;
+        }
+        writeMutationResult(
+          writeMutationJson,
+          await api.service.cancel(previewId),
+        );
+        return;
+      }
+      const rollbackToken = textField(body.value, 'rollbackToken');
+      if (
+        path === '/api/v1/command-deck/config/rollback' &&
+        rollbackToken !== undefined
+      ) {
+        writeMutationResult(
+          writeMutationJson,
+          await api.service.previewRollback(rollbackToken),
+        );
+        return;
+      }
+      const idempotencyKey = headerValue(request.headers['idempotency-key']);
+      if (!isIdempotencyKey(idempotencyKey)) {
+        writeMutationJson(400, {
+          error: { code: 'invalid_request', message: 'Request denied.' },
+        });
+        return;
+      }
+      if (path === '/api/v1/command-deck/config/confirm') {
+        writeMutationResult(
+          writeMutationJson,
+          await api.service.confirm({
+            previewId: textField(body.value, 'previewId'),
+            action: actionField(body.value),
+            idempotencyKey,
+          }),
+        );
+        return;
+      }
+      writeMutationResult(
+        writeMutationJson,
+        await api.service.confirmRollback({
+          previewId: textField(body.value, 'previewId'),
+          idempotencyKey,
+        }),
+      );
+      return;
+    }
     if (path === '/api/v1/command-deck/snapshot') {
       const observedAt = now();
       const writeReadApiJson = (
@@ -732,3 +907,103 @@ const isLocalRequest = (request: IncomingMessage): boolean =>
 const headerValue = (
   value: string | readonly string[] | undefined,
 ): string | undefined => (typeof value === 'string' ? value : undefined);
+
+type MutationResult =
+  | CommandDeckMutationPreviewResult
+  | CommandDeckMutationConfirmResult
+  | CommandDeckMutationCancelResult;
+
+async function readBoundedJson(
+  request: IncomingMessage,
+  limit: number,
+): Promise<
+  | { readonly ok: true; readonly value: unknown }
+  | {
+      readonly ok: false;
+      readonly status: 400 | 413;
+      readonly code: 'invalid_request' | 'body_too_large';
+    }
+> {
+  const declaredLength = Number(request.headers['content-length'] ?? 0);
+  if (!Number.isFinite(declaredLength) || declaredLength > limit) {
+    request.resume();
+    return { ok: false, status: 413, code: 'body_too_large' };
+  }
+  let size = 0;
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > limit) {
+      request.resume();
+      return { ok: false, status: 413, code: 'body_too_large' };
+    }
+    chunks.push(buffer);
+  }
+  try {
+    return {
+      ok: true,
+      value: JSON.parse(Buffer.concat(chunks).toString('utf8')),
+    };
+  } catch {
+    return { ok: false, status: 400, code: 'invalid_request' };
+  }
+}
+
+function writeMutationResult(
+  write: (status: number, body: Record<string, unknown>) => void,
+  result: MutationResult,
+): void {
+  if (result.ok) {
+    write(
+      200,
+      'preview' in result
+        ? { preview: result.preview }
+        : 'receipt' in result
+          ? { receipt: result.receipt }
+          : { cancelled: true },
+    );
+    return;
+  }
+  const code = result.error.code.toLowerCase();
+  write(mutationErrorStatus(result.error.code), {
+    error: { code, message: mutationErrorMessage(result.error.code) },
+  });
+}
+
+function mutationErrorStatus(code: string): 400 | 404 | 409 | 503 {
+  if (code === 'INVALID_ACTION' || code === 'PREVIEW_MISMATCH') return 400;
+  if (code === 'PREVIEW_NOT_FOUND' || code === 'ROLLBACK_NOT_FOUND') return 404;
+  if (code === 'APPLY_FAILED' || code === 'APPLY_OUTCOME_UNKNOWN') return 503;
+  return 409;
+}
+
+function mutationErrorMessage(code: string): string {
+  if (code === 'APPLY_FAILED' || code === 'APPLY_OUTCOME_UNKNOWN')
+    return 'Jarvis could not apply this change. Retry the same confirmation.';
+  if (code === 'PRECONDITION_FAILED' || code === 'ROLLBACK_CONFLICT')
+    return 'This target changed after the preview and was not modified.';
+  if (code === 'PREVIEW_STALE')
+    return 'This preview has expired. Create a new preview before confirming.';
+  return 'This Command Deck request is not available.';
+}
+
+function textField(value: unknown, key: string): string | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return undefined;
+  const candidate = (value as Record<string, unknown>)[key];
+  return typeof candidate === 'string' && candidate.trim() !== ''
+    ? candidate.trim()
+    : undefined;
+}
+
+function actionField(value: unknown): CommandDeckMutationAction | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return undefined;
+  return (value as Record<string, unknown>).action as
+    CommandDeckMutationAction | undefined;
+}
+
+function isIdempotencyKey(value: string | undefined): value is string {
+  return value !== undefined && /^[a-zA-Z0-9_-]{8,128}$/.test(value);
+}
