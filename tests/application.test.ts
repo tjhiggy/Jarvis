@@ -519,6 +519,127 @@ describe('createApplication', () => {
     }
   });
 
+  it('recovers an applied operation after preview expiry but leaves an unapplied expired preview stale', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-crash-'));
+    const databasePath = join(directory, 'jarvis.db');
+    const broadcast = new SqliteBroadcastStore(databasePath);
+    const engagement = new SQLiteEngagementRepository(databasePath);
+    const featureFlags = new FeatureFlagService(engagement);
+    const rss = new RssStorage(databasePath);
+    let currentTime = new Date('2026-08-23T20:00:00.000Z');
+    try {
+      const options = {
+        authorization: {
+          token: 'write-token-with-enough-entropy',
+          allowedOrigins: [],
+          maxClockSkewMs: 60_000,
+          replayRetentionMs: 60_000,
+          rateLimit: 30,
+          rateWindowMs: 60_000,
+        },
+        databasePath,
+        guildId: 'guild-id',
+        broadcastStore: broadcast,
+        featureFlags,
+        rssStorage: rss,
+        configuredBroadcasts: [] as const,
+        allowedChannelIds: new Set(['rss-channel']),
+        allowedRssHosts: ['feeds.example.test'],
+        rssChannelId: 'rss-channel',
+        now: () => currentTime,
+      };
+      const appliedAction = {
+        type: 'rss_feed' as const,
+        operation: 'add' as const,
+        url: 'https://feeds.example.test/crash.xml',
+        label: 'Crash recovery feed',
+      };
+      const staleAction = {
+        type: 'rss_feed' as const,
+        operation: 'add' as const,
+        url: 'https://feeds.example.test/stale.xml',
+        label: 'Must stay absent',
+      };
+      const firstService = createCommandDeckRuntimeMutationApi(options).service;
+      const appliedPreview = await firstService.preview(appliedAction);
+      const stalePreview = await firstService.preview(staleAction);
+      expect(appliedPreview.ok).toBe(true);
+      expect(stalePreview.ok).toBe(true);
+      if (!appliedPreview.ok || !stalePreview.ok)
+        throw new Error('Crash-window preview failed.');
+
+      const database = new Database(databasePath, { readonly: true });
+      const operation = database
+        .prepare(
+          `SELECT operation_id AS operationId
+           FROM command_deck_mutation_previews
+           WHERE preview_id = ?`,
+        )
+        .get(appliedPreview.preview.id) as { readonly operationId: string };
+      database.close();
+      const adapter = createCommandDeckRuntimeMutationAdapter(options);
+      await expect(
+        adapter.apply({
+          action: appliedAction,
+          expectedValue: undefined,
+          nextValue: {
+            url: appliedAction.url,
+            label: appliedAction.label,
+          },
+          operationId: operation.operationId,
+        }),
+      ).resolves.toBe('applied');
+
+      currentTime = new Date('2026-08-23T20:06:00.000Z');
+      const restartedService =
+        createCommandDeckRuntimeMutationApi(options).service;
+      const recovered = await restartedService.confirm({
+        previewId: appliedPreview.preview.id,
+        action: appliedAction,
+        idempotencyKey: 'expired-applied-recovery',
+      });
+      expect(recovered.ok).toBe(true);
+      if (!recovered.ok) throw new Error('Applied recovery failed.');
+      expect(recovered.receipt.rollbackToken).toBeTruthy();
+      expect(rss.listFeeds('guild-id')).toEqual([
+        expect.objectContaining({ url: appliedAction.url }),
+      ]);
+
+      await expect(
+        restartedService.confirm({
+          previewId: stalePreview.preview.id,
+          action: staleAction,
+          idempotencyKey: 'expired-unapplied-rejection',
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'PREVIEW_STALE' },
+      });
+      expect(rss.listFeeds('guild-id')).toEqual([
+        expect.objectContaining({ url: appliedAction.url }),
+      ]);
+
+      const rollbackPreview = await restartedService.previewRollback(
+        recovered.receipt.rollbackToken!,
+      );
+      expect(rollbackPreview.ok).toBe(true);
+      if (!rollbackPreview.ok)
+        throw new Error('Recovered rollback preview failed.');
+      await expect(
+        restartedService.confirmRollback({
+          previewId: rollbackPreview.preview.id,
+          idempotencyKey: 'expired-applied-rollback',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(rss.listFeeds('guild-id')).toEqual([]);
+    } finally {
+      rss.close();
+      await engagement.closeConnection();
+      await broadcast.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('passes a configuration-scoped mutation API into the Admin Console', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-wire-'));
     const databasePath = join(directory, 'jarvis.db');

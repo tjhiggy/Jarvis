@@ -446,14 +446,28 @@ export const createCommandDeckMutationService = ({
         'PREVIEW_CANCELLED',
         'This preview was cancelled and cannot be confirmed.',
       );
-    if (now().getTime() > new Date(session.expiresAt).getTime())
-      return error(
-        'PREVIEW_STALE',
-        'This preview has expired. Create a new preview before confirming.',
-      );
     if (session.receipt !== undefined)
       return error('PREVIEW_USED', 'This preview was already confirmed.');
     return session;
+  };
+
+  const stalePreview = (): CommandDeckMutationConfirmResult =>
+    error(
+      'PREVIEW_STALE',
+      'This preview has expired. Create a new preview before confirming.',
+    );
+
+  const recoverExpiredApplied = async (
+    session: CommandDeckMutationStoredPreview,
+    idempotencyKey: string,
+  ): Promise<CommandDeckMutationConfirmResult> => {
+    try {
+      if ((await adapter.operationStatus(session.operationId)) !== 'applied')
+        return stalePreview();
+    } catch {
+      return stalePreview();
+    }
+    return complete(session, idempotencyKey);
   };
 
   const confirm = async (
@@ -490,6 +504,8 @@ export const createCommandDeckMutationService = ({
         'PREVIEW_MISMATCH',
         'Confirmation does not match a valid preview.',
       );
+    if (now().getTime() > new Date(candidate.expiresAt).getTime())
+      return recoverExpiredApplied(candidate, input.idempotencyKey);
     return confirmSession(candidate, input.idempotencyKey);
   };
 
@@ -580,6 +596,8 @@ export const createCommandDeckMutationService = ({
         'PREVIEW_MISMATCH',
         'Confirmation does not match a valid rollback preview.',
       );
+    if (now().getTime() > new Date(candidate.expiresAt).getTime())
+      return recoverExpiredApplied(candidate, input.idempotencyKey);
     return confirmSession(candidate, input.idempotencyKey);
   };
 
