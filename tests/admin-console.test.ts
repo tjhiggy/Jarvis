@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { request as httpRequest } from 'node:http';
 import { adminConsoleWorkflows } from '../src/admin/admin-console-workflows.js';
 import {
   startAdminConsole,
@@ -799,6 +800,113 @@ describe('admin console', () => {
     });
     await console.close();
   });
+
+  it('rejects catalog GET payloads before exposing configuration', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      readApi: mutationReadPolicy(),
+      mutationApi: mutationApi(),
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const endpoint = `${consoleUrl(console)}/api/v1/command-deck/config/catalog`;
+
+    expect(
+      (
+        await rawRequest(
+          endpoint,
+          {
+            ...mutationHeaders('c95ea6da-475e-4ca8-bae6-6b1f67718ca6'),
+            'content-length': '1',
+          },
+          ['x'],
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await rawRequest(
+          endpoint,
+          {
+            ...mutationHeaders('d0f6cbae-f5e2-4a0c-befd-fb62dac15f9a'),
+            'transfer-encoding': 'chunked',
+          },
+          ['x'],
+        )
+      ).status,
+    ).toBe(400);
+    await console.close();
+  });
+
+  it('rejects JSON lookalike media types at the mutation boundary', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      readApi: mutationReadPolicy(),
+      mutationApi: mutationApi(),
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const response = await fetch(
+      `${consoleUrl(console)}/api/v1/command-deck/config/preview`,
+      {
+        method: 'POST',
+        headers: {
+          ...mutationHeaders('64dc5c3d-bfdb-419e-866a-cf8b3c1b2edf'),
+          'content-type': 'application/jsonp',
+        },
+        body: JSON.stringify({
+          action: {
+            type: 'broadcast_state',
+            category: 'rss',
+            state: 'paused',
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await console.close();
+  });
+
+  it('sanitizes unexpected mutation service failures', async () => {
+    const api = mutationApi();
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      readApi: mutationReadPolicy(),
+      mutationApi: {
+        ...api,
+        service: {
+          ...api.service,
+          preview: async () => {
+            throw new Error('canary-service-failure-must-not-leak');
+          },
+        },
+      },
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const response = await fetch(
+      `${consoleUrl(console)}/api/v1/command-deck/config/preview`,
+      {
+        method: 'POST',
+        headers: {
+          ...mutationHeaders('2e535374-0aac-45d1-9b57-87139c314a45'),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: {
+            type: 'broadcast_state',
+            category: 'rss',
+            state: 'paused',
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain('canary-service-failure');
+    await console.close();
+  });
 });
 
 function basicSnapshot(): AdminConsoleSnapshot {
@@ -879,6 +987,26 @@ function mutationApi(applied: string[] = []) {
       })(),
     }),
   };
+}
+
+function rawRequest(
+  url: string,
+  headers: Record<string, string>,
+  chunks: readonly string[],
+): Promise<{ readonly status: number; readonly body: string }> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(url, { method: 'GET', headers }, (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk: string) => (body += chunk));
+      response.on('end', () =>
+        resolve({ status: response.statusCode ?? 0, body }),
+      );
+    });
+    request.on('error', reject);
+    for (const chunk of chunks) request.write(chunk);
+    request.end();
+  });
 }
 
 function safeSnapshot(): AdminConsoleSnapshot {

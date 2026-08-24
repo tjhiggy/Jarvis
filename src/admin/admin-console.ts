@@ -399,16 +399,19 @@ export const startAdminConsole = (options: {
         return;
       }
       if (path === '/api/v1/command-deck/config/catalog') {
+        if (hasRequestBody(request)) {
+          request.resume();
+          writeMutationJson(400, {
+            error: { code: 'invalid_request', message: 'Request denied.' },
+          });
+          return;
+        }
         writeMutationJson(200, {
           actions: projectCommandDeckMutationCatalog(api.catalog).actions,
         });
         return;
       }
-      if (
-        !headerValue(request.headers['content-type'])?.startsWith(
-          'application/json',
-        )
-      ) {
+      if (!isJsonContentType(headerValue(request.headers['content-type']))) {
         request.resume();
         writeMutationJson(400, {
           error: { code: 'invalid_request', message: 'Request denied.' },
@@ -422,64 +425,71 @@ export const startAdminConsole = (options: {
         });
         return;
       }
-      if (path === '/api/v1/command-deck/config/preview') {
-        writeMutationResult(
-          writeMutationJson,
-          await api.service.preview(actionField(body.value)),
-        );
-        return;
-      }
-      if (path === '/api/v1/command-deck/config/cancel') {
-        const previewId = textField(body.value, 'previewId');
-        if (previewId === undefined) {
+      try {
+        if (path === '/api/v1/command-deck/config/preview') {
+          writeMutationResult(
+            writeMutationJson,
+            await api.service.preview(actionField(body.value)),
+          );
+          return;
+        }
+        if (path === '/api/v1/command-deck/config/cancel') {
+          const previewId = textField(body.value, 'previewId');
+          if (previewId === undefined) {
+            writeMutationJson(400, {
+              error: { code: 'invalid_request', message: 'Request denied.' },
+            });
+            return;
+          }
+          writeMutationResult(
+            writeMutationJson,
+            await api.service.cancel(previewId),
+          );
+          return;
+        }
+        const rollbackToken = textField(body.value, 'rollbackToken');
+        if (
+          path === '/api/v1/command-deck/config/rollback' &&
+          rollbackToken !== undefined
+        ) {
+          writeMutationResult(
+            writeMutationJson,
+            await api.service.previewRollback(rollbackToken),
+          );
+          return;
+        }
+        const idempotencyKey = headerValue(request.headers['idempotency-key']);
+        if (!isIdempotencyKey(idempotencyKey)) {
           writeMutationJson(400, {
             error: { code: 'invalid_request', message: 'Request denied.' },
           });
           return;
         }
+        if (path === '/api/v1/command-deck/config/confirm') {
+          writeMutationResult(
+            writeMutationJson,
+            await api.service.confirm({
+              previewId: textField(body.value, 'previewId'),
+              action: actionField(body.value),
+              idempotencyKey,
+            }),
+          );
+          return;
+        }
         writeMutationResult(
           writeMutationJson,
-          await api.service.cancel(previewId),
-        );
-        return;
-      }
-      const rollbackToken = textField(body.value, 'rollbackToken');
-      if (
-        path === '/api/v1/command-deck/config/rollback' &&
-        rollbackToken !== undefined
-      ) {
-        writeMutationResult(
-          writeMutationJson,
-          await api.service.previewRollback(rollbackToken),
-        );
-        return;
-      }
-      const idempotencyKey = headerValue(request.headers['idempotency-key']);
-      if (!isIdempotencyKey(idempotencyKey)) {
-        writeMutationJson(400, {
-          error: { code: 'invalid_request', message: 'Request denied.' },
-        });
-        return;
-      }
-      if (path === '/api/v1/command-deck/config/confirm') {
-        writeMutationResult(
-          writeMutationJson,
-          await api.service.confirm({
+          await api.service.confirmRollback({
             previewId: textField(body.value, 'previewId'),
-            action: actionField(body.value),
             idempotencyKey,
           }),
         );
         return;
+      } catch {
+        writeMutationJson(503, {
+          error: { code: 'unavailable', message: 'Command Deck unavailable.' },
+        });
+        return;
       }
-      writeMutationResult(
-        writeMutationJson,
-        await api.service.confirmRollback({
-          previewId: textField(body.value, 'previewId'),
-          idempotencyKey,
-        }),
-      );
-      return;
     }
     if (path === '/api/v1/command-deck/snapshot') {
       const observedAt = now();
@@ -907,6 +917,19 @@ const isLocalRequest = (request: IncomingMessage): boolean =>
 const headerValue = (
   value: string | readonly string[] | undefined,
 ): string | undefined => (typeof value === 'string' ? value : undefined);
+
+function hasRequestBody(request: IncomingMessage): boolean {
+  const contentLength = headerValue(request.headers['content-length']);
+  return (
+    request.headers['transfer-encoding'] !== undefined ||
+    (contentLength !== undefined &&
+      (!/^\d+$/.test(contentLength) || Number(contentLength) > 0))
+  );
+}
+
+function isJsonContentType(value: string | undefined): boolean {
+  return value !== undefined && /^application\/json(?:\s*;.*)?$/i.test(value);
+}
 
 type MutationResult =
   | CommandDeckMutationPreviewResult
