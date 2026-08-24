@@ -34,6 +34,7 @@
     "dotenv": "^17.4.2",
     "openai": "^7.1.0",
     "pino": "^10.3.1",
+    "undici": "^6.28.0",
     "unicode-case-folding": "^1.1.1",
     "zod": "^4.4.3"
   },

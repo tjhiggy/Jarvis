@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   RssNotificationClient,
+  createPublicRssLookup,
   isAllowedRssUrl,
 } from '../src/notifications/rss-notifications.js';
 
@@ -45,6 +46,54 @@ describe('RSS notifications', () => {
       },
     ]);
     expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://news.example.com/feed.xml',
+      expect.objectContaining({ redirect: 'error' }),
+    );
+  });
+
+  it.each([
+    '127.0.0.1',
+    '10.0.0.1',
+    '169.254.169.254',
+    '192.168.1.1',
+    '::1',
+    'fec0::1',
+    'fe80::1',
+    'fc00::1',
+  ])(
+    'rejects an allowlisted hostname resolving to non-public address %s',
+    async (address) => {
+      const lookup = createPublicRssLookup(async () => [
+        { address, family: address.includes(':') ? 6 : 4 },
+      ]);
+
+      await expect(
+        new Promise((resolve, reject) =>
+          lookup('feeds.example.com', { all: true }, (error, addresses) =>
+            error === null ? resolve(addresses) : reject(error),
+          ),
+        ),
+      ).rejects.toThrow('RSS host did not resolve to a public address.');
+    },
+  );
+
+  it('returns only public DNS results for the socket connection', async () => {
+    const lookup = createPublicRssLookup(async () => [
+      { address: '8.8.8.8', family: 4 },
+      { address: '2606:4700:4700::1111', family: 6 },
+    ]);
+
+    await expect(
+      new Promise((resolve, reject) =>
+        lookup('feeds.example.com', { all: true }, (error, addresses) =>
+          error === null ? resolve(addresses) : reject(error),
+        ),
+      ),
+    ).resolves.toEqual([
+      { address: '8.8.8.8', family: 4 },
+      { address: '2606:4700:4700::1111', family: 6 },
+    ]);
   });
 
   it('canonicalizes item URLs and applies the requested parsed-entry bound', async () => {

@@ -580,6 +580,182 @@ p {
 .area-table .panel-heading {
   background: rgba(155, 120, 255, 0.025);
 }
+.settings-controls {
+  margin-top: 26px;
+  padding: 24px;
+  border: 1px solid #443064;
+  border-radius: 18px;
+  background: linear-gradient(
+    145deg,
+    rgba(30, 20, 52, 0.7),
+    rgba(13, 13, 24, 0.92)
+  );
+}
+.settings-heading {
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.settings-heading h2,
+.control-card h3,
+.preview-panel h3 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+.settings-heading > div > p:last-child,
+.control-card > div > p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.control-status {
+  max-width: 360px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #3b3656;
+  border-radius: 10px;
+  color: #c8c0e9;
+  background: rgba(155, 120, 255, 0.08);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.control-status.unauthorized,
+.control-status.stale,
+.control-status.retryable,
+.control-status.permanent {
+  color: #ffd2e1;
+  border-color: rgba(243, 107, 158, 0.5);
+  background: rgba(243, 107, 158, 0.1);
+}
+.control-status.succeeded,
+.control-status.rolled-back,
+.control-status.ready {
+  color: var(--cyan);
+  border-color: rgba(87, 228, 212, 0.35);
+  background: rgba(87, 228, 212, 0.07);
+}
+.unlock-form,
+.control-card,
+.preview-panel {
+  display: grid;
+  gap: 13px;
+}
+.unlock-form {
+  max-width: 580px;
+  margin: 22px 0;
+  padding: 18px;
+  border: 1px dashed #4b426a;
+  border-radius: 14px;
+  background: rgba(12, 12, 23, 0.6);
+}
+.unlock-form small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.control-card {
+  padding: 19px;
+}
+.control-card label,
+.unlock-form label {
+  display: grid;
+  gap: 7px;
+  color: #d9d2ef;
+  font-size: 11px;
+  font-weight: 650;
+}
+.control-card input,
+.control-card select,
+.unlock-form input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #454060;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: #10101e;
+  font: inherit;
+}
+.control-card .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 38px;
+}
+.control-card .checkbox-label input {
+  width: 16px;
+  min-height: 16px;
+  accent-color: var(--cyan);
+}
+.control-card button,
+.unlock-form button,
+.preview-actions button,
+.rollback-action {
+  min-height: 38px;
+  border: 1px solid rgba(87, 228, 212, 0.45);
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: #071412;
+  background: var(--cyan);
+  font: 700 12px inherit;
+  cursor: pointer;
+}
+.control-card button:disabled,
+.unlock-form button:disabled,
+.preview-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.preview-panel {
+  margin-top: 16px;
+  padding: 20px;
+  border-color: rgba(87, 228, 212, 0.35);
+}
+.preview-panel dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.preview-panel dl div {
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(9, 9, 16, 0.45);
+}
+.preview-panel dt {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.preview-panel dd {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+  color: #e2ddf2;
+  font-size: 12px;
+}
+.preview-actions {
+  display: flex;
+  gap: 10px;
+}
+.preview-actions .secondary-action {
+  color: #ddd7ee;
+  border-color: #4b4565;
+  background: transparent;
+}
+.rollback-action {
+  margin-top: 16px;
+  color: #f2eaff;
+  border-color: rgba(155, 120, 255, 0.6);
+  background: #543c91;
+}
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -630,6 +806,9 @@ p {
   .area-grid,
   .state-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .control-grid {
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 680px) {
@@ -706,6 +885,19 @@ p {
   }
   .area-grid,
   .state-grid {
+    grid-template-columns: 1fr;
+  }
+  .settings-controls {
+    padding: 18px;
+  }
+  .settings-heading,
+  .preview-actions {
+    display: grid;
+  }
+  .control-status {
+    max-width: none;
+  }
+  .preview-panel dl {
     grid-template-columns: 1fr;
   }
   .table-row {

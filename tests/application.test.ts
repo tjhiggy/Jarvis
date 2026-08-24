@@ -21,9 +21,21 @@ import type { ProactiveEngagementService } from '../src/engagement/proactive.js'
 import { RssScheduler } from '../src/notifications/rss-scheduler.js';
 import { RssNotificationClient } from '../src/notifications/rss-notifications.js';
 import { RssStorage } from '../src/notifications/rss-storage.js';
+import { SqliteBroadcastStore } from '../src/notifications/sqlite-broadcast-store.js';
 import { ReminderScheduler } from '../src/reminders/reminder-scheduler.js';
 import type { ReminderStore } from '../src/reminders/reminder-store.js';
 import type { ReminderView } from '../src/reminders/reminder-types.js';
+import { SQLiteEngagementRepository } from '../src/storage/engagement-sqlite.js';
+import {
+  FeatureFlagService,
+  SUPPORTED_FEATURE_FLAGS,
+} from '../src/engagement/feature-flags.js';
+import {
+  createCommandDeckRuntimeMutationAdapter,
+  createCommandDeckRuntimeMutationApi,
+  type AdminConsoleMutationApi,
+} from '../src/admin/admin-console.js';
+import { projectCommandDeckMutationCatalog } from '../src/admin/command-deck-read-api.js';
 import {
   createApplication,
   nextBroadcastEligibleAt,
@@ -179,6 +191,573 @@ describe('reportStartupFailure', () => {
 });
 
 describe('createApplication', () => {
+  it('applies allowlisted broadcast, feature, and RSS changes and compensates an RSS change', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-'));
+    const databasePath = join(directory, 'jarvis.db');
+    const broadcast = new SqliteBroadcastStore(databasePath);
+    const engagement = new SQLiteEngagementRepository(databasePath);
+    const featureFlags = new FeatureFlagService(engagement);
+    const rss = new RssStorage(databasePath);
+    const auditEvents: unknown[] = [];
+    try {
+      await broadcast.setPolicy({
+        serverId: 'guild-id',
+        category: 'rss',
+        state: 'enabled',
+        channelId: 'channel-id',
+        timezone: 'UTC',
+        minimumIntervalSeconds: 0,
+        digestMode: true,
+        updatedAt: new Date('2026-08-23T20:00:00.000Z'),
+      });
+      rss.addFeed(
+        'guild-id',
+        'https://feeds.example.test/private/catalog-path-secret/feed.xml?access_token=catalog-query-secret',
+        'Existing private feed',
+      );
+      const api = createCommandDeckRuntimeMutationApi({
+        authorization: {
+          token: 'write-token-with-enough-entropy',
+          allowedOrigins: [],
+          maxClockSkewMs: 60_000,
+          replayRetentionMs: 60_000,
+          rateLimit: 30,
+          rateWindowMs: 60_000,
+        },
+        databasePath,
+        guildId: 'guild-id',
+        broadcastStore: broadcast,
+        featureFlags,
+        rssStorage: rss,
+        configuredBroadcasts: [{ category: 'rss', channelId: 'channel-id' }],
+        allowedChannelIds: new Set(['channel-id']),
+        allowedRssHosts: ['feeds.example.test'],
+        rssChannelId: 'channel-id',
+        audit: (event) => {
+          auditEvents.push(event);
+        },
+      });
+
+      const credentialCanary = 'rss-user-canary:rss-password-canary';
+      const credentialPreview = await api.service.preview({
+        type: 'rss_feed',
+        operation: 'add',
+        url: `https://${credentialCanary}@feeds.example.test/private.xml`,
+        label: 'Private feed',
+      });
+      expect(credentialPreview).toMatchObject({
+        ok: false,
+        error: { code: 'INVALID_ACTION' },
+      });
+      expect(JSON.stringify(credentialPreview)).not.toContain(credentialCanary);
+      expect(rss.listFeeds('guild-id')).toEqual([
+        expect.objectContaining({ label: 'Existing private feed' }),
+      ]);
+
+      const broadcastAction = {
+        type: 'broadcast_state' as const,
+        category: 'rss',
+        state: 'paused' as const,
+      };
+      const broadcastPreview = await api.service.preview(broadcastAction);
+      expect(broadcastPreview.ok).toBe(true);
+      if (!broadcastPreview.ok) throw new Error('Broadcast preview failed.');
+      await expect(
+        api.service.confirm({
+          previewId: broadcastPreview.preview.id,
+          action: broadcastAction,
+          idempotencyKey: 'broadcast-pause',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      await expect(
+        broadcast.getPolicy('guild-id', 'rss'),
+      ).resolves.toMatchObject({ state: 'paused', channelId: 'channel-id' });
+
+      const featureAction = {
+        type: 'feature_flag' as const,
+        feature: 'trivia',
+        enabled: false,
+      };
+      const featurePreview = await api.service.preview(featureAction);
+      expect(featurePreview.ok).toBe(true);
+      if (!featurePreview.ok) throw new Error('Feature preview failed.');
+      await expect(
+        api.service.confirm({
+          previewId: featurePreview.preview.id,
+          action: featureAction,
+          idempotencyKey: 'feature-disable',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      await expect(featureFlags.isEnabled('guild-id', 'trivia')).resolves.toBe(
+        false,
+      );
+
+      const rssAction = {
+        type: 'rss_feed' as const,
+        operation: 'add' as const,
+        url: 'https://feeds.example.test/private/rss-path-secret/news.xml?access_token=rss-query-secret',
+        label: 'Ship News',
+      };
+      const rssPreview = await api.service.preview(rssAction);
+      expect(rssPreview.ok).toBe(true);
+      expect(JSON.stringify(rssPreview)).not.toMatch(
+        /rss-path-secret|rss-query-secret|access_token/,
+      );
+      if (!rssPreview.ok) throw new Error('RSS preview failed.');
+      const rssConfirmation = await api.service.confirm({
+        previewId: rssPreview.preview.id,
+        action: rssAction,
+        idempotencyKey: 'rss-add',
+      });
+      expect(rssConfirmation.ok).toBe(true);
+      if (!rssConfirmation.ok) throw new Error('RSS confirmation failed.');
+      expect(rss.listFeeds('guild-id')).toContainEqual(
+        expect.objectContaining({
+          url: rssAction.url,
+          label: 'Ship News',
+        }),
+      );
+
+      const projectedCatalog = projectCommandDeckMutationCatalog(api.catalog);
+      const catalogJson = JSON.stringify(projectedCatalog);
+      expect(catalogJson).not.toMatch(
+        /catalog-path-secret|catalog-query-secret|access_token/,
+      );
+      const feedId = projectedCatalog.actions.rssFeeds[0]?.id;
+      expect(feedId).toMatch(/^rss_[a-f0-9]{32}$/);
+      const removeAction = {
+        type: 'rss_feed' as const,
+        operation: 'remove' as const,
+        feedId: feedId!,
+      };
+      const removePreview = await api.service.preview(removeAction);
+      expect(removePreview.ok).toBe(true);
+      expect(JSON.stringify(removePreview)).not.toMatch(
+        /catalog-path-secret|catalog-query-secret|access_token/,
+      );
+      if (!removePreview.ok) throw new Error('RSS removal preview failed.');
+      await expect(
+        api.service.confirm({
+          previewId: removePreview.preview.id,
+          action: removeAction,
+          idempotencyKey: 'rss-remove-existing',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(rss.listFeeds('guild-id').map((feed) => feed.label)).toEqual([
+        'Ship News',
+      ]);
+
+      const rollbackPreview = await api.service.previewRollback(
+        rssConfirmation.receipt.rollbackToken!,
+      );
+      expect(rollbackPreview.ok).toBe(true);
+      if (!rollbackPreview.ok) throw new Error('Rollback preview failed.');
+      await expect(
+        api.service.confirmRollback({
+          previewId: rollbackPreview.preview.id,
+          idempotencyKey: 'rss-add-rollback',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(rss.listFeeds('guild-id')).toEqual([]);
+      expect(JSON.stringify(auditEvents)).not.toContain('feeds.example.test');
+      expect(JSON.stringify(auditEvents)).not.toContain('Ship News');
+      expect(JSON.stringify(auditEvents)).not.toContain('rss-user-canary');
+      const persisted = new Database(databasePath, { readonly: true });
+      const persistedMutationValues = persisted
+        .prepare(
+          `SELECT action_json || before_json || after_json || expected_json AS value
+           FROM command_deck_mutation_previews
+           UNION ALL
+           SELECT url || label AS value FROM rss_feeds`,
+        )
+        .all() as { readonly value: string }[];
+      persisted.close();
+      expect(JSON.stringify(persistedMutationValues)).not.toContain(
+        'rss-user-canary',
+      );
+      expect(JSON.stringify(persistedMutationValues)).not.toContain(
+        'rss-password-canary',
+      );
+    } finally {
+      rss.close();
+      await engagement.closeConnection();
+      await broadcast.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('persists operation status across adapter instances and rejects a stale compare-and-set', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-cas-'));
+    const databasePath = join(directory, 'jarvis.db');
+    const broadcast = new SqliteBroadcastStore(databasePath);
+    const engagement = new SQLiteEngagementRepository(databasePath);
+    const featureFlags = new FeatureFlagService(engagement);
+    const rss = new RssStorage(databasePath);
+    try {
+      await broadcast.setPolicy({
+        serverId: 'guild-id',
+        category: 'rss',
+        state: 'enabled',
+        channelId: 'channel-id',
+        timezone: 'UTC',
+        minimumIntervalSeconds: 0,
+        digestMode: true,
+        updatedAt: new Date('2026-08-23T20:00:00.000Z'),
+      });
+      const options = {
+        databasePath,
+        guildId: 'guild-id',
+        broadcastStore: broadcast,
+        featureFlags,
+        rssStorage: rss,
+        configuredBroadcasts: [
+          { category: 'rss' as const, channelId: 'channel-id' },
+        ],
+        allowedChannelIds: new Set(['channel-id']),
+        allowedRssHosts: ['feeds.example.test'],
+        rssChannelId: 'channel-id',
+      };
+      const action = {
+        type: 'broadcast_state' as const,
+        category: 'rss',
+        state: 'paused' as const,
+      };
+      const first = createCommandDeckRuntimeMutationAdapter(options);
+      await expect(
+        first.apply({
+          action,
+          expectedValue: true,
+          nextValue: false,
+          operationId: 'durable-operation',
+        }),
+      ).resolves.toBe('applied');
+
+      const reopened = createCommandDeckRuntimeMutationAdapter(options);
+      await expect(reopened.operationStatus('durable-operation')).resolves.toBe(
+        'applied',
+      );
+      await broadcast.setPolicy({
+        ...(await broadcast.getPolicy('guild-id', 'rss'))!,
+        state: 'enabled',
+        updatedAt: new Date('2026-08-23T20:01:00.000Z'),
+      });
+      await expect(
+        reopened.apply({
+          action,
+          expectedValue: true,
+          nextValue: false,
+          operationId: 'durable-operation',
+        }),
+      ).resolves.toBe('already_applied');
+      await expect(
+        broadcast.getPolicy('guild-id', 'rss'),
+      ).resolves.toMatchObject({ state: 'enabled' });
+      await expect(
+        reopened.apply({
+          action,
+          expectedValue: false,
+          nextValue: true,
+          operationId: 'stale-operation',
+        }),
+      ).resolves.toBe('precondition_failed');
+      await expect(reopened.operationStatus('stale-operation')).resolves.toBe(
+        'not_applied',
+      );
+    } finally {
+      rss.close();
+      await engagement.closeConnection();
+      await broadcast.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('replays the original receipt and completes rollback after mutation-service restarts', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-state-'));
+    const databasePath = join(directory, 'jarvis.db');
+    const broadcast = new SqliteBroadcastStore(databasePath);
+    const engagement = new SQLiteEngagementRepository(databasePath);
+    const featureFlags = new FeatureFlagService(engagement);
+    const rss = new RssStorage(databasePath);
+    try {
+      const options = {
+        authorization: {
+          token: 'write-token-with-enough-entropy',
+          allowedOrigins: [],
+          maxClockSkewMs: 60_000,
+          replayRetentionMs: 60_000,
+          rateLimit: 30,
+          rateWindowMs: 60_000,
+        },
+        databasePath,
+        guildId: 'guild-id',
+        broadcastStore: broadcast,
+        featureFlags,
+        rssStorage: rss,
+        configuredBroadcasts: [] as const,
+        allowedChannelIds: new Set(['rss-channel']),
+        allowedRssHosts: ['feeds.example.test'],
+        rssChannelId: 'rss-channel',
+      };
+      const action = {
+        type: 'rss_feed' as const,
+        operation: 'add' as const,
+        url: 'https://feeds.example.test/restart.xml',
+        label: 'Restart feed',
+      };
+      const firstService = createCommandDeckRuntimeMutationApi(options).service;
+      const preview = await firstService.preview(action);
+      expect(preview.ok).toBe(true);
+      if (!preview.ok) throw new Error('Restart preview failed.');
+      const firstConfirmation = await firstService.confirm({
+        previewId: preview.preview.id,
+        action,
+        idempotencyKey: 'restart-confirmation',
+      });
+      expect(firstConfirmation.ok).toBe(true);
+      if (!firstConfirmation.ok)
+        throw new Error('Restart confirmation failed.');
+
+      const restartedService =
+        createCommandDeckRuntimeMutationApi(options).service;
+      await expect(
+        restartedService.confirm({
+          previewId: preview.preview.id,
+          action,
+          idempotencyKey: 'restart-confirmation',
+        }),
+      ).resolves.toEqual(firstConfirmation);
+      expect(rss.listFeeds('guild-id')).toHaveLength(1);
+
+      const rollbackPreview = await restartedService.previewRollback(
+        firstConfirmation.receipt.rollbackToken!,
+      );
+      expect(rollbackPreview.ok).toBe(true);
+      if (!rollbackPreview.ok)
+        throw new Error('Restart rollback preview failed.');
+
+      const rollbackRestart =
+        createCommandDeckRuntimeMutationApi(options).service;
+      const rollbackConfirmation = await rollbackRestart.confirmRollback({
+        previewId: rollbackPreview.preview.id,
+        idempotencyKey: 'restart-rollback-confirmation',
+      });
+      expect(rollbackConfirmation.ok).toBe(true);
+      expect(rss.listFeeds('guild-id')).toEqual([]);
+
+      const finalRestart = createCommandDeckRuntimeMutationApi(options).service;
+      await expect(
+        finalRestart.confirmRollback({
+          previewId: rollbackPreview.preview.id,
+          idempotencyKey: 'restart-rollback-confirmation',
+        }),
+      ).resolves.toEqual(rollbackConfirmation);
+    } finally {
+      rss.close();
+      await engagement.closeConnection();
+      await broadcast.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('recovers an applied operation after preview expiry but leaves an unapplied expired preview stale', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-crash-'));
+    const databasePath = join(directory, 'jarvis.db');
+    const broadcast = new SqliteBroadcastStore(databasePath);
+    const engagement = new SQLiteEngagementRepository(databasePath);
+    const featureFlags = new FeatureFlagService(engagement);
+    const rss = new RssStorage(databasePath);
+    let currentTime = new Date('2026-08-23T20:00:00.000Z');
+    try {
+      const options = {
+        authorization: {
+          token: 'write-token-with-enough-entropy',
+          allowedOrigins: [],
+          maxClockSkewMs: 60_000,
+          replayRetentionMs: 60_000,
+          rateLimit: 30,
+          rateWindowMs: 60_000,
+        },
+        databasePath,
+        guildId: 'guild-id',
+        broadcastStore: broadcast,
+        featureFlags,
+        rssStorage: rss,
+        configuredBroadcasts: [] as const,
+        allowedChannelIds: new Set(['rss-channel']),
+        allowedRssHosts: ['feeds.example.test'],
+        rssChannelId: 'rss-channel',
+        now: () => currentTime,
+      };
+      const appliedAction = {
+        type: 'rss_feed' as const,
+        operation: 'add' as const,
+        url: 'https://feeds.example.test/crash.xml',
+        label: 'Crash recovery feed',
+      };
+      const staleAction = {
+        type: 'rss_feed' as const,
+        operation: 'add' as const,
+        url: 'https://feeds.example.test/stale.xml',
+        label: 'Must stay absent',
+      };
+      const firstService = createCommandDeckRuntimeMutationApi(options).service;
+      const appliedPreview = await firstService.preview(appliedAction);
+      const stalePreview = await firstService.preview(staleAction);
+      expect(appliedPreview.ok).toBe(true);
+      expect(stalePreview.ok).toBe(true);
+      if (!appliedPreview.ok || !stalePreview.ok)
+        throw new Error('Crash-window preview failed.');
+
+      const database = new Database(databasePath, { readonly: true });
+      const operation = database
+        .prepare(
+          `SELECT operation_id AS operationId
+           FROM command_deck_mutation_previews
+           WHERE preview_id = ?`,
+        )
+        .get(appliedPreview.preview.id) as { readonly operationId: string };
+      database.close();
+      const adapter = createCommandDeckRuntimeMutationAdapter(options);
+      await expect(
+        adapter.apply({
+          action: appliedAction,
+          expectedValue: undefined,
+          nextValue: {
+            url: appliedAction.url,
+            label: appliedAction.label,
+          },
+          operationId: operation.operationId,
+        }),
+      ).resolves.toBe('applied');
+
+      currentTime = new Date('2026-08-23T20:06:00.000Z');
+      const restartedService =
+        createCommandDeckRuntimeMutationApi(options).service;
+      const recovered = await restartedService.confirm({
+        previewId: appliedPreview.preview.id,
+        action: appliedAction,
+        idempotencyKey: 'expired-applied-recovery',
+      });
+      expect(recovered.ok).toBe(true);
+      if (!recovered.ok) throw new Error('Applied recovery failed.');
+      expect(recovered.receipt.rollbackToken).toBeTruthy();
+      expect(rss.listFeeds('guild-id')).toEqual([
+        expect.objectContaining({ url: appliedAction.url }),
+      ]);
+
+      await expect(
+        restartedService.confirm({
+          previewId: stalePreview.preview.id,
+          action: staleAction,
+          idempotencyKey: 'expired-unapplied-rejection',
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'PREVIEW_STALE' },
+      });
+      expect(rss.listFeeds('guild-id')).toEqual([
+        expect.objectContaining({ url: appliedAction.url }),
+      ]);
+
+      const rollbackPreview = await restartedService.previewRollback(
+        recovered.receipt.rollbackToken!,
+      );
+      expect(rollbackPreview.ok).toBe(true);
+      if (!rollbackPreview.ok)
+        throw new Error('Recovered rollback preview failed.');
+      await expect(
+        restartedService.confirmRollback({
+          previewId: rollbackPreview.preview.id,
+          idempotencyKey: 'expired-applied-rollback',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(rss.listFeeds('guild-id')).toEqual([]);
+    } finally {
+      rss.close();
+      await engagement.closeConnection();
+      await broadcast.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('passes a configuration-scoped mutation API into the Admin Console', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-wire-'));
+    const databasePath = join(directory, 'jarvis.db');
+    let mutationApi: AdminConsoleMutationApi | undefined;
+    try {
+      const application = await createTestApplication({
+        loadConfig: () => ({
+          ...config,
+          adminConsole: {
+            enabled: true,
+            port: 0,
+            host: '127.0.0.1',
+            token: 'local-admin-token-with-32-characters-minimum',
+            readApi: {
+              token: 'r'.repeat(32),
+              allowedOrigins: ['https://deck.example.test'],
+              rateLimit: 30,
+              rateWindowMs: 60_000,
+              maxClockSkewMs: 60_000,
+              replayRetentionMs: 60_000,
+            },
+          },
+          storage: { ...config.storage, databasePath },
+          security: {
+            ...config.security,
+            allowedChannelIds: new Set(['rss-channel']),
+          },
+          engagement: {
+            ...config.engagement,
+            enabled: true,
+            channels: {
+              ...config.engagement.channels,
+              rssId: 'rss-channel',
+            },
+            rssAllowedHosts: ['feeds.example.test'],
+          },
+        }),
+        loadPersona: async () => ({}) as TrustedPersona,
+        createStore: () => conversationStore(),
+        createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+        createDiscordClient: () => ({
+          user: { id: 'bot-id' },
+          channels: {
+            fetch: async () => ({
+              name: 'jarvis-updates',
+              send: async () => ({ id: 'message-id' }),
+            }),
+          },
+          on: () => undefined,
+          login: async () => undefined,
+          destroy: () => undefined,
+        }),
+        startAdminConsole: async (options) => {
+          mutationApi = options.mutationApi;
+          return {
+            server: {} as never,
+            close: async () => undefined,
+          };
+        },
+        timers: inertTimers(),
+      });
+
+      expect(mutationApi).toBeDefined();
+      expect(mutationApi?.catalog).toEqual({
+        broadcastCategories: ['rss'],
+        featureFlags: [...SUPPORTED_FEATURE_FLAGS],
+        rssHosts: ['feeds.example.test'],
+        rssFeeds: [],
+      });
+      expect(mutationApi?.authorization.token).toBe(
+        'local-admin-token-with-32-characters-minimum',
+      );
+      await application.shutdown();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('initializes private member statistics when engagement is disabled', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'jarvis-member-stats-'));
     const databasePath = join(directory, 'jarvis.db');

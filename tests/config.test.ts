@@ -23,11 +23,11 @@ describe('loadConfig', () => {
     });
   });
 
-  it('normalizes exact HTTPS Command Deck origins and keeps the read token separate', () => {
+  it('keeps the remote read credential distinct from the local mutation credential', () => {
     const config = loadConfig({
       ...validEnv,
       ADMIN_CONSOLE_ENABLED: 'true',
-      ADMIN_CONSOLE_TOKEN: 'local-write-token',
+      ADMIN_CONSOLE_TOKEN: 'local-write-token-with-32-characters-minimum',
       COMMAND_DECK_API_TOKEN: 'remote-read-token-with-32-characters-minimum',
       COMMAND_DECK_API_ALLOWED_ORIGINS:
         ' https://deck.example.test,https://ops.example.test ',
@@ -36,13 +36,24 @@ describe('loadConfig', () => {
       'https://deck.example.test',
       'https://ops.example.test',
     ]);
+    expect(config.adminConsole).toMatchObject({
+      token: 'local-write-token-with-32-characters-minimum',
+      readApi: {
+        token: 'remote-read-token-with-32-characters-minimum',
+      },
+    });
     expect(config.adminConsole?.readApi.token).not.toBe(
-      config.adminConsole?.token,
+      'local-write-token-with-32-characters-minimum',
     );
   });
 
   it.each([
     { COMMAND_DECK_API_TOKEN: 'weak' },
+    {
+      ADMIN_CONSOLE_ENABLED: 'true',
+      ADMIN_CONSOLE_TOKEN: 'weak-local-write-token',
+      COMMAND_DECK_API_TOKEN: 'remote-read-token-with-32-characters-minimum',
+    },
     {
       COMMAND_DECK_API_TOKEN: 'remote-read-token-with-32-characters-minimum',
       COMMAND_DECK_API_ALLOWED_ORIGINS: 'http://deck.example.test',

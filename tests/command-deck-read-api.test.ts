@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AdminConsoleSnapshot } from '../src/admin/admin-console.js';
 import {
   createCommandDeckReadBoundary,
+  projectCommandDeckMutationCatalog,
   projectCommandDeckReadSnapshot,
   type CommandDeckReadAuditEvent,
   type CommandDeckReadRequest,
@@ -10,6 +11,43 @@ import {
 const observedAt = new Date('2026-08-23T20:00:00.000Z');
 
 describe('Command Deck read projection', () => {
+  it('projects a bounded mutation catalog without unsafe target values', () => {
+    const credentialCanary = 'catalog-secret-canary';
+    const projection = projectCommandDeckMutationCatalog({
+      broadcastCategories: ['rss', 'invalid category', 'rss'],
+      featureFlags: ['trivia', 'invalid flag', 'trivia'],
+      rssHosts: ['feeds.example.test', 'not a host', 'feeds.example.test'],
+      rssFeeds: [
+        {
+          url: `https://feeds.example.test/private/${credentialCanary}/crew.xml?access_token=${credentialCanary}`,
+          label: 'Crew feed',
+        },
+        { url: 'https://evil.example.test/crew.xml', label: 'Wrong host' },
+        {
+          url: 'https://user:password@feeds.example.test/feed.xml',
+          label: 'Unsafe',
+        },
+      ],
+    });
+
+    expect(projection).toEqual({
+      schemaVersion: '1.0',
+      actions: {
+        broadcastCategories: ['rss'],
+        featureFlags: ['trivia'],
+        rssHosts: ['feeds.example.test'],
+        rssFeeds: [
+          {
+            id: expect.stringMatching(/^rss_[a-f0-9]{32}$/),
+            label: 'Crew feed',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(projection)).not.toContain(credentialCanary);
+    expect(JSON.stringify(projection)).not.toContain('access_token');
+  });
+
   it('projects a versioned, bounded operational snapshot', () => {
     const result = projectCommandDeckReadSnapshot(safeSnapshot(), observedAt);
 

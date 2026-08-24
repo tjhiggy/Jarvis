@@ -138,6 +138,16 @@ commit the regenerated report. `npm run features:check` is read-only and fails
 when a registered Discord command is missing, duplicated, cites missing
 evidence, or the committed report is stale.
 
+### Command Deck safe-controls evidence
+
+For #275, run focused mutation/API/application tests; Sites tests, lint, and
+build; then `npm run command-deck-api:verify`, `npm run recovery:check`,
+`npm run recovery:verify`, `npm run features:check`, and `npm run docs:check`.
+The verifier is isolated and sanitized, not deployed smoke evidence. Before
+release record a private manual smoke: disabled configuration, exact-origin
+preflight, preview/cancel, retry, receipt, restart recovery, and rollback using
+disposable allowlisted targets. Never record credentials or content.
+
 The synthetic local-model comparison is opt-in and never reads Discord data.
 Build first, then run one model at a time so Ollama unloads it before the next:
 

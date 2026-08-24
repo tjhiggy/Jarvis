@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { request as httpRequest } from 'node:http';
 import { adminConsoleWorkflows } from '../src/admin/admin-console-workflows.js';
 import {
   startAdminConsole,
   type AdminConsoleSnapshot,
 } from '../src/admin/admin-console.js';
+import { createCommandDeckMutationService } from '../src/admin/command-deck-mutations.js';
 
 describe('admin console', () => {
   it('serves the authenticated, projected Command Deck snapshot with no-store headers', async () => {
@@ -634,6 +636,357 @@ describe('admin console', () => {
     expect(attempts).toBe(2);
     await console.close();
   });
+
+  it('requires the shared boundary before exposing the bounded mutation catalog', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      readApi: mutationReadPolicy(),
+      mutationApi: mutationApi(),
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const endpoint = `${consoleUrl(console)}/api/v1/command-deck/config/catalog`;
+
+    expect(
+      (
+        await fetch(endpoint, {
+          headers: readHeaders('507fce91-5935-4fd4-a70e-e0cc71b803a1'),
+        })
+      ).status,
+    ).toBe(401);
+
+    expect(
+      (
+        await fetch(endpoint, {
+          headers: {
+            'x-command-deck-request-id': 'c248ad5f-1b62-4ed0-8caa-ab516cf9ea19',
+            'x-command-deck-timestamp': '2026-08-23T20:00:00.000Z',
+          },
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await fetch(endpoint, {
+          headers: {
+            ...mutationHeaders('c248ad5f-1b62-4ed0-8caa-ab516cf9ea19'),
+            origin: 'https://evil.example',
+          },
+        })
+      ).status,
+    ).toBe(403);
+    const allowed = await fetch(endpoint, {
+      headers: mutationHeaders('624a631d-d623-42f9-ab52-613757c994fe'),
+    });
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toMatchObject({
+      schemaVersion: '1.0',
+      actions: {
+        broadcastCategories: ['rss'],
+        featureFlags: ['trivia'],
+        rssHosts: ['feeds.example.test'],
+      },
+    });
+    await console.close();
+  });
+
+  it('serves mutation CORS only to the exact configured Sites origin', async () => {
+    const origin = 'https://deck.example.test';
+    const api = mutationApi();
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      mutationApi: {
+        ...api,
+        authorization: { ...api.authorization, allowedOrigins: [origin] },
+      },
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const endpoint = `${consoleUrl(console)}/api/v1/command-deck/config/catalog`;
+    const preflight = await fetch(endpoint, {
+      method: 'OPTIONS',
+      headers: {
+        origin,
+        'access-control-request-method': 'GET',
+        'access-control-request-headers':
+          'authorization,x-command-deck-request-id,x-command-deck-timestamp',
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe(origin);
+    expect(preflight.headers.get('access-control-allow-methods')).toBe(
+      'GET, OPTIONS',
+    );
+    expect(preflight.headers.get('access-control-allow-headers')).toContain(
+      'Authorization',
+    );
+
+    const allowed = await fetch(endpoint, {
+      headers: {
+        ...mutationHeaders('6596d1fb-d6bb-4a27-89fd-5b8a9634ce05'),
+        origin,
+      },
+    });
+    expect(allowed.status).toBe(200);
+    expect(allowed.headers.get('access-control-allow-origin')).toBe(origin);
+
+    const denied = await fetch(endpoint, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://evil.example',
+        'access-control-request-method': 'GET',
+      },
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.headers.get('access-control-allow-origin')).toBeNull();
+    await console.close();
+  });
+
+  it('keeps mutation requests bounded, replay-safe, and receipt-driven', async () => {
+    const applied: string[] = [];
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      readApi: mutationReadPolicy(),
+      mutationApi: mutationApi(applied),
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const base = `${consoleUrl(console)}/api/v1/command-deck/config`;
+    const preview = await fetch(`${base}/preview`, {
+      method: 'POST',
+      headers: {
+        ...mutationHeaders('49526c45-163a-4624-864a-04214d9c6930'),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: { type: 'broadcast_state', category: 'rss', state: 'paused' },
+      }),
+    });
+    expect(preview.status).toBe(200);
+    const previewBody = (await preview.json()) as { preview: { id: string } };
+
+    const nonJson = await fetch(`${base}/preview`, {
+      method: 'POST',
+      headers: {
+        ...mutationHeaders('a19c1f52-30a7-4529-9ec9-19f6f7bc3425'),
+        'content-type': 'text/plain',
+      },
+      body: JSON.stringify({
+        action: { type: 'broadcast_state', category: 'rss', state: 'paused' },
+      }),
+    });
+    expect(nonJson.status).toBe(400);
+
+    const confirm = (requestId: string) =>
+      fetch(`${base}/confirm`, {
+        method: 'POST',
+        headers: {
+          ...mutationHeaders(requestId),
+          'content-type': 'application/json',
+          'idempotency-key': 'f2db1a0f-9461-43f0-a6e8-d6a699f431c7',
+        },
+        body: JSON.stringify({
+          previewId: previewBody.preview.id,
+          action: {
+            type: 'broadcast_state',
+            category: 'rss',
+            state: 'paused',
+          },
+        }),
+      });
+    const first = await confirm('3d6c9e7b-b389-4eaf-90fe-3cc0ba4f8d8d');
+    expect(first.status).toBe(200);
+    const receipt = (await first.json()) as {
+      receipt: { id: string; rollbackToken: string };
+    };
+    expect(receipt.receipt.rollbackToken).toBeTruthy();
+    expect((await confirm('1bd6fca5-1b6b-4cd1-b45a-bc4b09220cd5')).status).toBe(
+      200,
+    );
+    expect(applied).toEqual(['broadcast_state']);
+
+    const rollbackPreview = await fetch(`${base}/rollback`, {
+      method: 'POST',
+      headers: {
+        ...mutationHeaders('0d5b3c41-e5f6-4e88-a3d5-84e85bde8e63'),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ rollbackToken: receipt.receipt.rollbackToken }),
+    });
+    expect(rollbackPreview.status).toBe(200);
+    const rollbackBody = (await rollbackPreview.json()) as {
+      preview: { id: string };
+    };
+    expect(
+      (
+        await fetch(`${base}/rollback`, {
+          method: 'POST',
+          headers: {
+            ...mutationHeaders('ba5e1c9c-75af-4e9b-a1fe-94957fe9eb91'),
+            'content-type': 'application/json',
+            'idempotency-key': 'bec2450b-173b-4fde-81bb-6e248c07b5cd',
+          },
+          body: JSON.stringify({ previewId: rollbackBody.preview.id }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(applied).toEqual(['broadcast_state', 'broadcast_state']);
+
+    const credentialCanary = 'api-rss-user:api-rss-password';
+    const unsafeRss = await fetch(`${base}/preview`, {
+      method: 'POST',
+      headers: {
+        ...mutationHeaders('ed8db61d-9528-4f2e-9573-7f16e4274f49'),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: {
+          type: 'rss_feed',
+          operation: 'add',
+          url: `https://${credentialCanary}@feeds.example.test/private.xml`,
+          label: 'Private feed',
+        },
+      }),
+    });
+    expect(unsafeRss.status).toBe(400);
+    expect(await unsafeRss.text()).not.toContain('api-rss-user');
+    expect(applied).toEqual(['broadcast_state', 'broadcast_state']);
+
+    const oversized = await fetch(`${base}/preview`, {
+      method: 'POST',
+      headers: {
+        ...mutationHeaders('7f7cf0ce-6c53-4904-9184-e40a77cb9a23'),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        secretCanary: 'never-return-me',
+        padding: 'x'.repeat(4_100),
+      }),
+    });
+    expect(oversized.status).toBe(413);
+    expect(await oversized.text()).not.toContain('never-return-me');
+
+    const replay = await fetch(`${base}/cancel`, {
+      method: 'POST',
+      headers: {
+        ...mutationHeaders('49526c45-163a-4624-864a-04214d9c6930'),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ previewId: previewBody.preview.id }),
+    });
+    expect(replay.status).toBe(401);
+    expect(await replay.json()).toMatchObject({
+      error: { code: 'replayed_request', message: 'Request denied.' },
+    });
+    await console.close();
+  });
+
+  it('rejects catalog GET payloads before exposing configuration', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      readApi: mutationReadPolicy(),
+      mutationApi: mutationApi(),
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const endpoint = `${consoleUrl(console)}/api/v1/command-deck/config/catalog`;
+
+    expect(
+      (
+        await rawRequest(
+          endpoint,
+          {
+            ...mutationHeaders('c95ea6da-475e-4ca8-bae6-6b1f67718ca6'),
+            'content-length': '1',
+          },
+          ['x'],
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await rawRequest(
+          endpoint,
+          {
+            ...mutationHeaders('d0f6cbae-f5e2-4a0c-befd-fb62dac15f9a'),
+            'transfer-encoding': 'chunked',
+          },
+          ['x'],
+        )
+      ).status,
+    ).toBe(400);
+    await console.close();
+  });
+
+  it('rejects JSON lookalike media types at the mutation boundary', async () => {
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      readApi: mutationReadPolicy(),
+      mutationApi: mutationApi(),
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const response = await fetch(
+      `${consoleUrl(console)}/api/v1/command-deck/config/preview`,
+      {
+        method: 'POST',
+        headers: {
+          ...mutationHeaders('64dc5c3d-bfdb-419e-866a-cf8b3c1b2edf'),
+          'content-type': 'application/jsonp',
+        },
+        body: JSON.stringify({
+          action: {
+            type: 'broadcast_state',
+            category: 'rss',
+            state: 'paused',
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await console.close();
+  });
+
+  it('sanitizes unexpected mutation service failures', async () => {
+    const api = mutationApi();
+    const console = await startAdminConsole({
+      port: 0,
+      snapshot: async () => safeSnapshot(),
+      readApi: mutationReadPolicy(),
+      mutationApi: {
+        ...api,
+        service: {
+          ...api.service,
+          preview: async () => {
+            throw new Error('canary-service-failure-must-not-leak');
+          },
+        },
+      },
+      now: () => new Date('2026-08-23T20:00:00.000Z'),
+    });
+    const response = await fetch(
+      `${consoleUrl(console)}/api/v1/command-deck/config/preview`,
+      {
+        method: 'POST',
+        headers: {
+          ...mutationHeaders('2e535374-0aac-45d1-9b57-87139c314a45'),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: {
+            type: 'broadcast_state',
+            category: 'rss',
+            state: 'paused',
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain('canary-service-failure');
+    await console.close();
+  });
 });
 
 function basicSnapshot(): AdminConsoleSnapshot {
@@ -665,6 +1018,83 @@ function readHeaders(requestId: string): Record<string, string> {
     'x-command-deck-request-id': requestId,
     'x-command-deck-timestamp': '2026-08-23T20:00:00.000Z',
   };
+}
+
+function mutationHeaders(requestId: string): Record<string, string> {
+  return {
+    authorization: 'Bearer mutation-token-with-enough-entropy',
+    'x-command-deck-request-id': requestId,
+    'x-command-deck-timestamp': '2026-08-23T20:00:00.000Z',
+  };
+}
+
+function mutationReadPolicy() {
+  return {
+    token: 'dedicated-read-token-with-enough-entropy',
+    allowedOrigins: [],
+    maxClockSkewMs: 60_000,
+    replayRetentionMs: 60_000,
+    rateLimit: 30,
+    rateWindowMs: 60_000,
+  };
+}
+
+function mutationWritePolicy() {
+  return {
+    ...mutationReadPolicy(),
+    token: 'mutation-token-with-enough-entropy',
+  };
+}
+
+function mutationApi(applied: string[] = []) {
+  let current = true;
+  return {
+    authorization: mutationWritePolicy(),
+    catalog: {
+      broadcastCategories: ['rss'],
+      featureFlags: ['trivia'],
+      rssHosts: ['feeds.example.test'],
+    },
+    service: createCommandDeckMutationService({
+      adapter: {
+        allowedBroadcastCategories: ['rss'],
+        supportedFeatureFlags: ['trivia'],
+        allowedRssHosts: ['feeds.example.test'],
+        read: async () => current,
+        apply: async ({ action, nextValue }) => {
+          applied.push(action.type);
+          current = nextValue as boolean;
+          return 'applied' as const;
+        },
+        operationStatus: async () => 'not_applied' as const,
+        targetFor: (action) => `${action.type}:safe-target`,
+      },
+      createId: (() => {
+        let sequence = 0;
+        return () => `safe-id-${++sequence}`;
+      })(),
+    }),
+  };
+}
+
+function rawRequest(
+  url: string,
+  headers: Record<string, string>,
+  chunks: readonly string[],
+): Promise<{ readonly status: number; readonly body: string }> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(url, { method: 'GET', headers }, (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk: string) => (body += chunk));
+      response.on('end', () =>
+        resolve({ status: response.statusCode ?? 0, body }),
+      );
+    });
+    request.on('error', reject);
+    for (const chunk of chunks) request.write(chunk);
+    request.end();
+  });
 }
 
 function safeSnapshot(): AdminConsoleSnapshot {

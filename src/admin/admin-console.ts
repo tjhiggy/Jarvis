@@ -7,17 +7,39 @@ import {
   type ServerResponse,
 } from 'node:http';
 import { resolve } from 'node:path';
+import type { FeatureFlagService } from '../engagement/feature-flags.js';
+import { SUPPORTED_FEATURE_FLAGS } from '../engagement/feature-flags.js';
 import type { BroadcastCategory } from '../notifications/broadcast-policy.js';
 import type {
   BroadcastDeliveryErrorCategory,
   BroadcastPolicyState,
+  BroadcastStore,
 } from '../notifications/broadcast-store.js';
+import type { RssStorage } from '../notifications/rss-storage.js';
+import { isAllowedRssUrl } from '../notifications/rss-notifications.js';
+import { openSqliteDatabase } from '../storage/open-sqlite-database.js';
 import { adminConsoleWorkflowManifest } from './admin-console-workflows.js';
 import {
   createCommandDeckReadBoundary,
+  projectCommandDeckMutationCatalog,
   projectCommandDeckReadSnapshot,
+  type CommandDeckMutationCatalog,
   type CommandDeckReadBoundaryPolicy,
 } from './command-deck-read-api.js';
+import { commandDeckRssFeedId } from './command-deck-rss-feed.js';
+import type {
+  CommandDeckMutationAdapter,
+  CommandDeckMutationAction,
+  CommandDeckMutationApplyRequest,
+  CommandDeckMutationAuditEvent,
+  CommandDeckMutationCancelResult,
+  CommandDeckMutationConfirmResult,
+  CommandDeckMutationPreviewResult,
+  CommandDeckMutationReceipt,
+  CommandDeckMutationStateStore,
+  CommandDeckMutationStoredPreview,
+} from './command-deck-mutations.js';
+import { createCommandDeckMutationService } from './command-deck-mutations.js';
 import { buildAdminObservabilityProjection } from './observability.js';
 
 type BroadcastRuntimeHealth = 'ready' | 'degraded' | 'unavailable';
@@ -148,6 +170,710 @@ export interface AdminConsolePostControl {
   }) => Promise<void>;
 }
 
+export interface AdminConsoleMutationService {
+  preview(input: unknown): Promise<CommandDeckMutationPreviewResult>;
+  confirm(input: unknown): Promise<CommandDeckMutationConfirmResult>;
+  cancel(previewId: string): Promise<CommandDeckMutationCancelResult>;
+  previewRollback(token: string): Promise<CommandDeckMutationPreviewResult>;
+  confirmRollback(input: unknown): Promise<CommandDeckMutationConfirmResult>;
+}
+
+export interface AdminConsoleMutationApi {
+  readonly authorization: CommandDeckReadBoundaryPolicy;
+  readonly catalog: CommandDeckMutationCatalog;
+  readonly service: AdminConsoleMutationService;
+}
+
+export interface CommandDeckRuntimeMutationApiOptions extends CommandDeckRuntimeMutationOptions {
+  readonly authorization: CommandDeckReadBoundaryPolicy;
+}
+
+export interface CommandDeckRuntimeMutationOptions {
+  readonly databasePath: string;
+  readonly guildId: string;
+  readonly broadcastStore: Pick<BroadcastStore, 'getPolicy'>;
+  readonly featureFlags?: Pick<FeatureFlagService, 'isEnabled'> | undefined;
+  readonly rssStorage?: Pick<RssStorage, 'listFeeds'> | undefined;
+  readonly configuredBroadcasts: readonly {
+    readonly category: BroadcastCategory;
+    readonly channelId: string;
+  }[];
+  readonly allowedChannelIds: ReadonlySet<string>;
+  readonly allowedRssHosts: readonly string[];
+  readonly rssChannelId: string;
+  readonly audit?:
+    | ((event: CommandDeckMutationAuditEvent) => void | Promise<void>)
+    | undefined;
+  readonly now?: (() => Date) | undefined;
+}
+
+interface RssMutationValue {
+  readonly url: string;
+  readonly label: string;
+}
+
+interface BroadcastMutationTarget {
+  readonly category: BroadcastCategory;
+  readonly channelId: string;
+}
+
+const commandDeckOperationTable = 'command_deck_mutation_operations';
+
+export const createCommandDeckRuntimeMutationAdapter = (
+  options: CommandDeckRuntimeMutationOptions,
+): CommandDeckMutationAdapter => {
+  const configuredBroadcasts = new Map<
+    BroadcastCategory,
+    BroadcastMutationTarget
+  >();
+  for (const target of options.configuredBroadcasts) {
+    if (
+      target.channelId !== '' &&
+      options.allowedChannelIds.has(target.channelId) &&
+      !configuredBroadcasts.has(target.category)
+    ) {
+      configuredBroadcasts.set(target.category, { ...target });
+    }
+  }
+  const allowedBroadcastCategories = Object.freeze([
+    ...configuredBroadcasts.keys(),
+  ]);
+  const supportedFeatureFlags = Object.freeze(
+    options.featureFlags === undefined ? [] : [...SUPPORTED_FEATURE_FLAGS],
+  );
+  const rssConfigured =
+    options.rssStorage !== undefined &&
+    options.rssChannelId !== '' &&
+    options.allowedChannelIds.has(options.rssChannelId);
+  const allowedRssHosts = Object.freeze(
+    rssConfigured
+      ? [
+          ...new Set(
+            options.allowedRssHosts
+              .map((host) => host.trim().toLowerCase())
+              .filter(
+                (host) =>
+                  isHostname(host) &&
+                  isAllowedRssUrl(`https://${host}/`, [host]),
+              ),
+          ),
+        ]
+      : [],
+  );
+  const now = options.now ?? (() => new Date());
+  const rssUrlFor = (
+    action: Extract<CommandDeckMutationAction, { type: 'rss_feed' }>,
+  ): string | undefined =>
+    action.operation === 'add'
+      ? action.url
+      : options.rssStorage
+          ?.listFeeds(options.guildId)
+          .find((feed) => commandDeckRssFeedId(feed.url) === action.feedId)
+          ?.url;
+
+  const ensureAllowed = (action: CommandDeckMutationAction): void => {
+    switch (action.type) {
+      case 'broadcast_state':
+        if (!configuredBroadcasts.has(action.category as BroadcastCategory))
+          throw new Error('Broadcast target is not configured.');
+        return;
+      case 'feature_flag':
+        if (!supportedFeatureFlags.includes(action.feature as never))
+          throw new Error('Feature target is not configured.');
+        return;
+      case 'rss_feed': {
+        const url = rssUrlFor(action);
+        if (url === undefined || !isAllowedRssUrl(url, allowedRssHosts))
+          throw new Error('RSS target is not configured.');
+        return;
+      }
+    }
+  };
+
+  const read = async (action: CommandDeckMutationAction): Promise<unknown> => {
+    ensureAllowed(action);
+    switch (action.type) {
+      case 'broadcast_state': {
+        const target = configuredBroadcasts.get(
+          action.category as BroadcastCategory,
+        )!;
+        const policy = await options.broadcastStore.getPolicy(
+          options.guildId,
+          target.category,
+        );
+        if (policy === undefined || policy.channelId !== target.channelId)
+          throw new Error('Broadcast target is unavailable.');
+        return policy.state === 'enabled';
+      }
+      case 'feature_flag':
+        return options.featureFlags!.isEnabled(
+          options.guildId,
+          action.feature as (typeof SUPPORTED_FEATURE_FLAGS)[number],
+        );
+      case 'rss_feed': {
+        const url = rssUrlFor(action)!;
+        const feed = options
+          .rssStorage!.listFeeds(options.guildId)
+          .find((candidate) => candidate.url === url);
+        return feed === undefined
+          ? undefined
+          : { url: feed.url, label: feed.label };
+      }
+    }
+  };
+
+  const apply = async (
+    request: CommandDeckMutationApplyRequest,
+  ): Promise<'applied' | 'already_applied' | 'precondition_failed'> => {
+    ensureAllowed(request.action);
+    const databaseAction: CommandDeckMutationAction =
+      request.action.type === 'rss_feed' &&
+      request.action.operation === 'remove'
+        ? {
+            type: 'rss_feed',
+            operation: 'add',
+            url: rssUrlFor(request.action)!,
+            label: 'resolved',
+          }
+        : request.action;
+    if (request.operationId.trim() === '' || request.operationId.length > 200)
+      throw new Error('Invalid mutation operation identifier.');
+    const database = openSqliteDatabase(options.databasePath);
+    try {
+      ensureCommandDeckOperationTable(database);
+      return database
+        .transaction(() => {
+          const existing = database
+            .prepare(
+              `SELECT status FROM ${commandDeckOperationTable} WHERE operation_id = ?`,
+            )
+            .get(request.operationId);
+          if (existing !== undefined) return 'already_applied' as const;
+
+          const current = readCurrentMutationValue(
+            database,
+            options.guildId,
+            databaseAction,
+            configuredBroadcasts,
+          );
+          if (!sameMutationValue(current, request.expectedValue))
+            return 'precondition_failed' as const;
+
+          writeMutationValue(
+            database,
+            options.guildId,
+            databaseAction,
+            request.nextValue,
+            configuredBroadcasts,
+            now(),
+          );
+          database
+            .prepare(
+              `INSERT INTO ${commandDeckOperationTable} (operation_id, status, applied_at) VALUES (?, 'applied', ?)`,
+            )
+            .run(request.operationId, now().getTime());
+          return 'applied' as const;
+        })
+        .immediate();
+    } finally {
+      database.close();
+    }
+  };
+
+  const operationStatus = async (
+    operationId: string,
+  ): Promise<'applied' | 'not_applied'> => {
+    const database = openSqliteDatabase(options.databasePath);
+    try {
+      ensureCommandDeckOperationTable(database);
+      return database
+        .prepare(
+          `SELECT status FROM ${commandDeckOperationTable} WHERE operation_id = ? AND status = 'applied'`,
+        )
+        .get(operationId) === undefined
+        ? 'not_applied'
+        : 'applied';
+    } finally {
+      database.close();
+    }
+  };
+
+  const targetFor = (action: CommandDeckMutationAction): string => {
+    ensureAllowed(action);
+    switch (action.type) {
+      case 'broadcast_state':
+        return `broadcast:${action.category}`;
+      case 'feature_flag':
+        return `feature:${action.feature}`;
+      case 'rss_feed':
+        return action.operation === 'add'
+          ? `rss:${new URL(action.url).hostname}`
+          : `rss:${action.feedId}`;
+    }
+  };
+
+  return {
+    allowedBroadcastCategories,
+    supportedFeatureFlags,
+    allowedRssHosts,
+    read,
+    apply,
+    operationStatus,
+    targetFor,
+  };
+};
+
+export const createCommandDeckRuntimeMutationApi = (
+  options: CommandDeckRuntimeMutationApiOptions,
+): AdminConsoleMutationApi => {
+  const adapter = createCommandDeckRuntimeMutationAdapter(options);
+  return {
+    authorization: options.authorization,
+    catalog: {
+      broadcastCategories: adapter.allowedBroadcastCategories,
+      featureFlags: adapter.supportedFeatureFlags,
+      rssHosts: adapter.allowedRssHosts,
+      rssFeeds:
+        options.rssStorage === undefined
+          ? []
+          : options.rssStorage
+              .listFeeds(options.guildId)
+              .filter((feed) =>
+                isAllowedRssUrl(feed.url, adapter.allowedRssHosts),
+              )
+              .map((feed) => ({ url: feed.url, label: feed.label })),
+    },
+    service: createCommandDeckMutationService({
+      adapter,
+      stateStore: createSqliteCommandDeckMutationStateStore(
+        options.databasePath,
+      ),
+      ...(options.now === undefined ? {} : { now: options.now }),
+      ...(options.audit === undefined ? {} : { audit: options.audit }),
+    }),
+  };
+};
+
+function createSqliteCommandDeckMutationStateStore(
+  databasePath: string,
+): CommandDeckMutationStateStore {
+  const withDatabase = <T>(
+    operation: (database: ReturnType<typeof openSqliteDatabase>) => T,
+  ): T => {
+    const database = openSqliteDatabase(databasePath);
+    try {
+      ensureCommandDeckStateTables(database);
+      return operation(database);
+    } finally {
+      database.close();
+    }
+  };
+
+  return {
+    savePreview: async (preview) => {
+      withDatabase((database) => {
+        if (preview.cancelled) {
+          database
+            .prepare(
+              `UPDATE command_deck_mutation_previews
+               SET cancelled = 1
+               WHERE preview_id = ? AND receipt_json IS NULL`,
+            )
+            .run(preview.id);
+          return;
+        }
+        database
+          .prepare(
+            `INSERT INTO command_deck_mutation_previews (
+               preview_id, action_json, before_json, after_json,
+               expected_json, expires_at, target, operation_id, kind,
+               cancelled, receipt_json
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
+          )
+          .run(
+            preview.id,
+            JSON.stringify(preview.action),
+            serializeMutationValue(preview.before),
+            serializeMutationValue(preview.after),
+            serializeMutationValue(preview.expectedValue),
+            preview.expiresAt,
+            preview.target,
+            preview.operationId,
+            preview.kind,
+          );
+      });
+    },
+    getPreview: async (previewId) =>
+      withDatabase((database) => readStoredPreview(database, previewId)),
+    getCompleted: async (idempotencyKey) =>
+      withDatabase((database) => {
+        const row = database
+          .prepare(
+            `SELECT preview_id, receipt_json
+             FROM command_deck_mutation_completions
+             WHERE idempotency_key = ?`,
+          )
+          .get(idempotencyKey) as
+          | { readonly preview_id: string; readonly receipt_json: string }
+          | undefined;
+        return row === undefined
+          ? undefined
+          : {
+              previewId: row.preview_id,
+              receipt: parseReceipt(row.receipt_json),
+            };
+      }),
+    complete: async (preview, idempotencyKey, receipt) =>
+      withDatabase((database) =>
+        database
+          .transaction(() => {
+            const existing = database
+              .prepare(
+                `SELECT preview_id, receipt_json
+                 FROM command_deck_mutation_completions
+                 WHERE idempotency_key = ?`,
+              )
+              .get(idempotencyKey) as
+              | { readonly preview_id: string; readonly receipt_json: string }
+              | undefined;
+            if (existing !== undefined)
+              return existing.preview_id === preview.id
+                ? {
+                    status: 'completed' as const,
+                    receipt: parseReceipt(existing.receipt_json),
+                    created: false,
+                  }
+                : { status: 'idempotency_mismatch' as const };
+
+            const receiptJson = JSON.stringify(receipt);
+            const updated = database
+              .prepare(
+                `UPDATE command_deck_mutation_previews
+                 SET receipt_json = ?
+                 WHERE preview_id = ? AND cancelled = 0 AND receipt_json IS NULL`,
+              )
+              .run(receiptJson, preview.id).changes;
+            if (updated !== 1) return { status: 'preview_used' as const };
+            database
+              .prepare(
+                `INSERT INTO command_deck_mutation_completions
+                   (idempotency_key, preview_id, receipt_json)
+                 VALUES (?, ?, ?)`,
+              )
+              .run(idempotencyKey, preview.id, receiptJson);
+            if (receipt.rollbackToken !== undefined)
+              database
+                .prepare(
+                  `INSERT INTO command_deck_mutation_rollback_sources
+                     (rollback_token, preview_id)
+                   VALUES (?, ?)`,
+                )
+                .run(receipt.rollbackToken, preview.id);
+            return {
+              status: 'completed' as const,
+              receipt,
+              created: true,
+            };
+          })
+          .immediate(),
+      ),
+    getRollbackSource: async (rollbackToken) =>
+      withDatabase((database) => {
+        const row = database
+          .prepare(
+            `SELECT preview_id
+             FROM command_deck_mutation_rollback_sources
+             WHERE rollback_token = ?`,
+          )
+          .get(rollbackToken) as { readonly preview_id: string } | undefined;
+        return row === undefined
+          ? undefined
+          : readStoredPreview(database, row.preview_id);
+      }),
+  };
+}
+
+function ensureCommandDeckStateTables(
+  database: ReturnType<typeof openSqliteDatabase>,
+): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS command_deck_mutation_previews (
+      preview_id TEXT PRIMARY KEY,
+      action_json TEXT NOT NULL,
+      before_json TEXT NOT NULL,
+      after_json TEXT NOT NULL,
+      expected_json TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      target TEXT NOT NULL,
+      operation_id TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL CHECK (kind IN ('change', 'rollback')),
+      cancelled INTEGER NOT NULL CHECK (cancelled IN (0, 1)),
+      receipt_json TEXT
+    );
+    CREATE TABLE IF NOT EXISTS command_deck_mutation_completions (
+      idempotency_key TEXT PRIMARY KEY,
+      preview_id TEXT NOT NULL,
+      receipt_json TEXT NOT NULL,
+      FOREIGN KEY (preview_id)
+        REFERENCES command_deck_mutation_previews(preview_id)
+    );
+    CREATE TABLE IF NOT EXISTS command_deck_mutation_rollback_sources (
+      rollback_token TEXT PRIMARY KEY,
+      preview_id TEXT NOT NULL UNIQUE,
+      FOREIGN KEY (preview_id)
+        REFERENCES command_deck_mutation_previews(preview_id)
+    );
+  `);
+}
+
+function readStoredPreview(
+  database: ReturnType<typeof openSqliteDatabase>,
+  previewId: string,
+): CommandDeckMutationStoredPreview | undefined {
+  const row = database
+    .prepare(
+      `SELECT preview_id, action_json, before_json, after_json, expected_json,
+              expires_at, target, operation_id, kind, cancelled, receipt_json
+       FROM command_deck_mutation_previews
+       WHERE preview_id = ?`,
+    )
+    .get(previewId) as
+    | {
+        readonly preview_id: string;
+        readonly action_json: string;
+        readonly before_json: string;
+        readonly after_json: string;
+        readonly expected_json: string;
+        readonly expires_at: string;
+        readonly target: string;
+        readonly operation_id: string;
+        readonly kind: 'change' | 'rollback';
+        readonly cancelled: number;
+        readonly receipt_json: string | null;
+      }
+    | undefined;
+  if (row === undefined) return undefined;
+  return {
+    id: row.preview_id,
+    action: JSON.parse(row.action_json) as CommandDeckMutationAction,
+    before: parseMutationValue(row.before_json),
+    after: parseMutationValue(row.after_json),
+    expectedValue: parseMutationValue(row.expected_json),
+    expiresAt: row.expires_at,
+    target: row.target,
+    operationId: row.operation_id,
+    kind: row.kind,
+    cancelled: row.cancelled === 1,
+    ...(row.receipt_json === null
+      ? {}
+      : { receipt: parseReceipt(row.receipt_json) }),
+  };
+}
+
+function serializeMutationValue(value: unknown): string {
+  return JSON.stringify(
+    value === undefined
+      ? { encoding: 'undefined' }
+      : { encoding: 'json', value },
+  );
+}
+
+function parseMutationValue(value: string): unknown {
+  const parsed = JSON.parse(value) as {
+    readonly encoding?: unknown;
+    readonly value?: unknown;
+  };
+  if (parsed.encoding === 'undefined') return undefined;
+  if (parsed.encoding === 'json') return parsed.value;
+  throw new Error('Invalid durable Command Deck mutation value.');
+}
+
+function parseReceipt(value: string): CommandDeckMutationReceipt {
+  const parsed = JSON.parse(value) as CommandDeckMutationReceipt;
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    typeof parsed.id !== 'string' ||
+    typeof parsed.confirmedAt !== 'string' ||
+    typeof parsed.target !== 'string' ||
+    (parsed.rollbackToken !== undefined &&
+      typeof parsed.rollbackToken !== 'string')
+  )
+    throw new Error('Invalid durable Command Deck mutation receipt.');
+  return parsed;
+}
+
+function ensureCommandDeckOperationTable(
+  database: ReturnType<typeof openSqliteDatabase>,
+): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS ${commandDeckOperationTable} (
+      operation_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK (status = 'applied'),
+      applied_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS command_deck_mutation_operations_applied_at
+      ON ${commandDeckOperationTable} (applied_at);
+  `);
+}
+
+function readCurrentMutationValue(
+  database: ReturnType<typeof openSqliteDatabase>,
+  guildId: string,
+  action: CommandDeckMutationAction,
+  configuredBroadcasts: ReadonlyMap<BroadcastCategory, BroadcastMutationTarget>,
+): unknown {
+  switch (action.type) {
+    case 'broadcast_state': {
+      const target = configuredBroadcasts.get(
+        action.category as BroadcastCategory,
+      )!;
+      const row = database
+        .prepare(
+          'SELECT state FROM broadcast_policies WHERE server_id = ? AND category = ? AND channel_id = ?',
+        )
+        .get(guildId, target.category, target.channelId) as
+        { readonly state: BroadcastPolicyState } | undefined;
+      if (row === undefined)
+        throw new Error('Broadcast target is unavailable.');
+      return row.state === 'enabled';
+    }
+    case 'feature_flag': {
+      const row = database
+        .prepare(
+          'SELECT enabled FROM engagement_feature_flags WHERE guild_id = ? AND name = ?',
+        )
+        .get(guildId, action.feature) as
+        { readonly enabled: number } | undefined;
+      return row === undefined
+        ? action.feature !== 'profiles'
+        : row.enabled === 1;
+    }
+    case 'rss_feed': {
+      if (action.operation !== 'add')
+        throw new Error('Unresolved RSS mutation action.');
+      const row = database
+        .prepare(
+          'SELECT url, label FROM rss_feeds WHERE server_id = ? AND url = ?',
+        )
+        .get(guildId, action.url) as RssMutationValue | undefined;
+      return row === undefined ? undefined : { ...row };
+    }
+  }
+}
+
+function writeMutationValue(
+  database: ReturnType<typeof openSqliteDatabase>,
+  guildId: string,
+  action: CommandDeckMutationAction,
+  nextValue: unknown,
+  configuredBroadcasts: ReadonlyMap<BroadcastCategory, BroadcastMutationTarget>,
+  now: Date,
+): void {
+  switch (action.type) {
+    case 'broadcast_state': {
+      if (typeof nextValue !== 'boolean')
+        throw new Error('Invalid broadcast mutation value.');
+      const target = configuredBroadcasts.get(
+        action.category as BroadcastCategory,
+      )!;
+      const changed = database
+        .prepare(
+          'UPDATE broadcast_policies SET state = ?, updated_at = ? WHERE server_id = ? AND category = ? AND channel_id = ?',
+        )
+        .run(
+          nextValue ? 'enabled' : 'paused',
+          now.getTime(),
+          guildId,
+          target.category,
+          target.channelId,
+        ).changes;
+      if (changed !== 1) throw new Error('Broadcast target is unavailable.');
+      return;
+    }
+    case 'feature_flag':
+      if (typeof nextValue !== 'boolean')
+        throw new Error('Invalid feature mutation value.');
+      database
+        .prepare(
+          'INSERT INTO engagement_feature_flags (guild_id, name, enabled, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(guild_id, name) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at',
+        )
+        .run(guildId, action.feature, nextValue ? 1 : 0, now.getTime());
+      return;
+    case 'rss_feed':
+      if (action.operation !== 'add')
+        throw new Error('Unresolved RSS mutation action.');
+      if (nextValue === undefined) {
+        database
+          .prepare('DELETE FROM rss_feeds WHERE server_id = ? AND url = ?')
+          .run(guildId, action.url);
+        return;
+      }
+      if (!isRssMutationValue(nextValue) || nextValue.url !== action.url)
+        throw new Error('Invalid RSS mutation value.');
+      database
+        .prepare(
+          'INSERT INTO rss_feeds (server_id, url, label, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(server_id, url) DO UPDATE SET label = excluded.label',
+        )
+        .run(guildId, nextValue.url, nextValue.label, now.getTime());
+  }
+}
+
+function isRssMutationValue(value: unknown): value is RssMutationValue {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 2 &&
+    'url' in value &&
+    typeof value.url === 'string' &&
+    'label' in value &&
+    typeof value.label === 'string' &&
+    value.label.trim() !== ''
+  );
+}
+
+function sameMutationValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => sameMutationValue(value, right[index]))
+    );
+  }
+  if (
+    typeof left !== 'object' ||
+    left === null ||
+    typeof right !== 'object' ||
+    right === null
+  )
+    return false;
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] &&
+        sameMutationValue(leftRecord[key], rightRecord[key]),
+    )
+  );
+}
+
+function isHostname(value: string): boolean {
+  if (value === '' || value.length > 253 || value.includes(':')) return false;
+  try {
+    const parsed = new URL(`https://${value}`);
+    return parsed.hostname === value && parsed.origin === `https://${value}`;
+  } catch {
+    return false;
+  }
+}
+
 const rssIntegrationStatus = (
   status: AdminConsoleSnapshot['integrations']['rss'],
 ): string => {
@@ -264,6 +990,7 @@ export const startAdminConsole = (options: {
   readonly broadcastControl?: AdminConsoleBroadcastControl | undefined;
   readonly postControl?: AdminConsolePostControl | undefined;
   readonly readApi?: CommandDeckReadBoundaryPolicy | undefined;
+  readonly mutationApi?: AdminConsoleMutationApi | undefined;
   readonly now?: () => Date;
 }): Promise<AdminConsole> => {
   const host = options.host ?? '127.0.0.1';
@@ -272,6 +999,10 @@ export const startAdminConsole = (options: {
     options.readApi === undefined
       ? undefined
       : createCommandDeckReadBoundary(options.readApi);
+  const mutationBoundary =
+    options.mutationApi === undefined
+      ? undefined
+      : createCommandDeckReadBoundary(options.mutationApi.authorization);
   const confirmations = new Map<
     string,
     {
@@ -306,6 +1037,204 @@ export const startAdminConsole = (options: {
   };
   const server = createServer(async (request, response) => {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (path.startsWith('/api/v1/command-deck/config/')) {
+      const observedAt = now();
+      const api = options.mutationApi;
+      const origin = headerValue(request.headers.origin);
+      const corsOrigin =
+        api !== undefined &&
+        origin !== undefined &&
+        api.authorization.allowedOrigins.includes(origin)
+          ? origin
+          : undefined;
+      const writeMutationJson = (
+        status: number,
+        body: Record<string, unknown>,
+        extraHeaders: Record<string, string> = {},
+      ): void => {
+        response.writeHead(status, {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+          vary: 'Origin',
+          ...(corsOrigin === undefined
+            ? {}
+            : { 'access-control-allow-origin': corsOrigin }),
+          ...extraHeaders,
+        });
+        response.end(
+          JSON.stringify({
+            schemaVersion: '1.0',
+            observedAt: observedAt.toISOString(),
+            ...body,
+          }),
+        );
+      };
+      const allowedMethods =
+        path === '/api/v1/command-deck/config/catalog' ? 'GET' : 'POST';
+      if (
+        ![
+          '/api/v1/command-deck/config/catalog',
+          '/api/v1/command-deck/config/preview',
+          '/api/v1/command-deck/config/confirm',
+          '/api/v1/command-deck/config/cancel',
+          '/api/v1/command-deck/config/rollback',
+        ].includes(path)
+      ) {
+        writeMutationJson(404, {
+          error: { code: 'not_found', message: 'Request denied.' },
+        });
+        return;
+      }
+      if (api === undefined || mutationBoundary === undefined) {
+        writeMutationJson(404, {
+          error: { code: 'not_configured', message: 'Request denied.' },
+        });
+        return;
+      }
+      if (request.method === 'OPTIONS') {
+        const requestedMethod = headerValue(
+          request.headers['access-control-request-method'],
+        );
+        if (corsOrigin === undefined || requestedMethod !== allowedMethods) {
+          request.resume();
+          writeMutationJson(403, {
+            error: { code: 'origin_denied', message: 'Request denied.' },
+          });
+          return;
+        }
+        request.resume();
+        response.writeHead(204, {
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+          vary: 'Origin',
+          'access-control-allow-origin': corsOrigin,
+          'access-control-allow-methods': `${allowedMethods}, OPTIONS`,
+          'access-control-allow-headers':
+            'Authorization, Content-Type, Idempotency-Key, X-Command-Deck-Request-Id, X-Command-Deck-Timestamp',
+          'access-control-max-age': '600',
+        });
+        response.end();
+        return;
+      }
+      if (request.method !== allowedMethods) {
+        writeMutationJson(
+          405,
+          { error: { code: 'method_not_allowed', message: 'Request denied.' } },
+          { allow: allowedMethods },
+        );
+        return;
+      }
+      const authorization = mutationBoundary.authorize(
+        {
+          authorization: request.headers.authorization,
+          origin: headerValue(request.headers.origin),
+          requestId: headerValue(request.headers['x-command-deck-request-id']),
+          timestamp: headerValue(request.headers['x-command-deck-timestamp']),
+          remoteAddress: request.socket.remoteAddress,
+        },
+        observedAt,
+      );
+      if (!authorization.ok) {
+        request.resume();
+        writeMutationJson(authorization.status, {
+          error: { code: authorization.code, message: 'Request denied.' },
+        });
+        return;
+      }
+      if (path === '/api/v1/command-deck/config/catalog') {
+        if (hasRequestBody(request)) {
+          request.resume();
+          writeMutationJson(400, {
+            error: { code: 'invalid_request', message: 'Request denied.' },
+          });
+          return;
+        }
+        writeMutationJson(200, {
+          actions: projectCommandDeckMutationCatalog(api.catalog).actions,
+        });
+        return;
+      }
+      if (!isJsonContentType(headerValue(request.headers['content-type']))) {
+        request.resume();
+        writeMutationJson(400, {
+          error: { code: 'invalid_request', message: 'Request denied.' },
+        });
+        return;
+      }
+      const body = await readBoundedJson(request, 4096);
+      if (!body.ok) {
+        writeMutationJson(body.status, {
+          error: { code: body.code, message: 'Request denied.' },
+        });
+        return;
+      }
+      try {
+        if (path === '/api/v1/command-deck/config/preview') {
+          writeMutationResult(
+            writeMutationJson,
+            await api.service.preview(actionField(body.value)),
+          );
+          return;
+        }
+        if (path === '/api/v1/command-deck/config/cancel') {
+          const previewId = textField(body.value, 'previewId');
+          if (previewId === undefined) {
+            writeMutationJson(400, {
+              error: { code: 'invalid_request', message: 'Request denied.' },
+            });
+            return;
+          }
+          writeMutationResult(
+            writeMutationJson,
+            await api.service.cancel(previewId),
+          );
+          return;
+        }
+        const rollbackToken = textField(body.value, 'rollbackToken');
+        if (
+          path === '/api/v1/command-deck/config/rollback' &&
+          rollbackToken !== undefined
+        ) {
+          writeMutationResult(
+            writeMutationJson,
+            await api.service.previewRollback(rollbackToken),
+          );
+          return;
+        }
+        const idempotencyKey = headerValue(request.headers['idempotency-key']);
+        if (!isIdempotencyKey(idempotencyKey)) {
+          writeMutationJson(400, {
+            error: { code: 'invalid_request', message: 'Request denied.' },
+          });
+          return;
+        }
+        if (path === '/api/v1/command-deck/config/confirm') {
+          writeMutationResult(
+            writeMutationJson,
+            await api.service.confirm({
+              previewId: textField(body.value, 'previewId'),
+              action: actionField(body.value),
+              idempotencyKey,
+            }),
+          );
+          return;
+        }
+        writeMutationResult(
+          writeMutationJson,
+          await api.service.confirmRollback({
+            previewId: textField(body.value, 'previewId'),
+            idempotencyKey,
+          }),
+        );
+        return;
+      } catch {
+        writeMutationJson(503, {
+          error: { code: 'unavailable', message: 'Command Deck unavailable.' },
+        });
+        return;
+      }
+    }
     if (path === '/api/v1/command-deck/snapshot') {
       const observedAt = now();
       const writeReadApiJson = (
@@ -732,3 +1661,116 @@ const isLocalRequest = (request: IncomingMessage): boolean =>
 const headerValue = (
   value: string | readonly string[] | undefined,
 ): string | undefined => (typeof value === 'string' ? value : undefined);
+
+function hasRequestBody(request: IncomingMessage): boolean {
+  const contentLength = headerValue(request.headers['content-length']);
+  return (
+    request.headers['transfer-encoding'] !== undefined ||
+    (contentLength !== undefined &&
+      (!/^\d+$/.test(contentLength) || Number(contentLength) > 0))
+  );
+}
+
+function isJsonContentType(value: string | undefined): boolean {
+  return value !== undefined && /^application\/json(?:\s*;.*)?$/i.test(value);
+}
+
+type MutationResult =
+  | CommandDeckMutationPreviewResult
+  | CommandDeckMutationConfirmResult
+  | CommandDeckMutationCancelResult;
+
+async function readBoundedJson(
+  request: IncomingMessage,
+  limit: number,
+): Promise<
+  | { readonly ok: true; readonly value: unknown }
+  | {
+      readonly ok: false;
+      readonly status: 400 | 413;
+      readonly code: 'invalid_request' | 'body_too_large';
+    }
+> {
+  const declaredLength = Number(request.headers['content-length'] ?? 0);
+  if (!Number.isFinite(declaredLength) || declaredLength > limit) {
+    request.resume();
+    return { ok: false, status: 413, code: 'body_too_large' };
+  }
+  let size = 0;
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > limit) {
+      request.resume();
+      return { ok: false, status: 413, code: 'body_too_large' };
+    }
+    chunks.push(buffer);
+  }
+  try {
+    return {
+      ok: true,
+      value: JSON.parse(Buffer.concat(chunks).toString('utf8')),
+    };
+  } catch {
+    return { ok: false, status: 400, code: 'invalid_request' };
+  }
+}
+
+function writeMutationResult(
+  write: (status: number, body: Record<string, unknown>) => void,
+  result: MutationResult,
+): void {
+  if (result.ok) {
+    write(
+      200,
+      'preview' in result
+        ? { preview: result.preview }
+        : 'receipt' in result
+          ? { receipt: result.receipt }
+          : { cancelled: true },
+    );
+    return;
+  }
+  const code = result.error.code.toLowerCase();
+  write(mutationErrorStatus(result.error.code), {
+    error: { code, message: mutationErrorMessage(result.error.code) },
+  });
+}
+
+function mutationErrorStatus(code: string): 400 | 404 | 409 | 503 {
+  if (code === 'INVALID_ACTION' || code === 'PREVIEW_MISMATCH') return 400;
+  if (code === 'PREVIEW_NOT_FOUND' || code === 'ROLLBACK_NOT_FOUND') return 404;
+  if (code === 'APPLY_FAILED' || code === 'APPLY_OUTCOME_UNKNOWN') return 503;
+  return 409;
+}
+
+function mutationErrorMessage(code: string): string {
+  if (code === 'APPLY_FAILED' || code === 'APPLY_OUTCOME_UNKNOWN')
+    return 'Jarvis could not apply this change. Retry the same confirmation.';
+  if (code === 'PRECONDITION_FAILED' || code === 'ROLLBACK_CONFLICT')
+    return 'This target changed after the preview and was not modified.';
+  if (code === 'PREVIEW_STALE')
+    return 'This preview has expired. Create a new preview before confirming.';
+  return 'This Command Deck request is not available.';
+}
+
+function textField(value: unknown, key: string): string | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return undefined;
+  const candidate = (value as Record<string, unknown>)[key];
+  return typeof candidate === 'string' && candidate.trim() !== ''
+    ? candidate.trim()
+    : undefined;
+}
+
+function actionField(value: unknown): CommandDeckMutationAction | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return undefined;
+  return (value as Record<string, unknown>).action as
+    CommandDeckMutationAction | undefined;
+}
+
+function isIdempotencyKey(value: string | undefined): value is string {
+  return value !== undefined && /^[a-zA-Z0-9_-]{8,128}$/.test(value);
+}

@@ -25,6 +25,31 @@ rate limiting, metadata-only audit, and a strict safe projection. See the
 [Sites Command Deck guide](SITES_COMMAND_DECK.md). The local `/api/status` route
 remains the loopback fallback and is not the remote Sites contract.
 
+## Private Sites safe controls (implemented, not released)
+
+#275 adds bounded Settings workflows, but it is not a v1.6 release claim and
+remains disabled until deployment evidence is complete. `COMMAND_DECK_API_TOKEN`
+is the separate read credential; `ADMIN_CONSOLE_TOKEN` is the 32+ character
+write credential entered only in the active browser tab. Neither is embedded,
+persisted by Sites, or recorded in audit output.
+
+Use the exact private Sites page origin in `COMMAND_DECK_API_ALLOWED_ORIGINS`;
+use the Jarvis tunnel/proxy origin for runtime `COMMAND_DECK_API_BASE_URL`.
+They are different in separate-host deployments and equal only behind a
+same-origin proxy. Retain
+`ADMIN_CONSOLE_HOST=127.0.0.1`. CORS/`OPTIONS` is granted only to that origin;
+every mutation still needs the write bearer token. Settings allows only
+configured broadcast pause/resume, supported feature flags, and approved RSS
+feed add/remove. RSS remains HTTPS-host allowlisted and destination-pinned.
+
+Operators select a catalog target, inspect the exact five-minute preview, then
+confirm or cancel. Transient failures retry with the same idempotency key;
+permanent failures do not retry. Receipts support compensating rollback, which
+refuses changed targets. SQLite preserves preview, receipt, and rollback state
+across restart. `401`/`403` clears active browser state and requires `Change
+access code`. Leave the relevant tokens/origin blank to fail closed; Discord is
+the fallback.
+
 The Overview is the operator's first-stop health surface. It shows the current
 platform identity, aggregate command events and failures, feature adoption,
 integration readiness, and the next obvious action. The Operations section

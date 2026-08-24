@@ -140,7 +140,7 @@ export const commandDeckFixture: CommandDeckSnapshot = {
       ),
     },
     Settings: {
-      eyebrow: 'Read-only configuration',
+      eyebrow: 'Protected configuration',
       title: 'Configuration posture',
       intro:
         'What is enabled, what is bounded, and what still requires local administration.',
@@ -148,7 +148,7 @@ export const commandDeckFixture: CommandDeckSnapshot = {
         ['Feature flags', '4 enabled', 'Configured'],
         ['Destinations', '3 allowlisted', 'Bounded'],
         ['Data retention', 'Policy active', 'Compliant'],
-        ['Write controls', 'Unavailable here', 'Read-only'],
+        ['Write controls', 'Locked until access code', 'Protected'],
       ),
     },
   },
@@ -295,3 +295,290 @@ export function getOverviewCopy(state: ServiceState): OverviewCopy {
     return { lead: 'The ship is moving.', follow: 'A system needs eyes.' };
   return { lead: 'The ship is steady.', follow: 'All systems are nominal.' };
 }
+
+export type CommandDeckMutationAction =
+  | {
+      type: 'broadcast_state';
+      category: string;
+      state: 'enabled' | 'paused';
+    }
+  | { type: 'feature_flag'; feature: string; enabled: boolean }
+  | {
+      type: 'rss_feed';
+      operation: 'add';
+      url: string;
+      label: string;
+    }
+  | { type: 'rss_feed'; operation: 'remove'; feedId: string };
+
+export type CommandDeckMutationCatalog = {
+  broadcastCategories: string[];
+  featureFlags: string[];
+  rssHosts: string[];
+  rssFeeds: Array<{ id: string; label: string }>;
+};
+
+export type CommandDeckPreview = {
+  id: string;
+  expiresAt: string;
+  target: string;
+  diff: { before: unknown; after: unknown };
+};
+
+export type CommandDeckReceipt = {
+  id: string;
+  confirmedAt: string;
+  target: string;
+  rollbackToken?: string;
+};
+
+export type CommandDeckApiResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; status: number; code: string; message: string };
+
+const commandDeckConfigPath = '/api/v1/command-deck/config';
+
+export function resolveCommandDeckApiBaseUrl(
+  value: unknown,
+): string | undefined {
+  if (typeof value !== 'string' || value.trim() === '') return undefined;
+  try {
+    const url = new URL(value);
+    const loopback = ['127.0.0.1', '::1', 'localhost'].includes(url.hostname);
+    if (
+      url.username !== '' ||
+      url.password !== '' ||
+      url.search !== '' ||
+      url.hash !== '' ||
+      url.pathname !== '/' ||
+      (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback))
+    )
+      return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
+const createRequestId = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    return crypto.randomUUID();
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.getRandomValues === 'function'
+  ) {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    return [...bytes]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')
+      .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
+  }
+  throw new Error('This browser cannot create a safe Command Deck request ID.');
+};
+
+const errorResult = (
+  status: number,
+  body: unknown,
+): CommandDeckApiResult<never> => {
+  const error =
+    body !== null && typeof body === 'object' && 'error' in body
+      ? (body as { error?: { code?: unknown; message?: unknown } }).error
+      : undefined;
+  return {
+    ok: false,
+    status,
+    code: typeof error?.code === 'string' ? error.code : 'unavailable',
+    message:
+      typeof error?.message === 'string'
+        ? error.message
+        : 'Command Deck did not return a safe result.',
+  };
+};
+
+async function commandDeckRequest<T>(
+  apiBaseUrl: string | undefined,
+  token: string,
+  path: string,
+  options: { method: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string },
+): Promise<CommandDeckApiResult<T>> {
+  if (apiBaseUrl === undefined)
+    return {
+      ok: false,
+      status: 400,
+      code: 'invalid_api_base',
+      message:
+        'Safe controls are unavailable until a valid API address is configured.',
+    };
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${commandDeckConfigPath}${path}`, {
+      method: options.method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Command-Deck-Request-Id': createRequestId(),
+        'X-Command-Deck-Timestamp': new Date().toISOString(),
+        ...(options.body === undefined
+          ? {}
+          : { 'Content-Type': 'application/json' }),
+        ...(options.idempotencyKey === undefined
+          ? {}
+          : { 'Idempotency-Key': options.idempotencyKey }),
+      },
+      ...(options.body === undefined
+        ? {}
+        : { body: JSON.stringify(options.body) }),
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: 'unavailable',
+      message:
+        'Jarvis outcome is unknown. Reconcile with the same confirmation before creating another change.',
+    };
+  }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return {
+      ok: false,
+      status: response.status,
+      code: 'invalid_response',
+      message:
+        'Jarvis outcome is unknown. Reconcile with the same confirmation before creating another change.',
+    };
+  }
+  return response.ok
+    ? { ok: true, value: body as T }
+    : errorResult(response.status, body);
+}
+
+export async function getCommandDeckMutationCatalog(
+  apiBaseUrl: string | undefined,
+  token: string,
+): Promise<CommandDeckApiResult<CommandDeckMutationCatalog>> {
+  const result = await commandDeckRequest<{
+    actions?: CommandDeckMutationCatalog;
+  }>(apiBaseUrl, token, '/catalog', { method: 'GET' });
+  if (!result.ok) return result;
+  const actions = result.value.actions;
+  if (
+    actions === undefined ||
+    !Array.isArray(actions.broadcastCategories) ||
+    !Array.isArray(actions.featureFlags) ||
+    !Array.isArray(actions.rssHosts) ||
+    !Array.isArray(actions.rssFeeds)
+  )
+    return {
+      ok: false,
+      status: 502,
+      code: 'invalid_response',
+      message: 'Jarvis returned an invalid safe-control catalog.',
+    };
+  return { ok: true, value: actions };
+}
+
+export async function previewCommandDeckMutation(
+  apiBaseUrl: string | undefined,
+  token: string,
+  action: CommandDeckMutationAction,
+): Promise<CommandDeckApiResult<CommandDeckPreview>> {
+  const result = await commandDeckRequest<{ preview?: CommandDeckPreview }>(
+    apiBaseUrl,
+    token,
+    '/preview',
+    { method: 'POST', body: { action } },
+  );
+  return result.ok && result.value.preview !== undefined
+    ? { ok: true, value: result.value.preview }
+    : result.ok
+      ? {
+          ok: false,
+          status: 502,
+          code: 'invalid_response',
+          message: 'Jarvis did not provide a preview. No change was sent.',
+        }
+      : result;
+}
+
+export async function cancelCommandDeckPreview(
+  apiBaseUrl: string | undefined,
+  token: string,
+  previewId: string,
+): Promise<CommandDeckApiResult<undefined>> {
+  const result = await commandDeckRequest<{ cancelled?: boolean }>(
+    apiBaseUrl,
+    token,
+    '/cancel',
+    { method: 'POST', body: { previewId } },
+  );
+  return result.ok && result.value.cancelled === true
+    ? { ok: true, value: undefined }
+    : result.ok
+      ? {
+          ok: false,
+          status: 502,
+          code: 'invalid_response',
+          message: 'Jarvis did not confirm cancellation.',
+        }
+      : result;
+}
+
+export async function confirmCommandDeckMutation(
+  apiBaseUrl: string | undefined,
+  token: string,
+  previewId: string,
+  action: CommandDeckMutationAction | undefined,
+  idempotencyKey: string,
+  rollback = false,
+): Promise<CommandDeckApiResult<CommandDeckReceipt>> {
+  const result = await commandDeckRequest<{ receipt?: CommandDeckReceipt }>(
+    apiBaseUrl,
+    token,
+    rollback ? '/rollback' : '/confirm',
+    {
+      method: 'POST',
+      body: rollback ? { previewId } : { previewId, action },
+      idempotencyKey,
+    },
+  );
+  return result.ok && result.value.receipt !== undefined
+    ? { ok: true, value: result.value.receipt }
+    : result.ok
+      ? {
+          ok: false,
+          status: 502,
+          code: 'invalid_response',
+          message:
+            'Jarvis outcome is unknown. Reconcile with the same confirmation before creating another change.',
+        }
+      : result;
+}
+
+export async function previewCommandDeckRollback(
+  apiBaseUrl: string | undefined,
+  token: string,
+  rollbackToken: string,
+): Promise<CommandDeckApiResult<CommandDeckPreview>> {
+  const result = await commandDeckRequest<{ preview?: CommandDeckPreview }>(
+    apiBaseUrl,
+    token,
+    '/rollback',
+    { method: 'POST', body: { rollbackToken } },
+  );
+  return result.ok && result.value.preview !== undefined
+    ? { ok: true, value: result.value.preview }
+    : result.ok
+      ? {
+          ok: false,
+          status: 502,
+          code: 'invalid_response',
+          message: 'Jarvis did not provide a rollback preview.',
+        }
+      : result;
+}
+
+export const createCommandDeckIdempotencyKey = createRequestId;
