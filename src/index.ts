@@ -923,7 +923,7 @@ export const createApplication = async (
       rssScheduler = new RssScheduler(
         rssStorage,
         new RssNotificationClient(
-          fetch,
+          undefined,
           8_000,
           config.engagement.rssAllowedHosts,
         ),
@@ -1503,7 +1503,7 @@ export const createApplication = async (
                 },
                 preview: async (url: string) =>
                   new RssNotificationClient(
-                    fetch,
+                    undefined,
                     8_000,
                     config.engagement.rssAllowedHosts,
                   ).fetch(url, 5),
