@@ -35,6 +35,7 @@ import {
   createCommandDeckRuntimeMutationApi,
   type AdminConsoleMutationApi,
 } from '../src/admin/admin-console.js';
+import { projectCommandDeckMutationCatalog } from '../src/admin/command-deck-read-api.js';
 import {
   createApplication,
   nextBroadcastEligibleAt,
@@ -209,6 +210,11 @@ describe('createApplication', () => {
         digestMode: true,
         updatedAt: new Date('2026-08-23T20:00:00.000Z'),
       });
+      rss.addFeed(
+        'guild-id',
+        'https://feeds.example.test/private/catalog-path-secret/feed.xml?access_token=catalog-query-secret',
+        'Existing private feed',
+      );
       const api = createCommandDeckRuntimeMutationApi({
         authorization: {
           token: 'write-token-with-enough-entropy',
@@ -244,7 +250,9 @@ describe('createApplication', () => {
         error: { code: 'INVALID_ACTION' },
       });
       expect(JSON.stringify(credentialPreview)).not.toContain(credentialCanary);
-      expect(rss.listFeeds('guild-id')).toEqual([]);
+      expect(rss.listFeeds('guild-id')).toEqual([
+        expect.objectContaining({ label: 'Existing private feed' }),
+      ]);
 
       const broadcastAction = {
         type: 'broadcast_state' as const,
@@ -287,11 +295,14 @@ describe('createApplication', () => {
       const rssAction = {
         type: 'rss_feed' as const,
         operation: 'add' as const,
-        url: 'https://feeds.example.test/news.xml',
+        url: 'https://feeds.example.test/private/rss-path-secret/news.xml?access_token=rss-query-secret',
         label: 'Ship News',
       };
       const rssPreview = await api.service.preview(rssAction);
       expect(rssPreview.ok).toBe(true);
+      expect(JSON.stringify(rssPreview)).not.toMatch(
+        /rss-path-secret|rss-query-secret|access_token/,
+      );
       if (!rssPreview.ok) throw new Error('RSS preview failed.');
       const rssConfirmation = await api.service.confirm({
         previewId: rssPreview.preview.id,
@@ -300,11 +311,40 @@ describe('createApplication', () => {
       });
       expect(rssConfirmation.ok).toBe(true);
       if (!rssConfirmation.ok) throw new Error('RSS confirmation failed.');
-      expect(rss.listFeeds('guild-id')).toEqual([
+      expect(rss.listFeeds('guild-id')).toContainEqual(
         expect.objectContaining({
           url: rssAction.url,
           label: 'Ship News',
         }),
+      );
+
+      const projectedCatalog = projectCommandDeckMutationCatalog(api.catalog);
+      const catalogJson = JSON.stringify(projectedCatalog);
+      expect(catalogJson).not.toMatch(
+        /catalog-path-secret|catalog-query-secret|access_token/,
+      );
+      const feedId = projectedCatalog.actions.rssFeeds[0]?.id;
+      expect(feedId).toMatch(/^rss_[a-f0-9]{32}$/);
+      const removeAction = {
+        type: 'rss_feed' as const,
+        operation: 'remove' as const,
+        feedId: feedId!,
+      };
+      const removePreview = await api.service.preview(removeAction);
+      expect(removePreview.ok).toBe(true);
+      expect(JSON.stringify(removePreview)).not.toMatch(
+        /catalog-path-secret|catalog-query-secret|access_token/,
+      );
+      if (!removePreview.ok) throw new Error('RSS removal preview failed.');
+      await expect(
+        api.service.confirm({
+          previewId: removePreview.preview.id,
+          action: removeAction,
+          idempotencyKey: 'rss-remove-existing',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(rss.listFeeds('guild-id').map((feed) => feed.label)).toEqual([
+        'Ship News',
       ]);
 
       const rollbackPreview = await api.service.previewRollback(

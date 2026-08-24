@@ -26,6 +26,7 @@ import {
   type CommandDeckMutationCatalog,
   type CommandDeckReadBoundaryPolicy,
 } from './command-deck-read-api.js';
+import { commandDeckRssFeedId } from './command-deck-rss-feed.js';
 import type {
   CommandDeckMutationAdapter,
   CommandDeckMutationAction,
@@ -260,6 +261,15 @@ export const createCommandDeckRuntimeMutationAdapter = (
       : [],
   );
   const now = options.now ?? (() => new Date());
+  const rssUrlFor = (
+    action: Extract<CommandDeckMutationAction, { type: 'rss_feed' }>,
+  ): string | undefined =>
+    action.operation === 'add'
+      ? action.url
+      : options.rssStorage
+          ?.listFeeds(options.guildId)
+          .find((feed) => commandDeckRssFeedId(feed.url) === action.feedId)
+          ?.url;
 
   const ensureAllowed = (action: CommandDeckMutationAction): void => {
     switch (action.type) {
@@ -272,7 +282,8 @@ export const createCommandDeckRuntimeMutationAdapter = (
           throw new Error('Feature target is not configured.');
         return;
       case 'rss_feed': {
-        if (!isAllowedRssUrl(action.url, allowedRssHosts))
+        const url = rssUrlFor(action);
+        if (url === undefined || !isAllowedRssUrl(url, allowedRssHosts))
           throw new Error('RSS target is not configured.');
         return;
       }
@@ -300,9 +311,10 @@ export const createCommandDeckRuntimeMutationAdapter = (
           action.feature as (typeof SUPPORTED_FEATURE_FLAGS)[number],
         );
       case 'rss_feed': {
+        const url = rssUrlFor(action)!;
         const feed = options
           .rssStorage!.listFeeds(options.guildId)
-          .find((candidate) => candidate.url === action.url);
+          .find((candidate) => candidate.url === url);
         return feed === undefined
           ? undefined
           : { url: feed.url, label: feed.label };
@@ -314,6 +326,16 @@ export const createCommandDeckRuntimeMutationAdapter = (
     request: CommandDeckMutationApplyRequest,
   ): Promise<'applied' | 'already_applied' | 'precondition_failed'> => {
     ensureAllowed(request.action);
+    const databaseAction: CommandDeckMutationAction =
+      request.action.type === 'rss_feed' &&
+      request.action.operation === 'remove'
+        ? {
+            type: 'rss_feed',
+            operation: 'add',
+            url: rssUrlFor(request.action)!,
+            label: 'resolved',
+          }
+        : request.action;
     if (request.operationId.trim() === '' || request.operationId.length > 200)
       throw new Error('Invalid mutation operation identifier.');
     const database = openSqliteDatabase(options.databasePath);
@@ -331,7 +353,7 @@ export const createCommandDeckRuntimeMutationAdapter = (
           const current = readCurrentMutationValue(
             database,
             options.guildId,
-            request.action,
+            databaseAction,
             configuredBroadcasts,
           );
           if (!sameMutationValue(current, request.expectedValue))
@@ -340,7 +362,7 @@ export const createCommandDeckRuntimeMutationAdapter = (
           writeMutationValue(
             database,
             options.guildId,
-            request.action,
+            databaseAction,
             request.nextValue,
             configuredBroadcasts,
             now(),
@@ -384,7 +406,9 @@ export const createCommandDeckRuntimeMutationAdapter = (
       case 'feature_flag':
         return `feature:${action.feature}`;
       case 'rss_feed':
-        return `rss:${new URL(action.url).hostname}`;
+        return action.operation === 'add'
+          ? `rss:${new URL(action.url).hostname}`
+          : `rss:${action.feedId}`;
     }
   };
 
@@ -726,6 +750,8 @@ function readCurrentMutationValue(
         : row.enabled === 1;
     }
     case 'rss_feed': {
+      if (action.operation !== 'add')
+        throw new Error('Unresolved RSS mutation action.');
       const row = database
         .prepare(
           'SELECT url, label FROM rss_feeds WHERE server_id = ? AND url = ?',
@@ -775,6 +801,8 @@ function writeMutationValue(
         .run(guildId, action.feature, nextValue ? 1 : 0, now.getTime());
       return;
     case 'rss_feed':
+      if (action.operation !== 'add')
+        throw new Error('Unresolved RSS mutation action.');
       if (nextValue === undefined) {
         database
           .prepare('DELETE FROM rss_feeds WHERE server_id = ? AND url = ?')

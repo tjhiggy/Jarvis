@@ -341,7 +341,7 @@ describe('Command Deck safe controls', () => {
               ...catalog.actions,
               rssFeeds: [
                 {
-                  url: 'https://news.example.test/existing.xml',
+                  id: 'rss_0123456789abcdef0123456789abcdef',
                   label: 'Existing feed',
                 },
               ],
@@ -355,7 +355,7 @@ describe('Command Deck safe controls', () => {
     unlockControls();
     await screen.findByText('Safe controls ready');
     fireEvent.change(screen.getByLabelText('Existing RSS feed'), {
-      target: { value: 'https://news.example.test/existing.xml' },
+      target: { value: 'rss_0123456789abcdef0123456789abcdef' },
     });
     expect(
       screen.getByRole('button', { name: 'Preview RSS removal' }),
@@ -370,7 +370,7 @@ describe('Command Deck safe controls', () => {
     expect(JSON.parse(String(options?.body)).action).toEqual({
       type: 'rss_feed',
       operation: 'remove',
-      url: 'https://news.example.test/existing.xml',
+      feedId: 'rss_0123456789abcdef0123456789abcdef',
     });
   });
 

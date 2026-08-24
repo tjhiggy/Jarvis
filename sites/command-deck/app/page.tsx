@@ -373,7 +373,7 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
   const [featureEnabled, setFeatureEnabled] = useState(true);
   const [rssUrl, setRssUrl] = useState('');
   const [rssLabel, setRssLabel] = useState('');
-  const [rssFeedUrl, setRssFeedUrl] = useState('');
+  const [rssFeedId, setRssFeedId] = useState('');
 
   const relock = (detail = controlCopy.locked) => {
     setWriteToken(undefined);
@@ -384,7 +384,7 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
     setTokenDraft('');
     setBroadcastCategory('');
     setFeature('');
-    setRssFeedUrl('');
+    setRssFeedId('');
     setPhase(detail === controlCopy.locked ? 'locked' : 'unauthorized');
     setDetail(detail);
   };
@@ -715,15 +715,15 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
           <label>
             Existing RSS feed
             <select
-              value={rssFeedUrl}
-              onChange={(event) => setRssFeedUrl(event.target.value)}
+              value={rssFeedId}
+              onChange={(event) => setRssFeedId(event.target.value)}
               disabled={
                 !controlsReady || pending !== undefined || phase === 'loading'
               }
             >
               <option value="">Select an existing feed</option>
               {(catalog?.rssFeeds ?? []).map((feed) => (
-                <option key={feed.url} value={feed.url}>
+                <option key={feed.id} value={feed.id}>
                   {feed.label}
                 </option>
               ))}
@@ -733,7 +733,7 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
             type="button"
             disabled={
               !controlsReady ||
-              rssFeedUrl === '' ||
+              rssFeedId === '' ||
               pending !== undefined ||
               phase === 'loading' ||
               phase === 'confirming'
@@ -742,7 +742,7 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
               void previewChange({
                 type: 'rss_feed',
                 operation: 'remove',
-                url: rssFeedUrl,
+                feedId: rssFeedId,
               })
             }
           >

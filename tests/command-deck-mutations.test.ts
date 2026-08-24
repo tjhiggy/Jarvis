@@ -108,7 +108,7 @@ class InMemoryMutationAdapter implements CommandDeckMutationAdapter {
       case 'feature_flag':
         return `Feature: ${action.feature}`;
       case 'rss_feed':
-        return `RSS: ${action.url}`;
+        return `RSS: ${action.operation === 'add' ? action.url : action.feedId}`;
     }
   }
 
@@ -119,7 +119,7 @@ class InMemoryMutationAdapter implements CommandDeckMutationAdapter {
       case 'feature_flag':
         return `feature:${action.feature}`;
       case 'rss_feed':
-        return `rss:${action.url}`;
+        return `rss:${action.operation === 'add' ? action.url : action.feedId}`;
     }
   }
 }
@@ -132,7 +132,7 @@ const recapPause: CommandDeckMutationAction = {
 const rssRemove: CommandDeckMutationAction = {
   type: 'rss_feed',
   operation: 'remove',
-  url: 'https://news.example.test/feed.xml',
+  feedId: 'rss_0123456789abcdef0123456789abcdef',
 };
 
 describe('Command Deck mutation service', () => {

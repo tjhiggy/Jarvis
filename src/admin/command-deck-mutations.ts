@@ -1,3 +1,5 @@
+import { commandDeckRssFeedId } from './command-deck-rss-feed.js';
+
 export type CommandDeckMutationAction =
   | {
       readonly type: 'broadcast_state';
@@ -11,9 +13,14 @@ export type CommandDeckMutationAction =
     }
   | {
       readonly type: 'rss_feed';
-      readonly operation: 'add' | 'remove';
+      readonly operation: 'add';
       readonly url: string;
-      readonly label?: string;
+      readonly label: string;
+    }
+  | {
+      readonly type: 'rss_feed';
+      readonly operation: 'remove';
+      readonly feedId: string;
     };
 
 export interface CommandDeckMutationApplyRequest {
@@ -201,13 +208,20 @@ const isAction = (value: unknown): value is CommandDeckMutationAction => {
       hasText(value.feature) &&
       typeof value.enabled === 'boolean'
     );
-  if (value.type === 'rss_feed')
-    return (
-      hasOnlyKeys(value, ['type', 'operation', 'url', 'label']) &&
-      (value.operation === 'add' || value.operation === 'remove') &&
-      hasText(value.url) &&
-      (value.label === undefined || hasText(value.label))
-    );
+  if (value.type === 'rss_feed') {
+    if (value.operation === 'add')
+      return (
+        hasOnlyKeys(value, ['type', 'operation', 'url', 'label']) &&
+        hasText(value.url) &&
+        hasText(value.label)
+      );
+    if (value.operation === 'remove')
+      return (
+        hasOnlyKeys(value, ['type', 'operation', 'feedId']) &&
+        hasText(value.feedId) &&
+        /^rss_[a-f0-9]{32}$/.test(value.feedId)
+      );
+  }
   return false;
 };
 
@@ -219,7 +233,7 @@ const desiredValue = (action: CommandDeckMutationAction): unknown => {
       return action.enabled;
     case 'rss_feed':
       return action.operation === 'add'
-        ? { url: action.url, label: action.label?.trim() }
+        ? { url: action.url, label: action.label.trim() }
         : undefined;
   }
 };
@@ -250,8 +264,7 @@ export const createCommandDeckMutationService = ({
       case 'feature_flag':
         return adapter.supportedFeatureFlags.includes(action.feature);
       case 'rss_feed': {
-        if (action.operation === 'add' && action.label === undefined)
-          return false;
+        if (action.operation === 'remove') return true;
         try {
           const url = new URL(action.url);
           return (
@@ -267,13 +280,27 @@ export const createCommandDeckMutationService = ({
     }
   };
 
+  const publicMutationValue = (value: unknown): unknown => {
+    if (!isRecord(value) || !hasText(value.url)) return clone(value);
+    return {
+      feedId: commandDeckRssFeedId(value.url),
+      ...(hasText(value.label) ? { label: value.label.trim() } : {}),
+    };
+  };
+
   const renderPreview = (
     session: CommandDeckMutationStoredPreview,
   ): CommandDeckMutationPreview => ({
     id: session.id,
     expiresAt: session.expiresAt,
     target: session.target,
-    diff: { before: clone(session.before), after: clone(session.after) },
+    diff:
+      session.action.type === 'rss_feed'
+        ? {
+            before: publicMutationValue(session.before),
+            after: publicMutationValue(session.after),
+          }
+        : { before: clone(session.before), after: clone(session.after) },
   });
 
   const createPreview = async (args: {

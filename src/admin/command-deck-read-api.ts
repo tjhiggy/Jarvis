@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { AdminConsoleSnapshot } from './admin-console.js';
+import { commandDeckRssFeedId } from './command-deck-rss-feed.js';
 
 export interface CommandDeckMutationCatalog {
   readonly broadcastCategories: readonly string[];
@@ -18,7 +19,7 @@ export interface CommandDeckMutationCatalogResponse {
     readonly featureFlags: readonly string[];
     readonly rssHosts: readonly string[];
     readonly rssFeeds: readonly {
-      readonly url: string;
+      readonly id: string;
       readonly label: string;
     }[];
   };
@@ -44,7 +45,10 @@ export function projectCommandDeckMutationCatalog(
       ),
       rssFeeds: (catalog.rssFeeds ?? [])
         .filter((feed) => isAllowedCatalogRssFeed(feed, catalog.rssHosts))
-        .map((feed) => ({ url: feed.url, label: feed.label.trim() }))
+        .map((feed) => ({
+          id: commandDeckRssFeedId(feed.url),
+          label: feed.label.trim(),
+        }))
         .slice(0, 50),
     },
   };

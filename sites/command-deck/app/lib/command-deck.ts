@@ -305,16 +305,17 @@ export type CommandDeckMutationAction =
   | { type: 'feature_flag'; feature: string; enabled: boolean }
   | {
       type: 'rss_feed';
-      operation: 'add' | 'remove';
+      operation: 'add';
       url: string;
-      label?: string;
-    };
+      label: string;
+    }
+  | { type: 'rss_feed'; operation: 'remove'; feedId: string };
 
 export type CommandDeckMutationCatalog = {
   broadcastCategories: string[];
   featureFlags: string[];
   rssHosts: string[];
-  rssFeeds: Array<{ url: string; label: string }>;
+  rssFeeds: Array<{ id: string; label: string }>;
 };
 
 export type CommandDeckPreview = {
