@@ -84,8 +84,8 @@ current sequence is:
 7. **Sprints 7-13: v0.9.0 through v1.5.0** - released Crew Engagement,
    MuthaShip Platform, Community Expansion, Expansion Systems, Community
    Operations, Economy and Progression, and Community Games and Entertainment.
-8. **Next: v1.6.0** - planned work only; promote items from the GitHub Project
-   after scope, safety, documentation, and acceptance criteria are approved.
+8. **Sprint 14: v1.6.0 Sites Command Deck** - private Sites operator console,
+   live snapshot, bounded controls, local fallback, and cutover verification.
 
 Only move an Issue to **Released** after its pull requests merge, the required
 tests/build/docs/diff gates pass, deployment smoke testing is recorded, and a

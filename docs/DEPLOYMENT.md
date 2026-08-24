@@ -73,17 +73,18 @@ If this fails, stop Jarvis, restore the prior approved revision and command
 definitions, and register that prior command set. Keep the SQLite database and
 reminder tables intact unless an authorized backup restore is required.
 
-### Private Sites Command Deck controls, pre-release enablement
+### Private Sites Command Deck
 
-#275 is implemented but not shipped. Enable it only for an approved private
-deployment: set `ADMIN_CONSOLE_ENABLED=true`, distinct 32+ character `ADMIN_CONSOLE_TOKEN` (write) and
-`COMMAND_DECK_API_TOKEN` (read) values, an exact private HTTPS
+Enable the remote console only for an approved private deployment: set
+`ADMIN_CONSOLE_ENABLED=true`, distinct 32+ character `ADMIN_CONSOLE_TOKEN`
+(write) and `COMMAND_DECK_API_TOKEN` (read) values, an exact private HTTPS
 `COMMAND_DECK_API_ALLOWED_ORIGINS` (the Sites page origin), and the Jarvis
-tunnel/proxy as runtime `COMMAND_DECK_API_BASE_URL`. Keep the server bound to `127.0.0.1`; never put
-the write token in Sites configuration.
+tunnel/proxy as Sites `COMMAND_DECK_API_BASE_URL`. Keep the server bound to
+`127.0.0.1`; never put the write token in Sites configuration.
 
-Restart Jarvis, run `npm run command-deck-api:verify`, then rehearse disabled
-failure, exact preview, cancel, transient retry, receipt, restart recovery, and
+Restart Jarvis, run `npm run command-deck-api:verify` and
+`npm run command-deck-cutover:verify`, then rehearse disabled failure, live
+identity, exact preview, cancel, transient retry, receipt, restart recovery, and
 compensating rollback against disposable allowlisted broadcast/flag/RSS targets.
 RSS must remain HTTPS-host allowlisted and destination-pinned. Record only
 sanitized evidence. On failure remove the write token or allowed origin, restart,

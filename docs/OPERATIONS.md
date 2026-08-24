@@ -6,6 +6,8 @@ Keep Jarvis bound to `127.0.0.1`. Remote Sites access must traverse the approved
 private tunnel and present the dedicated read token, exact HTTPS origin, fresh
 timestamp, and unique request UUID. Verify accepted and denied paths with
 `npm run command-deck-api:verify`; its receipt is content-free release evidence.
+Run `npm run command-deck-cutover:verify` to prove localhost fallback, live
+identity, token rotation, and origin denial.
 
 `401` means a token mismatch, stale clock, or replay. `403` means the origin is
 not allowlisted. `429` means wait for the configured window. `503` means Jarvis

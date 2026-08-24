@@ -48,6 +48,8 @@ export const shippedFeatureCatalog = [
         'overview-health',
         'integration-readiness',
         'scheduler-status',
+        'sites-live-snapshot',
+        'local-fallback',
       ],
     },
     audience: 'mixed',
@@ -65,9 +67,11 @@ export const shippedFeatureCatalog = [
       'tests/application.test.ts',
       'tests/config.test.ts',
       'tests/admin-console.test.ts',
+      'tests/command-deck-cutover.test.ts',
     ],
     manualSmokeCases: [
       'Run /status and /config as an administrator and compare the safe identity and readiness values with the Command Deck Overview.',
+      'Open the private Sites Command Deck, confirm the Live badge matches JARVIS_VERSION, then load the localhost fallback after clearing the read token.',
     ],
   },
   {

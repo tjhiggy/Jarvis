@@ -35,6 +35,8 @@ jobs:
         run: npm run journeys:check
       - name: Run focused Discord journey verification
         run: npm run journeys:verify
+      - name: Verify Command Deck cutover
+        run: npm run command-deck-cutover:verify
       - name: Run tests
         run: npm test
       - name: Build TypeScript

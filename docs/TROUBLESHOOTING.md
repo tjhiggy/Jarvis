@@ -1,5 +1,15 @@
 # Troubleshooting
 
+## Sites Command Deck is Sample, Offline, or unauthorized
+
+**Likely cause.** Sites read configuration is incomplete, the tunnel is down,
+the read token does not match Jarvis, or the page origin is not allowlisted.
+
+**Safe diagnosis.** Confirm the Overview badge. Sample means Sites secrets are
+unset. Offline means Jarvis did not return a snapshot. A `401` is token, clock,
+or replay. A `403` is origin. Use `http://127.0.0.1:8787` until the private
+path is restored. Do not paste tokens or the Sites URL into tickets.
+
 ## Sleeper standings unavailable
 
 `/fantasy standings` requires `SLEEPER_LEAGUE_ID` and a restart after changing

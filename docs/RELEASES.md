@@ -7,8 +7,9 @@ Every roadmap phase ends with a shipped version. A phase is not complete when
 its pull requests merge. It is complete only after the release tag and GitHub
 release exist, release notes and migration notes are published, the full test,
 build, documentation, and diff gates pass, and the deployed instance completes
-the smoke checklist. `v1.5.0` (Community Games and Entertainment) is the
-current released milestone. The next planned milestone is `v1.6.0`.
+the smoke checklist. `v1.6.0` (Sites Command Deck) is the
+current released milestone. Later community-platform work is planned after
+that tagged deploy.
 
 ## Versioning
 

@@ -266,6 +266,33 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
       'Inspect aggregate metrics only; do not collect message or provider payload content.',
   },
   {
+    id: 'command-deck-local-fallback',
+    group: 'platform',
+    claim:
+      'The localhost Command Deck remains available when the Sites surface is stale or offline.',
+    evidence: 'tests/command-deck-cutover.test.ts',
+    recovery:
+      'Stop using the Sites URL and operate from http://127.0.0.1:8787 or Discord fallback commands.',
+  },
+  {
+    id: 'command-deck-token-rotation',
+    group: 'platform',
+    claim:
+      'A rotated Command Deck read token is rejected until Jarvis restarts with the new secret.',
+    evidence: 'tests/command-deck-cutover.test.ts',
+    recovery:
+      'Update the Sites read secret and Jarvis COMMAND_DECK_API_TOKEN together, restart Jarvis, then confirm a fresh snapshot succeeds.',
+  },
+  {
+    id: 'command-deck-origin-allowlist',
+    group: 'platform',
+    claim:
+      'Remote Command Deck reads from an unlisted origin are denied without leaking secrets.',
+    evidence: 'tests/command-deck-cutover.test.ts',
+    recovery:
+      'Set COMMAND_DECK_API_ALLOWED_ORIGINS to the exact private Sites page origin and retry.',
+  },
+  {
     id: 'sanitization-command-deck',
     group: 'sanitization',
     claim:

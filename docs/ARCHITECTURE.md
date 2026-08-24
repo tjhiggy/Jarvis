@@ -6,8 +6,9 @@ The private Sites frontend consumes a versioned projection, not Jarvis internal
 state. `command-deck-read-api.ts` owns the allowlist projection and request
 policy. `admin-console.ts` exposes the single GET endpoint. Runtime configuration
 injects the dedicated secret, exact origins, timing limits, rate limits, and a
-metadata-only audit sink. Sites reads this projection; Discord and storage
-internals never trust Sites input.
+metadata-only audit sink. Sites reads this projection through a server-side token; Discord and storage
+internals never trust Sites input. The localhost Command Deck remains the
+fallback if Sites is offline.
 
 Jarvis is a single Node.js process. It receives Discord gateway events, applies local request controls, optionally grounds a question with web-search results, calls the selected AI provider, and stores only its own records in SQLite. The optional Command Deck starts an HTTP server bound to loopback only; the application exposes no public listening interface.
 

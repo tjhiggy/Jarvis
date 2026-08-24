@@ -74,7 +74,7 @@ const cards = (...values: Array<[string, string, string]>) =>
 export const commandDeckFixture: CommandDeckSnapshot = {
   contractVersion: '1.0',
   generatedAt: '2026-08-23T12:12:00-04:00',
-  release: { version: '1.5.0', environment: 'Production', commit: 'a585c3e' },
+  release: { version: '1.6.0', environment: 'Production', commit: 'sample' },
   services: [
     {
       name: 'Discord gateway',
@@ -246,6 +246,229 @@ export function getCommandDeckSnapshot(
   value: unknown = commandDeckFixture,
 ): CommandDeckSnapshot {
   return validateCommandDeckSnapshot(value);
+}
+
+export type CommandDeckPresentationSource = 'sample' | 'live' | 'unavailable';
+
+export type CommandDeckLiveSnapshot = {
+  schemaVersion: '1.0';
+  observedAt: string;
+  freshness: { state: 'fresh' | 'stale'; staleAfterSeconds: number };
+  release: { version: string; environment: string };
+  health: {
+    state: 'healthy' | 'degraded' | 'unavailable';
+    reason: string;
+  };
+  providers: Array<{ id: string; state: string; selected: boolean }>;
+  integrations: Array<{ id: string; state: string }>;
+  schedulers: Array<{
+    id: string;
+    state: string;
+    health: string;
+    lastSuccessAt?: string;
+  }>;
+  featureFlags: string[];
+  metrics: { events: number; failures: number; windowDays: number } | null;
+  audit: { state: string };
+};
+
+const liveHealthStates = new Set(['healthy', 'degraded', 'unavailable']);
+
+export function validateCommandDeckLiveSnapshot(
+  value: unknown,
+): CommandDeckLiveSnapshot {
+  if (!isRecord(value)) throw new Error('Live snapshot is required.');
+  if (value.schemaVersion !== '1.0')
+    throw new Error('Unsupported live contract version.');
+  if (
+    !isNonEmptyString(value.observedAt) ||
+    !Number.isFinite(Date.parse(value.observedAt))
+  )
+    throw new Error('Live snapshot observedAt must be a valid timestamp.');
+  if (!isRecord(value.release)) throw new Error('Live release is incomplete.');
+  if (
+    !isNonEmptyString(value.release.version) ||
+    !isNonEmptyString(value.release.environment)
+  )
+    throw new Error('Live release identity is incomplete.');
+  if (!isRecord(value.health)) throw new Error('Live health is incomplete.');
+  if (!liveHealthStates.has(String(value.health.state)))
+    throw new Error('Live health state is invalid.');
+  if (!isNonEmptyString(value.health.reason))
+    throw new Error('Live health reason is required.');
+  if (!Array.isArray(value.providers) || !Array.isArray(value.integrations))
+    throw new Error('Live providers and integrations are required.');
+  if (!Array.isArray(value.schedulers) || !Array.isArray(value.featureFlags))
+    throw new Error('Live schedulers and feature flags are required.');
+  if (value.metrics !== null && !isRecord(value.metrics))
+    throw new Error('Live metrics are invalid.');
+  if (!isRecord(value.audit) || !isNonEmptyString(value.audit.state))
+    throw new Error('Live audit state is required.');
+  return value as CommandDeckLiveSnapshot;
+}
+
+const serviceStateFromLive = (state: string): ServiceState => {
+  if (state === 'healthy' || state === 'configured' || state === 'enabled')
+    return 'healthy';
+  if (state === 'stale' || state === 'paused' || state === 'degraded')
+    return 'degraded';
+  return 'unavailable';
+};
+
+export const unavailableCommandDeckSnapshot: CommandDeckSnapshot =
+  validateCommandDeckSnapshot({
+    ...commandDeckFixture,
+    generatedAt: '1970-01-01T00:00:00.000Z',
+    release: {
+      version: 'unknown',
+      environment: 'unavailable',
+      commit: 'unknown',
+    },
+    services: commandDeckFixture.services.map((service) => ({
+      ...service,
+      detail: 'Jarvis snapshot is unavailable. Use the local fallback.',
+      state: 'unavailable',
+      metric: 'Offline',
+    })),
+    activity: { events: 0, failures: 0, windowDays: 7 },
+    timeline: [
+      {
+        event: 'Live snapshot unavailable',
+        source: 'Command Deck',
+        outcome: 'review',
+      },
+    ],
+  });
+
+export function presentCommandDeckReadSnapshot(
+  value: unknown,
+): CommandDeckSnapshot {
+  const live = validateCommandDeckLiveSnapshot(value);
+  const selectedProvider =
+    live.providers.find((provider) => provider.selected)?.id ?? 'none';
+  const metrics = live.metrics ?? { events: 0, failures: 0, windowDays: 7 };
+  const featureCount = live.featureFlags.length;
+  const schedulerCards = live.schedulers
+    .slice(0, 4)
+    .map((scheduler) => [
+      scheduler.id,
+      scheduler.state,
+      scheduler.health === 'healthy' ? 'Healthy' : 'Attention',
+    ]) as Array<[string, string, string]>;
+  return validateCommandDeckSnapshot({
+    contractVersion: '1.0',
+    generatedAt: live.observedAt,
+    release: {
+      version: live.release.version,
+      environment: live.release.environment,
+      commit: 'live',
+    },
+    services: [
+      {
+        name: 'Platform health',
+        detail: live.health.reason.split('_').join(' '),
+        state: live.health.state,
+        metric: live.health.state,
+      },
+      {
+        name: 'Selected provider',
+        detail: `${selectedProvider} is the active answer path`,
+        state: serviceStateFromLive(
+          live.providers.find((provider) => provider.selected)?.state ??
+            'unavailable',
+        ),
+        metric: selectedProvider,
+      },
+      ...live.integrations.map((integration) => ({
+        name: integration.id,
+        detail: `${integration.id} is ${integration.state}`,
+        state: serviceStateFromLive(integration.state),
+        metric: integration.state,
+      })),
+    ],
+    activity: {
+      events: metrics.events,
+      failures: metrics.failures,
+      windowDays: metrics.windowDays === 0 ? 7 : metrics.windowDays,
+    },
+    areas: {
+      Community: {
+        eyebrow: 'Engagement intelligence',
+        title: 'Community pulse',
+        intro:
+          'A content-free view of enabled community features across the MuthaShip.',
+        cards: cards(
+          ['Enabled features', `${featureCount} active`, 'Configured'],
+          ['Audit', live.audit.state, 'Protected'],
+          [
+            'Platform',
+            live.health.state,
+            live.health.state === 'healthy' ? 'Healthy' : 'Attention',
+          ],
+          ['Metrics window', `${metrics.windowDays}-day`, 'Bounded'],
+        ),
+      },
+      Broadcasts: {
+        eyebrow: 'Transmission log',
+        title: 'Broadcast history',
+        intro:
+          'Safe scheduler receipts and destinations. Message bodies remain out of this deck.',
+        cards: cards(
+          ...(schedulerCards.length > 0
+            ? schedulerCards
+            : ([['Schedulers', 'None configured', 'Empty']] as Array<
+                [string, string, string]
+              >)),
+        ),
+      },
+      Integrations: {
+        eyebrow: 'Connected services',
+        title: 'Connected systems',
+        intro:
+          'Readiness and safe operational detail for every external integration.',
+        cards: cards(
+          ...live.integrations.map(
+            (integration) =>
+              [
+                integration.id,
+                integration.state,
+                integration.state === 'configured' ? 'Operational' : 'Review',
+              ] as [string, string, string],
+          ),
+        ),
+      },
+      Settings: {
+        eyebrow: 'Protected configuration',
+        title: 'Configuration posture',
+        intro:
+          'What is enabled, what is bounded, and what still requires a write access code.',
+        cards: cards(
+          ['Feature flags', `${featureCount} enabled`, 'Configured'],
+          ['Write controls', 'Locked until access code', 'Protected'],
+          ['Audit', live.audit.state, 'Ready'],
+          ['Local fallback', '127.0.0.1:8787', 'Available'],
+        ),
+      },
+    },
+    operationStates: ['loading', 'empty', 'unavailable', 'unauthorized'],
+    timeline:
+      live.schedulers.length === 0
+        ? [
+            {
+              event: 'Snapshot published',
+              source: 'Command Deck',
+              outcome: 'success' as const,
+            },
+          ]
+        : live.schedulers.slice(0, 5).map((scheduler) => ({
+            event: `${scheduler.id} ${scheduler.state}`,
+            source: scheduler.id,
+            outcome:
+              scheduler.health === 'healthy'
+                ? ('success' as const)
+                : ('review' as const),
+          })),
+  });
 }
 
 export function getSnapshotFreshness(

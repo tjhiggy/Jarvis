@@ -6,14 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-24
+
 ### Added
 
-- Implemented, but not released, #275 private Command Deck safe controls:
-  bounded broadcast, feature-flag, and RSS previews, confirmation, cancellation,
-  retry safety, receipts, restart recovery, and compensating rollback.
-- Documented distinct read/write credentials, exact-origin tunnel configuration,
-  disabled defaults, and required pre-release smoke evidence. This is not a
-  v1.6 shipment claim.
+- Private Sites Command Deck cutover: live snapshot presentation, labeled
+  sample versus live versus unavailable states, and localhost fallback.
+- Authenticated Command Deck read API and bounded Settings controls for
+  broadcasts, feature flags, and RSS feeds, with preview, confirmation,
+  cancellation, retry safety, receipts, and compensating rollback.
+- Shared SQLite connection ownership, backup and restore rehearsal, and
+  truthful provider availability in published health snapshots.
+- Executable Command Deck cutover verification plus shipped-feature,
+  recovery, and Discord journey matrices for the v1.6 package.
 
 ## [1.5.0] - 2026-08-13
 

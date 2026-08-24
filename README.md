@@ -18,7 +18,7 @@ second, imaginary moderator powers never. It answers questions in Discord,
 keeps bounded conversation history per channel or thread, and can use local or
 hosted AI without pretending an interface is a superpower.
 
-Release package: `1.5.0` | Runtime: Node.js 22+ | License: proprietary, except
+Release package: `1.6.0` | Runtime: Node.js 22+ | License: proprietary, except
 the Code of Conduct under CC BY 4.0
 
 Share the [Jarvis community platform overview](assets/jarvis-admin-overview-infographic-v4.png)
@@ -470,13 +470,15 @@ fallback. See the [command surface matrix](docs/COMMAND_SURFACE_MATRIX.md),
 [Sites Command Deck guide](docs/SITES_COMMAND_DECK.md), and the
 [v0.6.0 release checklist](docs/releases/v0.6.0.md).
 
-The v1.6 private Sites migration now includes a disabled-by-default,
-authenticated read API with a strict content-free projection, separate token,
-exact HTTPS origin allowlist, freshness and replay controls, rate limiting, and
-sanitized verification evidence. The localhost Command Deck remains the safe
-fallback while later slices add bounded controls and cutover.
-Run `npm run command-deck-api:verify` for the disposable accepted-and-denied
-request exercise before shipping changes to this boundary.
+The v1.6 private Sites Command Deck is the documented remote operator
+entry when privately published. It can present a live, content-free snapshot
+through a server-side read token and bounded Settings controls through an
+active-tab write access code. Sample data is labeled Sample, not Live.
+The localhost Command Deck at `http://127.0.0.1:8787` remains the fallback.
+Run `npm run command-deck-api:verify` and
+`npm run command-deck-cutover:verify` before shipping changes to this
+boundary. See the [v1.6.0 release notes](docs/releases/v1.6.0.md) and
+[v1.6.0 verification report](docs/V160_RELEASE_VERIFICATION.md).
 
 ## Community Intelligence
 
@@ -492,13 +494,13 @@ default Ollama model on this workstation. See the
 
 ## Release and license
 
-The current release package and changelog version is `1.5.0`. Release actions
+The current release package and changelog version is `1.6.0`. Release actions
 are maintainer-owned and documented in
 [Releases](docs/RELEASES.md) and the [Changelog](CHANGELOG.md).
 
-The next planned milestone is `v1.6.0`, focused on the next set of community
-platform enhancements. See the
-[platform architecture roadmap](docs/PLATFORM_ARCHITECTURE_ROADMAP.md) and
+v1.6.0 is the Sites Command Deck release. See the
+[v1.6.0 release notes](docs/releases/v1.6.0.md),
+[platform architecture roadmap](docs/PLATFORM_ARCHITECTURE_ROADMAP.md), and
 [roadmap](docs/ROADMAP.md) for scope and acceptance rules.
 
 Copyright 2026 Jim Higgins. All rights reserved. Except for the adapted
@@ -541,6 +543,7 @@ instead of guessing.
 | [Extension guide](docs/extensions/README.md)                             | Disabled contracts and requirements for any future integration                              |
 | [Roadmap](docs/ROADMAP.md)                                               | Released, implemented-pending-release, planned, later, and explicitly out-of-scope work     |
 | [Implementation status](docs/IMPLEMENTATION_STATUS.md)                   | Canonical shipped, configured, enabled, foundation, and planned status matrix               |
+| [v1.6.0 verification report](docs/V160_RELEASE_VERIFICATION.md)          | Automated versus operator-owned evidence for the v1.6.0 package                             |
 | [Releases](docs/RELEASES.md)                                             | Versioning, validation gates, publication authority, and rollback                           |
 
 Repository policies and project records:
