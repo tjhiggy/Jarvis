@@ -24,7 +24,7 @@ This is the canonical profile package for the MuthaShip Jarvis Discord applicati
 
 - Avatar: [`assets/jarvis-discord-icon.png`](../assets/jarvis-discord-icon.png)
 - Banner: [`assets/jarvis-discord-banner.png`](../assets/jarvis-discord-banner.png)
-- Community platform overview: [`assets/jarvis-admin-overview-infographic-v4.png`](../assets/jarvis-admin-overview-infographic-v4.png)
+- Community platform overview through v1.6.0: [`assets/jarvis-admin-overview-infographic-v5.png`](../assets/jarvis-admin-overview-infographic-v5.png)
 
 Upload the avatar and banner through the Discord Developer Portal. Do not commit a token, private invite, or machine-specific screenshot.
 
