@@ -90,6 +90,10 @@ path are approved.
 GitHub is the source of truth for issue ownership; this roadmap is the readable
 map. Items move to shipped only with a release tag and evidence.
 
+Issue #275, bounded private Sites Command Deck controls, is implemented in the
+working branch and awaiting release evidence. It is not shipped, does not imply
+a v1.6 release, and retains the local/Discord fallback.
+
 ## Next
 
 **Planned, not implemented.** Add a dedicated `SAFETY_IDENTIFIER_SECRET` so
