@@ -143,7 +143,8 @@ import type {
 import { SqliteBroadcastStore } from './notifications/sqlite-broadcast-store.js';
 import { HttpGitHubReadOnlyService } from './github/github-service.js';
 import {
-  startAdminConsole,
+  createCommandDeckRuntimeMutationApi,
+  startAdminConsole as startAdminConsoleRuntime,
   type AdminConsole,
   type AdminConsoleBroadcastCategory,
 } from './admin/admin-console.js';
@@ -332,6 +333,7 @@ export interface ApplicationDependencies {
   readonly createAIService?: (config: AppConfig) => AIService;
   readonly createDiscordClient?: () => RuntimeDiscordClient;
   readonly createLogger?: (level: string) => Logger;
+  readonly startAdminConsole?: typeof startAdminConsoleRuntime;
   readonly timers?: ApplicationTimers;
   readonly registerSignal?: (
     signal: NodeJS.Signals,
@@ -502,6 +504,8 @@ export const createApplication = async (
   const discordFactory =
     dependencies.createDiscordClient ?? createDefaultDiscordClient;
   const loggerFactory = dependencies.createLogger ?? createLogger;
+  const adminConsoleFactory =
+    dependencies.startAdminConsole ?? startAdminConsoleRuntime;
   const timers = dependencies.timers ?? systemTimers;
   const registerSignal = dependencies.registerSignal ?? registerProcessSignal;
   const setExitCode =
@@ -1340,7 +1344,7 @@ export const createApplication = async (
             : undefined;
         },
       );
-      adminConsole = await startAdminConsole({
+      adminConsole = await adminConsoleFactory({
         port: config.adminConsole.port,
         host: config.adminConsole.host,
         readApi:
@@ -1361,6 +1365,33 @@ export const createApplication = async (
                   );
                 },
               },
+        mutationApi:
+          config.adminConsole.readApi.token === ''
+            ? undefined
+            : createCommandDeckRuntimeMutationApi({
+                databasePath: config.storage.databasePath,
+                guildId: config.discord.guildId,
+                broadcastStore: initializedBroadcastStore,
+                featureFlags,
+                rssStorage,
+                configuredBroadcasts: configuredBroadcasts(config).map(
+                  ({ category, channelId }) => ({ category, channelId }),
+                ),
+                allowedChannelIds: config.security.allowedChannelIds,
+                allowedRssHosts: config.engagement.rssAllowedHosts,
+                rssChannelId: config.engagement.channels.rssId,
+                audit: (event) => {
+                  logger?.info(
+                    {
+                      operation: `command_deck_config_${event.event}`,
+                      actionType: event.actionType,
+                      previewId: event.previewId,
+                      receiptId: event.receiptId,
+                    },
+                    'Command Deck configuration mutation recorded.',
+                  );
+                },
+              }),
         postControl:
           config.adminConsole.token === '' || delegatedPostService === undefined
             ? undefined
@@ -1604,7 +1635,7 @@ export const createApplication = async (
       });
       logger?.info(
         { port: config.adminConsole.port, host: config.adminConsole.host },
-        'Local read-only Admin Console started.',
+        'Local Admin Console started.',
       );
     }
     await triviaService?.recover();

@@ -21,9 +21,20 @@ import type { ProactiveEngagementService } from '../src/engagement/proactive.js'
 import { RssScheduler } from '../src/notifications/rss-scheduler.js';
 import { RssNotificationClient } from '../src/notifications/rss-notifications.js';
 import { RssStorage } from '../src/notifications/rss-storage.js';
+import { SqliteBroadcastStore } from '../src/notifications/sqlite-broadcast-store.js';
 import { ReminderScheduler } from '../src/reminders/reminder-scheduler.js';
 import type { ReminderStore } from '../src/reminders/reminder-store.js';
 import type { ReminderView } from '../src/reminders/reminder-types.js';
+import { SQLiteEngagementRepository } from '../src/storage/engagement-sqlite.js';
+import {
+  FeatureFlagService,
+  SUPPORTED_FEATURE_FLAGS,
+} from '../src/engagement/feature-flags.js';
+import {
+  createCommandDeckRuntimeMutationAdapter,
+  createCommandDeckRuntimeMutationApi,
+  type AdminConsoleMutationApi,
+} from '../src/admin/admin-console.js';
 import {
   createApplication,
   nextBroadcastEligibleAt,
@@ -179,6 +190,282 @@ describe('reportStartupFailure', () => {
 });
 
 describe('createApplication', () => {
+  it('applies allowlisted broadcast, feature, and RSS changes and compensates an RSS change', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-'));
+    const databasePath = join(directory, 'jarvis.db');
+    const broadcast = new SqliteBroadcastStore(databasePath);
+    const engagement = new SQLiteEngagementRepository(databasePath);
+    const featureFlags = new FeatureFlagService(engagement);
+    const rss = new RssStorage(databasePath);
+    const auditEvents: unknown[] = [];
+    try {
+      await broadcast.setPolicy({
+        serverId: 'guild-id',
+        category: 'rss',
+        state: 'enabled',
+        channelId: 'channel-id',
+        timezone: 'UTC',
+        minimumIntervalSeconds: 0,
+        digestMode: true,
+        updatedAt: new Date('2026-08-23T20:00:00.000Z'),
+      });
+      const api = createCommandDeckRuntimeMutationApi({
+        databasePath,
+        guildId: 'guild-id',
+        broadcastStore: broadcast,
+        featureFlags,
+        rssStorage: rss,
+        configuredBroadcasts: [{ category: 'rss', channelId: 'channel-id' }],
+        allowedChannelIds: new Set(['channel-id']),
+        allowedRssHosts: ['feeds.example.test'],
+        rssChannelId: 'channel-id',
+        audit: (event) => {
+          auditEvents.push(event);
+        },
+      });
+
+      const broadcastAction = {
+        type: 'broadcast_state' as const,
+        category: 'rss',
+        state: 'paused' as const,
+      };
+      const broadcastPreview = await api.service.preview(broadcastAction);
+      expect(broadcastPreview.ok).toBe(true);
+      if (!broadcastPreview.ok) throw new Error('Broadcast preview failed.');
+      await expect(
+        api.service.confirm({
+          previewId: broadcastPreview.preview.id,
+          action: broadcastAction,
+          idempotencyKey: 'broadcast-pause',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      await expect(
+        broadcast.getPolicy('guild-id', 'rss'),
+      ).resolves.toMatchObject({ state: 'paused', channelId: 'channel-id' });
+
+      const featureAction = {
+        type: 'feature_flag' as const,
+        feature: 'trivia',
+        enabled: false,
+      };
+      const featurePreview = await api.service.preview(featureAction);
+      expect(featurePreview.ok).toBe(true);
+      if (!featurePreview.ok) throw new Error('Feature preview failed.');
+      await expect(
+        api.service.confirm({
+          previewId: featurePreview.preview.id,
+          action: featureAction,
+          idempotencyKey: 'feature-disable',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      await expect(featureFlags.isEnabled('guild-id', 'trivia')).resolves.toBe(
+        false,
+      );
+
+      const rssAction = {
+        type: 'rss_feed' as const,
+        operation: 'add' as const,
+        url: 'https://feeds.example.test/news.xml',
+        label: 'Ship News',
+      };
+      const rssPreview = await api.service.preview(rssAction);
+      expect(rssPreview.ok).toBe(true);
+      if (!rssPreview.ok) throw new Error('RSS preview failed.');
+      const rssConfirmation = await api.service.confirm({
+        previewId: rssPreview.preview.id,
+        action: rssAction,
+        idempotencyKey: 'rss-add',
+      });
+      expect(rssConfirmation.ok).toBe(true);
+      if (!rssConfirmation.ok) throw new Error('RSS confirmation failed.');
+      expect(rss.listFeeds('guild-id')).toEqual([
+        expect.objectContaining({
+          url: rssAction.url,
+          label: 'Ship News',
+        }),
+      ]);
+
+      const rollbackPreview = await api.service.previewRollback(
+        rssConfirmation.receipt.rollbackToken!,
+      );
+      expect(rollbackPreview.ok).toBe(true);
+      if (!rollbackPreview.ok) throw new Error('Rollback preview failed.');
+      await expect(
+        api.service.confirmRollback({
+          previewId: rollbackPreview.preview.id,
+          idempotencyKey: 'rss-add-rollback',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(rss.listFeeds('guild-id')).toEqual([]);
+      expect(JSON.stringify(auditEvents)).not.toContain('feeds.example.test');
+      expect(JSON.stringify(auditEvents)).not.toContain('Ship News');
+    } finally {
+      rss.close();
+      await engagement.closeConnection();
+      await broadcast.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('persists operation status across adapter instances and rejects a stale compare-and-set', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-cas-'));
+    const databasePath = join(directory, 'jarvis.db');
+    const broadcast = new SqliteBroadcastStore(databasePath);
+    const engagement = new SQLiteEngagementRepository(databasePath);
+    const featureFlags = new FeatureFlagService(engagement);
+    const rss = new RssStorage(databasePath);
+    try {
+      await broadcast.setPolicy({
+        serverId: 'guild-id',
+        category: 'rss',
+        state: 'enabled',
+        channelId: 'channel-id',
+        timezone: 'UTC',
+        minimumIntervalSeconds: 0,
+        digestMode: true,
+        updatedAt: new Date('2026-08-23T20:00:00.000Z'),
+      });
+      const options = {
+        databasePath,
+        guildId: 'guild-id',
+        broadcastStore: broadcast,
+        featureFlags,
+        rssStorage: rss,
+        configuredBroadcasts: [
+          { category: 'rss' as const, channelId: 'channel-id' },
+        ],
+        allowedChannelIds: new Set(['channel-id']),
+        allowedRssHosts: ['feeds.example.test'],
+        rssChannelId: 'channel-id',
+      };
+      const action = {
+        type: 'broadcast_state' as const,
+        category: 'rss',
+        state: 'paused' as const,
+      };
+      const first = createCommandDeckRuntimeMutationAdapter(options);
+      await expect(
+        first.apply({
+          action,
+          expectedValue: true,
+          nextValue: false,
+          operationId: 'durable-operation',
+        }),
+      ).resolves.toBe('applied');
+
+      const reopened = createCommandDeckRuntimeMutationAdapter(options);
+      await expect(reopened.operationStatus('durable-operation')).resolves.toBe(
+        'applied',
+      );
+      await broadcast.setPolicy({
+        ...(await broadcast.getPolicy('guild-id', 'rss'))!,
+        state: 'enabled',
+        updatedAt: new Date('2026-08-23T20:01:00.000Z'),
+      });
+      await expect(
+        reopened.apply({
+          action,
+          expectedValue: true,
+          nextValue: false,
+          operationId: 'durable-operation',
+        }),
+      ).resolves.toBe('already_applied');
+      await expect(
+        broadcast.getPolicy('guild-id', 'rss'),
+      ).resolves.toMatchObject({ state: 'enabled' });
+      await expect(
+        reopened.apply({
+          action,
+          expectedValue: false,
+          nextValue: true,
+          operationId: 'stale-operation',
+        }),
+      ).resolves.toBe('precondition_failed');
+      await expect(reopened.operationStatus('stale-operation')).resolves.toBe(
+        'not_applied',
+      );
+    } finally {
+      rss.close();
+      await engagement.closeConnection();
+      await broadcast.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('passes a configuration-scoped mutation API into the Admin Console', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-wire-'));
+    const databasePath = join(directory, 'jarvis.db');
+    let mutationApi: AdminConsoleMutationApi | undefined;
+    try {
+      const application = await createTestApplication({
+        loadConfig: () => ({
+          ...config,
+          adminConsole: {
+            enabled: true,
+            port: 0,
+            host: '127.0.0.1',
+            token: 'local-admin-token',
+            readApi: {
+              token: 'r'.repeat(32),
+              allowedOrigins: ['https://deck.example.test'],
+              rateLimit: 30,
+              rateWindowMs: 60_000,
+              maxClockSkewMs: 60_000,
+              replayRetentionMs: 60_000,
+            },
+          },
+          storage: { ...config.storage, databasePath },
+          security: {
+            ...config.security,
+            allowedChannelIds: new Set(['rss-channel']),
+          },
+          engagement: {
+            ...config.engagement,
+            enabled: true,
+            channels: {
+              ...config.engagement.channels,
+              rssId: 'rss-channel',
+            },
+            rssAllowedHosts: ['feeds.example.test'],
+          },
+        }),
+        loadPersona: async () => ({}) as TrustedPersona,
+        createStore: () => conversationStore(),
+        createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+        createDiscordClient: () => ({
+          user: { id: 'bot-id' },
+          channels: {
+            fetch: async () => ({
+              name: 'jarvis-updates',
+              send: async () => ({ id: 'message-id' }),
+            }),
+          },
+          on: () => undefined,
+          login: async () => undefined,
+          destroy: () => undefined,
+        }),
+        startAdminConsole: async (options) => {
+          mutationApi = options.mutationApi;
+          return {
+            server: {} as never,
+            close: async () => undefined,
+          };
+        },
+        timers: inertTimers(),
+      });
+
+      expect(mutationApi).toBeDefined();
+      expect(mutationApi?.catalog).toEqual({
+        broadcastCategories: ['rss'],
+        featureFlags: [...SUPPORTED_FEATURE_FLAGS],
+        rssHosts: ['feeds.example.test'],
+      });
+      await application.shutdown();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('initializes private member statistics when engagement is disabled', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'jarvis-member-stats-'));
     const databasePath = join(directory, 'jarvis.db');
