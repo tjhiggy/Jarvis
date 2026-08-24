@@ -267,6 +267,8 @@ type PendingChange = {
   rollback: boolean;
 };
 
+type FailedOperation = 'confirm' | 'cancel';
+
 const controlCopy: Record<ControlPhase, string> = {
   locked:
     'Controls locked. Use an active-tab write access code to load bounded options.',
@@ -362,6 +364,7 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
   const [detail, setDetail] = useState(controlCopy.locked);
   const [pending, setPending] = useState<PendingChange>();
   const [receipt, setReceipt] = useState<CommandDeckReceipt>();
+  const [failedOperation, setFailedOperation] = useState<FailedOperation>();
   const [broadcastCategory, setBroadcastCategory] = useState('');
   const [broadcastState, setBroadcastState] = useState<'enabled' | 'paused'>(
     'paused',
@@ -377,6 +380,7 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
     setCatalog(undefined);
     setPending(undefined);
     setReceipt(undefined);
+    setFailedOperation(undefined);
     setTokenDraft('');
     setBroadcastCategory('');
     setFeature('');
@@ -385,13 +389,18 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
     setDetail(detail);
   };
 
-  const handleFailure = <T,>(result: CommandDeckApiResult<T>) => {
+  const handleFailure = <T,>(
+    result: CommandDeckApiResult<T>,
+    operation?: FailedOperation,
+  ) => {
     const failure = requestFailure(result);
     if (failure.phase === 'unauthorized') {
       relock(failure.detail);
       return;
     }
-    if (failure.phase === 'permanent') setPending(undefined);
+    if (failure.phase === 'permanent' || failure.phase === 'stale')
+      setPending(undefined);
+    setFailedOperation(failure.phase === 'retryable' ? operation : undefined);
     setPhase(failure.phase);
     setDetail(failure.detail);
   };
@@ -448,7 +457,7 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
       pending.preview.id,
     );
     if (!result.ok) {
-      handleFailure(result);
+      handleFailure(result, 'cancel');
       return;
     }
     setPending(undefined);
@@ -469,7 +478,7 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
       pending.rollback,
     );
     if (!result.ok) {
-      handleFailure(result);
+      handleFailure(result, 'confirm');
       return;
     }
     setPending(undefined);
@@ -763,9 +772,9 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
             <button
               type="button"
               onClick={() => void confirmPreview()}
-              disabled={phase === 'confirming'}
+              disabled={phase === 'confirming' || failedOperation === 'cancel'}
             >
-              {phase === 'retryable'
+              {phase === 'retryable' && failedOperation === 'confirm'
                 ? 'Retry confirmation'
                 : pending.rollback
                   ? 'Confirm rollback'
@@ -777,7 +786,9 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
               onClick={() => void cancelPreview()}
               disabled={phase === 'confirming'}
             >
-              Cancel preview
+              {phase === 'retryable' && failedOperation === 'cancel'
+                ? 'Retry cancellation'
+                : 'Cancel preview'}
             </button>
           </div>
         </section>

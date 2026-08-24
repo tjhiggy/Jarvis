@@ -433,6 +433,33 @@ describe('Command Deck safe controls', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('clears a stale confirmation preview instead of offering a dead retry', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/catalog'))
+        return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith('/preview'))
+        return Promise.resolve(jsonResponse({ preview }));
+      return Promise.resolve(
+        jsonResponse({ error: { code: 'preview_stale' } }, 409),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SettingsControls />);
+    unlockControls();
+    await screen.findByText('Safe controls ready');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview broadcast change' }),
+    );
+    await screen.findByRole('button', { name: 'Confirm change' });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm change' }));
+    await screen.findByText(
+      'Preview expired or changed. Create a new preview.',
+    );
+    expect(
+      screen.queryByRole('button', { name: /confirm|cancel/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it('distinguishes a permanent safe rejection from a retryable failure', async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.endsWith('/catalog'))

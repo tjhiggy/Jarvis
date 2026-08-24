@@ -434,7 +434,8 @@ async function commandDeckRequest<T>(
       ok: false,
       status: 503,
       code: 'unavailable',
-      message: 'Jarvis could not be reached. No change was sent.',
+      message:
+        'Jarvis outcome is unknown. Reconcile with the same confirmation before creating another change.',
     };
   }
   let body: unknown;
@@ -445,7 +446,8 @@ async function commandDeckRequest<T>(
       ok: false,
       status: response.status,
       code: 'invalid_response',
-      message: 'Jarvis returned an invalid response. No change was confirmed.',
+      message:
+        'Jarvis outcome is unknown. Reconcile with the same confirmation before creating another change.',
     };
   }
   return response.ok
@@ -549,7 +551,8 @@ export async function confirmCommandDeckMutation(
           ok: false,
           status: 502,
           code: 'invalid_response',
-          message: 'Jarvis did not confirm this change.',
+          message:
+            'Jarvis outcome is unknown. Reconcile with the same confirmation before creating another change.',
         }
       : result;
 }
