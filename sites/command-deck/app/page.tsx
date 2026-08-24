@@ -426,6 +426,7 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
 
   const previewChange = async (action: CommandDeckMutationAction) => {
     if (writeToken === undefined) return;
+    setFailedOperation(undefined);
     setPhase('loading');
     setDetail('Preparing an exact preview with Jarvis.');
     const result = await previewCommandDeckMutation(
@@ -461,12 +462,14 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
       return;
     }
     setPending(undefined);
+    setFailedOperation(undefined);
     setPhase('cancelled');
     setDetail(controlCopy.cancelled);
   };
 
   const confirmPreview = async () => {
     if (writeToken === undefined || pending === undefined) return;
+    setFailedOperation(undefined);
     setPhase('confirming');
     setDetail(controlCopy.confirming);
     const result = await confirmCommandDeckMutation(
@@ -482,6 +485,7 @@ export function SettingsControls({ apiBaseUrl }: { apiBaseUrl?: string }) {
       return;
     }
     setPending(undefined);
+    setFailedOperation(undefined);
     setReceipt(result.value);
     setPhase(pending.rollback ? 'rolled-back' : 'succeeded');
     setDetail(
