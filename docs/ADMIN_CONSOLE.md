@@ -33,8 +33,10 @@ is the separate read credential; `ADMIN_CONSOLE_TOKEN` is the 32+ character
 write credential entered only in the active browser tab. Neither is embedded,
 persisted by Sites, or recorded in audit output.
 
-Use an exact private HTTPS origin in `COMMAND_DECK_API_ALLOWED_ORIGINS`, the
-same tunnel origin as runtime `COMMAND_DECK_API_BASE_URL`, and retain
+Use the exact private Sites page origin in `COMMAND_DECK_API_ALLOWED_ORIGINS`;
+use the Jarvis tunnel/proxy origin for runtime `COMMAND_DECK_API_BASE_URL`.
+They are different in separate-host deployments and equal only behind a
+same-origin proxy. Retain
 `ADMIN_CONSOLE_HOST=127.0.0.1`. CORS/`OPTIONS` is granted only to that origin;
 every mutation still needs the write bearer token. Settings allows only
 configured broadcast pause/resume, supported feature flags, and approved RSS

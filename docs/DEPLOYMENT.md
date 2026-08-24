@@ -76,10 +76,10 @@ reminder tables intact unless an authorized backup restore is required.
 ### Private Sites Command Deck controls, pre-release enablement
 
 #275 is implemented but not shipped. Enable it only for an approved private
-deployment: set distinct 32+ character `ADMIN_CONSOLE_TOKEN` (write) and
+deployment: set `ADMIN_CONSOLE_ENABLED=true`, distinct 32+ character `ADMIN_CONSOLE_TOKEN` (write) and
 `COMMAND_DECK_API_TOKEN` (read) values, an exact private HTTPS
-`COMMAND_DECK_API_ALLOWED_ORIGINS`, and the same tunnel origin as runtime
-`COMMAND_DECK_API_BASE_URL`. Keep the server bound to `127.0.0.1`; never put
+`COMMAND_DECK_API_ALLOWED_ORIGINS` (the Sites page origin), and the Jarvis
+tunnel/proxy as runtime `COMMAND_DECK_API_BASE_URL`. Keep the server bound to `127.0.0.1`; never put
 the write token in Sites configuration.
 
 Restart Jarvis, run `npm run command-deck-api:verify`, then rehearse disabled
