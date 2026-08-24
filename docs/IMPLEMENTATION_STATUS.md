@@ -2,12 +2,14 @@
 
 ## v1.6 Sites migration
 
-- Sites 1/4: private responsive read-only frontend shipped.
-- Sites 2/4: authenticated local Command Deck read API implemented with safe
-  projection, replay/origin/rate controls, audit metadata, disposable verifier,
-  documentation, and localhost fallback.
-- Next: Sites 3/4 adds bounded authenticated controls without expanding Discord
-  administration authority.
+- Sites 1/4: private responsive frontend shipped.
+- Sites 2/4: authenticated local Command Deck read API shipped.
+- Sites 3/4: bounded authenticated Settings controls shipped. They stay
+  disabled until tokens and origin allowlists are configured.
+- Sites 4/4: documented remote entry point, live snapshot presentation, local
+  fallback, token-rotation and origin-denial rehearsal, and cutover verifier
+  shipped in the v1.6.0 package. The operator still publishes the private
+  Sites URL and records production smoke outside source control.
 
 This matrix is the source of truth for milestone claims. A feature is only
 **shipped** when its runtime path, tests, documentation, configuration, and
@@ -34,21 +36,24 @@ validation and `npm run journeys:verify` for the focused synthetic evidence and
 sanitized local receipt. Configuration-dependent and manual-required rows are
 not shipped evidence until their real deployment records are attached.
 
+The [v1.6.0 verification report](V160_RELEASE_VERIFICATION.md) is the release
+ledger for automated versus operator-owned evidence.
+
 ## Current status
 
-| Area                              | Status                    | What is actually available                                                                                                                  | What remains                                                                              |
-| --------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Discord runtime and core platform | Shipped                   | Commands, permissions, SQLite, migrations, schedulers, safe delivery, feature flags, audit, and release gates                               | Continue incremental hardening                                                            |
-| Local Command Deck                | Shipped                   | Local operator dashboard at `http://127.0.0.1:8787` with health, configuration visibility, metrics, previews, and bounded controls          | Sites migration is not complete                                                           |
-| Sites-hosted Command Deck         | In delivery               | A versioned, fixture-backed read-only frontend with six operator areas, resilient states, responsive UX, tests, and private Sites packaging | Live authenticated data API, safe writes, cutover, and rollback evidence                  |
-| Crew engagement                   | Shipped in bounded slices | Introductions, suggestions, events, trivia, birthdays, LFG, game nights, reminders, roles, profiles, and proactive controls                 | Additional UX and automation remain separately scoped                                     |
-| Shipboard broadcasts              | Shipped in bounded slices | RSS, proactive posts, recaps, event reminders, birthdays, and trivia result delivery with policy and lease controls                         | Additional provider and content adapters remain optional                                  |
-| Community Intelligence            | Shipped in bounded slices | Approved knowledge, retained-context summaries, private stats, image-generation foundation, and measured local-model routing                | Broader intelligence automation is not enabled                                            |
-| Connected Systems                 | Shipped in bounded slices | Read-only Sleeper, GitHub, and provider contracts; GitHub intake is Discussions-native                                                      | Additional adapters and richer workflows require separate releases                        |
-| Economy and progression           | Foundation only           | Server-scoped contracts, bounded ledger/progression storage, and aggregate projections                                                      | Complete rewards, inventory, trading, XP, leaderboards, titles, and user-facing workflows |
-| Community games and entertainment | Foundation only           | Validated allowlisted catalog and safety boundaries                                                                                         | Delivery adapters, moderation workflow, scheduling, and opt-in experiences                |
-| Support tickets                   | Foundation only           | Privacy-safe service and repository boundary                                                                                                | Discord channel/thread adapter and operator workflow                                      |
-| Docker deployment                 | Evaluated                 | Hardened deployment guidance and rehearsal evidence                                                                                         | Adopt as the primary production path only after operator decision and migration evidence  |
+| Area                              | Status                    | What is actually available                                                                                                            | What remains                                                                              |
+| --------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Discord runtime and core platform | Shipped                   | Commands, permissions, SQLite, migrations, schedulers, safe delivery, feature flags, audit, and release gates                         | Continue incremental hardening                                                            |
+| Local Command Deck                | Shipped                   | Local operator dashboard at `http://127.0.0.1:8787` with health, configuration visibility, metrics, previews, and bounded controls    | Keep as fallback after Sites cutover                                                      |
+| Sites-hosted Command Deck         | Shipped, operator-enabled | Versioned frontend, live snapshot when the server-side read path is configured, bounded Settings writes, tests, and private packaging | Operator publishes the owner-only URL, tunnel, and production smoke receipts              |
+| Crew engagement                   | Shipped in bounded slices | Introductions, suggestions, events, trivia, birthdays, LFG, game nights, reminders, roles, profiles, and proactive controls           | Additional UX and automation remain separately scoped                                     |
+| Shipboard broadcasts              | Shipped in bounded slices | RSS, proactive posts, recaps, event reminders, birthdays, and trivia result delivery with policy and lease controls                   | Additional provider and content adapters remain optional                                  |
+| Community Intelligence            | Shipped in bounded slices | Approved knowledge, retained-context summaries, private stats, image-generation foundation, and measured local-model routing          | Broader intelligence automation is not enabled                                            |
+| Connected Systems                 | Shipped in bounded slices | Read-only Sleeper, GitHub, and provider contracts; GitHub intake is Discussions-native                                                | Additional adapters and richer workflows require separate releases                        |
+| Economy and progression           | Foundation only           | Server-scoped contracts, bounded ledger/progression storage, and aggregate projections                                                | Complete rewards, inventory, trading, XP, leaderboards, titles, and user-facing workflows |
+| Community games and entertainment | Foundation only           | Validated allowlisted catalog and safety boundaries                                                                                   | Delivery adapters, moderation workflow, scheduling, and opt-in experiences                |
+| Support tickets                   | Foundation only           | Privacy-safe service and repository boundary                                                                                          | Discord channel/thread adapter and operator workflow                                      |
+| Docker deployment                 | Evaluated                 | Hardened deployment guidance and rehearsal evidence                                                                                   | Adopt as the primary production path only after operator decision and migration evidence  |
 
 ## Required configuration versus implementation
 
@@ -66,7 +71,8 @@ a complete product. Every release checklist must distinguish:
 
 The following are intentionally not claimed as shipped:
 
-1. Complete the Sites migration after the read-only frontend by adding the authenticated data API, safe writes, cutover, and rollback evidence.
+1. Operator publication of the private Sites URL and attached production smoke
+   receipts. The cutover package is in v1.6.0; the public-internet bind is not.
 2. Complete economy and progression workflows beyond the bounded foundation.
 3. Complete entertainment workflows beyond the catalog foundation.
 4. Discord support-ticket delivery and moderation workflow.

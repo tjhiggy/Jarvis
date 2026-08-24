@@ -18,17 +18,17 @@ images. With `ADMIN_CONSOLE_TOKEN`, it also provides
 bounded, confirmed operator workflows. It does not expose tokens, conversation
 content, or Discord server-management controls.
 
-An optional, separately authenticated read-only API supports the private Sites
+An optional, separately authenticated API supports the private Sites
 Command Deck. It is disabled when `COMMAND_DECK_API_TOKEN` is blank and uses a
 dedicated token, exact HTTPS origin allowlist, freshness window, replay defense,
 rate limiting, metadata-only audit, and a strict safe projection. See the
 [Sites Command Deck guide](SITES_COMMAND_DECK.md). The local `/api/status` route
 remains the loopback fallback and is not the remote Sites contract.
 
-## Private Sites safe controls (implemented, not released)
+## Private Sites safe controls
 
-#275 adds bounded Settings workflows, but it is not a v1.6 release claim and
-remains disabled until deployment evidence is complete. `COMMAND_DECK_API_TOKEN`
+v1.6.0 includes bounded Settings workflows. They stay disabled until
+deployment tokens and origin allowlists are configured. `COMMAND_DECK_API_TOKEN`
 is the separate read credential; `ADMIN_CONSOLE_TOKEN` is the 32+ character
 write credential entered only in the active browser tab. Neither is embedded,
 persisted by Sites, or recorded in audit output.
@@ -88,7 +88,7 @@ the normal live channel and permission checks before posting.
   preview.
 - **Integrations:** RSS, Sleeper Fantasy Football, and provider readiness.
 - **Operations:** aggregate observability with no content or member identity.
-- **Settings:** the local security boundary and future safe configuration
+- **Settings:** the local security boundary and bounded safe configuration
   surfaces.
 
 On desktop the section navigation remains visible. On tablet and mobile it is

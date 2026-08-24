@@ -1,7 +1,7 @@
 {
   "name": "jarvis-discord-bot",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.6.0",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -25,6 +25,7 @@
     "journeys:write": "tsx scripts/verify-discord-journeys.ts --write",
     "journeys:verify": "tsx scripts/verify-discord-journeys.ts",
     "command-deck-api:verify": "tsx scripts/verify-command-deck-read-api.ts",
+    "command-deck-cutover:verify": "tsx scripts/verify-command-deck-cutover.ts",
     "model:evaluate": "node dist/src/evaluation/run-model-evaluation.js",
     "register-commands": "tsx scripts/register-commands.ts"
   },

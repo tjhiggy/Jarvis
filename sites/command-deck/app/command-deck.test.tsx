@@ -3,15 +3,17 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import Home, { ResilientState, SettingsControls } from './page';
+import Home, { ResilientState, SettingsControls } from './command-deck-app';
 import {
   commandDeckFixture,
   getCommandDeckSnapshot,
   getOverallSummary,
   getOverviewCopy,
   getSnapshotFreshness,
+  presentCommandDeckReadSnapshot,
   validateCommandDeckSnapshot,
 } from './lib/command-deck';
+import { loadCommandDeckPresentation } from './lib/load-command-deck-presentation';
 
 afterEach(() => {
   cleanup();
@@ -129,7 +131,8 @@ describe('Command Deck overview', () => {
       screen.getByRole('heading', { name: /command deck/i }),
     ).toBeInTheDocument();
     expect(screen.getByText(/private operations view/i)).toBeInTheDocument();
-    expect(screen.getByText('Jarvis 1.5.0')).toBeInTheDocument();
+    expect(screen.getByText('Jarvis 1.6.0')).toBeInTheDocument();
+    expect(screen.getByText('Sample')).toBeInTheDocument();
     expect(
       screen.getByRole('navigation', { name: /command deck/i }),
     ).toBeInTheDocument();
@@ -706,4 +709,71 @@ describe('Command Deck safe controls', () => {
       expect(await screen.findByText(message)).toBeInTheDocument();
     },
   );
+});
+
+describe('live snapshot presentation', () => {
+  const liveSnapshot = {
+    schemaVersion: '1.0' as const,
+    observedAt: '2026-08-24T18:00:00.000Z',
+    freshness: { state: 'fresh' as const, staleAfterSeconds: 60 },
+    release: { version: '1.6.0', environment: 'production' },
+    health: { state: 'degraded' as const, reason: 'integration_attention' },
+    providers: [
+      { id: 'ollama', state: 'configured', selected: true },
+      { id: 'openai', state: 'disabled', selected: false },
+    ],
+    integrations: [
+      { id: 'rss', state: 'unavailable' },
+      { id: 'sleeper', state: 'configured' },
+    ],
+    schedulers: [{ id: 'rss', state: 'paused', health: 'degraded' }],
+    featureFlags: ['trivia'],
+    metrics: { events: 9, failures: 1, windowDays: 7 },
+    audit: { state: 'ready' },
+  };
+
+  it('projects a live Jarvis snapshot without secrets', () => {
+    const presented = presentCommandDeckReadSnapshot(liveSnapshot);
+    expect(presented.release).toEqual({
+      version: '1.6.0',
+      environment: 'production',
+      commit: 'live',
+    });
+    expect(presented.activity).toEqual({
+      events: 9,
+      failures: 1,
+      windowDays: 7,
+    });
+    expect(JSON.stringify(presented)).not.toMatch(/token|secret|prompt/i);
+  });
+
+  it('loads a sample snapshot when the Sites read path is not configured', async () => {
+    await expect(loadCommandDeckPresentation({})).resolves.toEqual({
+      snapshot: commandDeckFixture,
+      source: 'sample',
+    });
+  });
+
+  it('loads a live snapshot through the server-side read token', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse(liveSnapshot)));
+    const presentation = await loadCommandDeckPresentation(
+      {
+        COMMAND_DECK_API_BASE_URL: 'https://jarvis.example.test',
+        COMMAND_DECK_READ_TOKEN: 'a'.repeat(32),
+        COMMAND_DECK_PAGE_ORIGIN: 'https://deck.example.test',
+      },
+      fetchMock as unknown as typeof fetch,
+    );
+    expect(presentation.source).toBe('live');
+    expect(presentation.snapshot.release.version).toBe('1.6.0');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://jarvis.example.test/api/v1/command-deck/snapshot',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${'a'.repeat(32)}`,
+          Origin: 'https://deck.example.test',
+        }),
+      }),
+    );
+  });
 });

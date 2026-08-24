@@ -80,19 +80,16 @@ Daily/community challenges, predictions, tournament follow-ups, memorable
 quotes, quote of the day, meme generation, roasts, and throwbacks.
 Tracked issues: #17, #18, #19, #36, #37, #38, #39, and #40.
 
-### v1.6.0 Next Community Platform Enhancements
+### v1.6.0 Sites Command Deck
 
-The next release is intentionally not pre-claimed. Candidate work is organized
-in GitHub Projects and Discussions, then promoted into a milestone only after
-scope, safety boundaries, test coverage, documentation, and an operator smoke
-path are approved.
+v1.6.0 packages the Sites Command Deck migration: live snapshot presentation,
+authenticated API, bounded Settings controls, localhost fallback, and cutover
+verification. The operator still publishes the private Sites URL and completes
+Discord/Command Deck smoke on the ship computer.
 
-GitHub is the source of truth for issue ownership; this roadmap is the readable
-map. Items move to shipped only with a release tag and evidence.
-
-Issue #275, bounded private Sites Command Deck controls, is implemented in the
-working branch and awaiting release evidence. It is not shipped, does not imply
-a v1.6 release, and retains the local/Discord fallback.
+Issue #275, bounded private Sites Command Deck controls, is included in this
+package. It remains disabled until tokens and origin allowlists are configured
+and does not replace Discord fallback commands.
 
 ## Next
 

@@ -4,27 +4,27 @@
 
 **Release readiness:** PASS
 
-| Feature                                   | Status | Audience      | Discord commands                                                                            | Command Deck workflows                                   |
-| ----------------------------------------- | ------ | ------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Conversation, help, and retained search   | pass   | Member        | `/ask`, `/search`, `/forget`, `/help`, `/catch-me-up`, `/channel-summary`, `/server-search` | overview-provider-database-health                        |
-| Runtime health and safe configuration     | pass   | Mixed         | `/status`, `/config`                                                                        | overview-health, integration-readiness, scheduler-status |
-| Approved knowledge and FAQ                | pass   | Mixed         | `/faq`, `/knowledge`                                                                        | knowledge-readiness                                      |
-| Private member statistics                 | pass   | Member        | `/my-stats`                                                                                 | member-statistics                                        |
-| Administrator image generation            | pass   | Administrator | `/image`                                                                                    | image-readiness                                          |
-| Personal and shared reminders             | pass   | Mixed         | `/reminder`                                                                                 | scheduler-health                                         |
-| Sleeper Fantasy Football                  | pass   | Member        | `/fantasy`                                                                                  | sleeper-readiness                                        |
-| Anonymous polls                           | pass   | Administrator | `/poll`, `/poll-close`                                                                      | None                                                     |
-| Introductions and member profiles         | pass   | Member        | `/introduce`, `/introduction`, `/profile`                                                   | introduction-profile-totals                              |
-| Community suggestions                     | pass   | Mixed         | `/suggest`, `/suggestion`                                                                   | suggestion-totals                                        |
-| Delegated and Command Deck transmissions  | pass   | Administrator | `/post`                                                                                     | transmission-preview-send                                |
-| GitHub read-only integration              | pass   | Member        | `/github`                                                                                   | github-readiness                                         |
-| Events, game nights, and crew matchmaking | pass   | Mixed         | `/event`, `/game-night`, `/lfg`                                                             | event-totals, event-scheduler                            |
-| Weekly engagement recaps                  | pass   | Administrator | `/recap`                                                                                    | recap-controls                                           |
-| Trivia rounds                             | pass   | Mixed         | `/trivia`                                                                                   | trivia-totals, trivia-controls                           |
-| Engagement controls and metrics           | pass   | Administrator | `/engagement`                                                                               | engagement-metrics, feature-flags, scheduler-controls    |
-| Daily rewards and participation streaks   | pass   | Member        | `/daily`, `/streak`                                                                         | participation-metrics                                    |
-| Birthdays and self-service roles          | pass   | Member        | `/birthday`, `/roles`                                                                       | birthday-totals, role-menu-readiness                     |
-| RSS broadcasts and personal notifications | pass   | Mixed         | `/rss`, `/notifications`                                                                    | rss-controls, rss-readiness                              |
+| Feature                                   | Status | Audience      | Discord commands                                                                            | Command Deck workflows                                                                        |
+| ----------------------------------------- | ------ | ------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Conversation, help, and retained search   | pass   | Member        | `/ask`, `/search`, `/forget`, `/help`, `/catch-me-up`, `/channel-summary`, `/server-search` | overview-provider-database-health                                                             |
+| Runtime health and safe configuration     | pass   | Mixed         | `/status`, `/config`                                                                        | overview-health, integration-readiness, scheduler-status, sites-live-snapshot, local-fallback |
+| Approved knowledge and FAQ                | pass   | Mixed         | `/faq`, `/knowledge`                                                                        | knowledge-readiness                                                                           |
+| Private member statistics                 | pass   | Member        | `/my-stats`                                                                                 | member-statistics                                                                             |
+| Administrator image generation            | pass   | Administrator | `/image`                                                                                    | image-readiness                                                                               |
+| Personal and shared reminders             | pass   | Mixed         | `/reminder`                                                                                 | scheduler-health                                                                              |
+| Sleeper Fantasy Football                  | pass   | Member        | `/fantasy`                                                                                  | sleeper-readiness                                                                             |
+| Anonymous polls                           | pass   | Administrator | `/poll`, `/poll-close`                                                                      | None                                                                                          |
+| Introductions and member profiles         | pass   | Member        | `/introduce`, `/introduction`, `/profile`                                                   | introduction-profile-totals                                                                   |
+| Community suggestions                     | pass   | Mixed         | `/suggest`, `/suggestion`                                                                   | suggestion-totals                                                                             |
+| Delegated and Command Deck transmissions  | pass   | Administrator | `/post`                                                                                     | transmission-preview-send                                                                     |
+| GitHub read-only integration              | pass   | Member        | `/github`                                                                                   | github-readiness                                                                              |
+| Events, game nights, and crew matchmaking | pass   | Mixed         | `/event`, `/game-night`, `/lfg`                                                             | event-totals, event-scheduler                                                                 |
+| Weekly engagement recaps                  | pass   | Administrator | `/recap`                                                                                    | recap-controls                                                                                |
+| Trivia rounds                             | pass   | Mixed         | `/trivia`                                                                                   | trivia-totals, trivia-controls                                                                |
+| Engagement controls and metrics           | pass   | Administrator | `/engagement`                                                                               | engagement-metrics, feature-flags, scheduler-controls                                         |
+| Daily rewards and participation streaks   | pass   | Member        | `/daily`, `/streak`                                                                         | participation-metrics                                                                         |
+| Birthdays and self-service roles          | pass   | Member        | `/birthday`, `/roles`                                                                       | birthday-totals, role-menu-readiness                                                          |
+| RSS broadcasts and personal notifications | pass   | Mixed         | `/rss`, `/notifications`                                                                    | rss-controls, rss-readiness                                                                   |
 
 ## Verification details
 
@@ -45,8 +45,9 @@
 - Configuration: `JARVIS_VERSION`, `JARVIS_COMMIT_SHA`, `JARVIS_BUILD_TIMESTAMP`, `JARVIS_ENVIRONMENT`
 - Permissions: Status is secret-free; detailed configuration is limited to configured administrators.
 - Persistence: Health projections contain no message content or secrets.
-- Automated: `tests/application.test.ts`, `tests/config.test.ts`, `tests/admin-console.test.ts`
+- Automated: `tests/application.test.ts`, `tests/config.test.ts`, `tests/admin-console.test.ts`, `tests/command-deck-cutover.test.ts`
 - Smoke: Run /status and /config as an administrator and compare the safe identity and readiness values with the Command Deck Overview.
+- Smoke: Open the private Sites Command Deck, confirm the Live badge matches JARVIS_VERSION, then load the localhost fallback after clearing the read token.
 
 ### Approved knowledge and FAQ
 
@@ -223,6 +224,6 @@
 - Feature records: 19
 - Registered Discord commands: 36
 - Commands with exactly one owner: 36
-- Registered Command Deck workflows: 26
-- Workflows with exactly one owner: 26
+- Registered Command Deck workflows: 28
+- Workflows with exactly one owner: 28
 - Findings: 0

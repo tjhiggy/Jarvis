@@ -2,7 +2,12 @@
 
 ## Supported Versions
 
-The currently supported release line is `0.1.x`.
+The currently supported release line is `1.6.x`.
+
+| Version           | Supported |
+| ----------------- | --------- |
+| 1.6.x             | Yes       |
+| 1.5.x and earlier | No        |
 
 ## Reporting a Vulnerability
 

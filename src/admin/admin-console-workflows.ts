@@ -48,6 +48,8 @@ export const adminConsoleWorkflows = [
   { id: 'role-menu-readiness', label: 'Settings role-menu readiness' },
   { id: 'rss-controls', label: 'Broadcasts RSS preview and pause controls' },
   { id: 'rss-readiness', label: 'Integrations RSS readiness' },
+  { id: 'sites-live-snapshot', label: 'Sites live snapshot presentation' },
+  { id: 'local-fallback', label: 'Localhost Command Deck fallback' },
 ] as const satisfies readonly AdminConsoleWorkflowDefinition[];
 
 export const adminConsoleWorkflowManifest = (): string =>
