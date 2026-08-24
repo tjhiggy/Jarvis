@@ -2,8 +2,8 @@
 
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
-import Home, { ResilientState } from './page';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import Home, { ResilientState, SettingsControls } from './page';
 import {
   commandDeckFixture,
   getCommandDeckSnapshot,
@@ -13,7 +13,39 @@ import {
   validateCommandDeckSnapshot,
 } from './lib/command-deck';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+
+const catalog = {
+  schemaVersion: '1.0',
+  actions: {
+    broadcastCategories: ['daily'],
+    featureFlags: ['trivia'],
+    rssHosts: ['news.example.test'],
+  },
+};
+
+const preview = {
+  id: 'preview-1',
+  expiresAt: '2026-08-23T18:00:00.000Z',
+  target: 'broadcast:daily',
+  diff: { before: true, after: false },
+};
+
+function unlockControls() {
+  fireEvent.change(screen.getByLabelText('Write access code'), {
+    target: { value: 'write-only-token' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Unlock controls' }));
+}
 
 describe('Command Deck snapshot contract', () => {
   it('accepts the versioned safe fixture', () => {
@@ -95,7 +127,7 @@ describe('Command Deck overview', () => {
     expect(
       screen.getByRole('heading', { name: /command deck/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/read-only operations view/i)).toBeInTheDocument();
+    expect(screen.getByText(/private operations view/i)).toBeInTheDocument();
     expect(screen.getByText('Jarvis 1.5.0')).toBeInTheDocument();
     expect(
       screen.getByRole('navigation', { name: /command deck/i }),
@@ -152,4 +184,282 @@ describe('Command Deck overview', () => {
     render(<ResilientState state={state} />);
     expect(screen.getByText(message)).toBeInTheDocument();
   });
+});
+
+describe('Command Deck safe controls', () => {
+  it('keeps write controls locked until an active-tab access code loads the real catalog', async () => {
+    let resolveCatalog: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveCatalog = resolve;
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SettingsControls />);
+
+    expect(screen.getByText(/^Controls locked\./)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Preview broadcast change' }),
+    ).toBeDisabled();
+
+    unlockControls();
+    expect(screen.getByText('Loading safe controls')).toBeInTheDocument();
+    resolveCatalog?.(jsonResponse(catalog));
+
+    await screen.findByText('Safe controls ready');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/command-deck/config/catalog',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer write-only-token',
+          'X-Command-Deck-Request-Id':
+            expect.stringMatching(/^[0-9a-f-]{36}$/i),
+          'X-Command-Deck-Timestamp': expect.any(String),
+        }),
+      }),
+    );
+  });
+
+  it('previews every bounded control family through the versioned mutation route', async () => {
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url.endsWith('/catalog'))
+        return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith('/cancel'))
+        return Promise.resolve(jsonResponse({ cancelled: true }));
+      const action = JSON.parse(String(options?.body)).action;
+      return Promise.resolve(
+        jsonResponse({
+          schemaVersion: '1.0',
+          preview: {
+            ...preview,
+            id: `preview-${action.type}`,
+            target:
+              action.type === 'broadcast_state'
+                ? 'broadcast:daily'
+                : action.type === 'feature_flag'
+                  ? 'feature:trivia'
+                  : 'rss:news.example.test',
+            diff:
+              action.type === 'rss_feed'
+                ? {
+                    before: undefined,
+                    after: { url: action.url, label: action.label },
+                  }
+                : action.type === 'feature_flag'
+                  ? { before: false, after: true }
+                  : preview.diff,
+          },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SettingsControls />);
+    unlockControls();
+    await screen.findByText('Safe controls ready');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview broadcast change' }),
+    );
+    await screen.findByText('Before: enabled');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel preview' }));
+    await screen.findByText('Preview cancelled. No change was sent.');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview feature change' }),
+    );
+    await screen.findByText('Before: disabled');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel preview' }));
+    await screen.findByText('Preview cancelled. No change was sent.');
+
+    fireEvent.change(screen.getByLabelText('RSS feed URL'), {
+      target: { value: 'https://news.example.test/feed.xml' },
+    });
+    fireEvent.change(screen.getByLabelText('RSS feed label'), {
+      target: { value: 'MuthaShip news' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview RSS change' }));
+    await screen.findByText('Before: not configured');
+
+    const previewCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).endsWith('/preview'),
+    );
+    expect(
+      previewCalls.map(
+        ([, options]) => JSON.parse(String(options?.body)).action,
+      ),
+    ).toEqual([
+      { type: 'broadcast_state', category: 'daily', state: 'paused' },
+      { type: 'feature_flag', feature: 'trivia', enabled: true },
+      {
+        type: 'rss_feed',
+        operation: 'add',
+        url: 'https://news.example.test/feed.xml',
+        label: 'MuthaShip news',
+      },
+    ]);
+  });
+
+  it('keeps a confirmation visibly in progress until Jarvis returns a receipt', async () => {
+    let resolveConfirmation: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/catalog'))
+        return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith('/preview'))
+        return Promise.resolve(jsonResponse({ preview }));
+      return new Promise<Response>((resolve) => {
+        resolveConfirmation = resolve;
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SettingsControls />);
+    unlockControls();
+    await screen.findByText('Safe controls ready');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview broadcast change' }),
+    );
+    await screen.findByRole('button', { name: 'Confirm change' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm change' }));
+    expect(
+      await screen.findByText('Confirming with Jarvis. Do not close this tab.'),
+    ).toBeInTheDocument();
+    resolveConfirmation?.(
+      jsonResponse({
+        receipt: {
+          id: 'receipt-pending',
+          confirmedAt: '2026-08-23T17:56:00.000Z',
+          target: 'broadcast:daily',
+        },
+      }),
+    );
+    expect(
+      await screen.findByText('Change succeeded. Receipt: receipt-pending.'),
+    ).toBeInTheDocument();
+  });
+
+  it('confirms once, retries a truthful failure with the same key, then offers compensating rollback', async () => {
+    let confirmationAttempts = 0;
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (url.endsWith('/catalog'))
+        return Promise.resolve(jsonResponse(catalog));
+      if (url.endsWith('/preview'))
+        return Promise.resolve(jsonResponse({ schemaVersion: '1.0', preview }));
+      if (url.endsWith('/confirm')) {
+        confirmationAttempts += 1;
+        if (confirmationAttempts === 1)
+          return Promise.resolve(
+            jsonResponse(
+              {
+                error: {
+                  code: 'apply_failed',
+                  message:
+                    'Jarvis could not apply this change. Retry the same confirmation.',
+                },
+              },
+              503,
+            ),
+          );
+        return Promise.resolve(
+          jsonResponse({
+            receipt: {
+              id: 'receipt-1',
+              confirmedAt: '2026-08-23T17:56:00.000Z',
+              target: 'broadcast:daily',
+              rollbackToken: 'rollback-1',
+            },
+          }),
+        );
+      }
+      if (
+        url.endsWith('/rollback') &&
+        String(options?.body).includes('rollbackToken')
+      )
+        return Promise.resolve(
+          jsonResponse({
+            preview: {
+              ...preview,
+              id: 'rollback-preview-1',
+              diff: { before: false, after: true },
+            },
+          }),
+        );
+      if (url.endsWith('/rollback'))
+        return Promise.resolve(
+          jsonResponse({
+            receipt: {
+              id: 'rollback-receipt-1',
+              confirmedAt: '2026-08-23T17:57:00.000Z',
+              target: 'broadcast:daily',
+            },
+          }),
+        );
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SettingsControls />);
+    unlockControls();
+    await screen.findByText('Safe controls ready');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Preview broadcast change' }),
+    );
+    await screen.findByRole('button', { name: 'Confirm change' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm change' }));
+    await screen.findByText(/could not apply this change/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry confirmation' }));
+    await screen.findByText('Change succeeded. Receipt: receipt-1.');
+
+    const confirmCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).endsWith('/confirm'),
+    );
+    expect(confirmCalls).toHaveLength(2);
+    expect(
+      confirmCalls.map(([, options]) =>
+        new Headers(options?.headers).get('Idempotency-Key'),
+      ),
+    ).toEqual([expect.any(String), expect.any(String)]);
+    expect(
+      new Headers(confirmCalls[0][1]?.headers).get('Idempotency-Key'),
+    ).toBe(new Headers(confirmCalls[1][1]?.headers).get('Idempotency-Key'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview rollback' }));
+    await screen.findByText('Rollback preview ready.');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm rollback' }));
+    await screen.findByText('Rollback succeeded.');
+  });
+
+  it.each([
+    [401, 'Access restricted. Check the active-tab write access code.'],
+    [409, 'Preview expired or changed. Create a new preview.'],
+  ])(
+    'renders an honest resilient outcome for API status %s',
+    async (status, message) => {
+      const fetchMock = vi.fn((url: string) => {
+        if (url.endsWith('/catalog'))
+          return Promise.resolve(
+            status === 401
+              ? jsonResponse({ error: { code: 'unauthorized' } }, 401)
+              : jsonResponse(catalog),
+          );
+        return Promise.resolve(
+          jsonResponse({ error: { code: 'preview_stale' } }, status),
+        );
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      render(<SettingsControls />);
+      unlockControls();
+
+      if (status === 401) {
+        expect(await screen.findByText(message)).toBeInTheDocument();
+        return;
+      }
+      await screen.findByText('Safe controls ready');
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Preview broadcast change' }),
+      );
+      expect(await screen.findByText(message)).toBeInTheDocument();
+    },
+  );
 });
