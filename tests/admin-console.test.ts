@@ -650,6 +650,14 @@ describe('admin console', () => {
     expect(
       (
         await fetch(endpoint, {
+          headers: readHeaders('507fce91-5935-4fd4-a70e-e0cc71b803a1'),
+        })
+      ).status,
+    ).toBe(401);
+
+    expect(
+      (
+        await fetch(endpoint, {
           headers: {
             'x-command-deck-request-id': 'c248ad5f-1b62-4ed0-8caa-ab516cf9ea19',
             'x-command-deck-timestamp': '2026-08-23T20:00:00.000Z',
@@ -770,6 +778,26 @@ describe('admin console', () => {
         })
       ).status,
     ).toBe(200);
+    expect(applied).toEqual(['broadcast_state', 'broadcast_state']);
+
+    const credentialCanary = 'api-rss-user:api-rss-password';
+    const unsafeRss = await fetch(`${base}/preview`, {
+      method: 'POST',
+      headers: {
+        ...mutationHeaders('ed8db61d-9528-4f2e-9573-7f16e4274f49'),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: {
+          type: 'rss_feed',
+          operation: 'add',
+          url: `https://${credentialCanary}@feeds.example.test/private.xml`,
+          label: 'Private feed',
+        },
+      }),
+    });
+    expect(unsafeRss.status).toBe(400);
+    expect(await unsafeRss.text()).not.toContain('api-rss-user');
     expect(applied).toEqual(['broadcast_state', 'broadcast_state']);
 
     const oversized = await fetch(`${base}/preview`, {
@@ -950,7 +978,7 @@ function mutationHeaders(requestId: string): Record<string, string> {
 
 function mutationReadPolicy() {
   return {
-    token: 'mutation-token-with-enough-entropy',
+    token: 'dedicated-read-token-with-enough-entropy',
     allowedOrigins: [],
     maxClockSkewMs: 60_000,
     replayRetentionMs: 60_000,
@@ -959,9 +987,17 @@ function mutationReadPolicy() {
   };
 }
 
+function mutationWritePolicy() {
+  return {
+    ...mutationReadPolicy(),
+    token: 'mutation-token-with-enough-entropy',
+  };
+}
+
 function mutationApi(applied: string[] = []) {
   let current = true;
   return {
+    authorization: mutationWritePolicy(),
     catalog: {
       broadcastCategories: ['rss'],
       featureFlags: ['trivia'],

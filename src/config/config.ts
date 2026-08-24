@@ -493,6 +493,18 @@ const environmentSchema = baseEnvironmentSchema.superRefine(
       });
     }
     if (
+      value.ADMIN_CONSOLE_ENABLED === 'true' &&
+      value.COMMAND_DECK_API_TOKEN !== '' &&
+      value.ADMIN_CONSOLE_TOKEN.length < 32
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ADMIN_CONSOLE_TOKEN'],
+        message:
+          'ADMIN_CONSOLE_TOKEN must contain at least 32 characters when Command Deck mutations are remotely accessible.',
+      });
+    }
+    if (
       value.COMMAND_DECK_API_ALLOWED_ORIGINS.length > 0 &&
       value.COMMAND_DECK_API_TOKEN === ''
     ) {

@@ -66,6 +66,52 @@ export interface CommandDeckMutationReceipt {
   readonly rollbackToken?: string;
 }
 
+export interface CommandDeckMutationStoredPreview {
+  readonly id: string;
+  readonly action: CommandDeckMutationAction;
+  readonly before: unknown;
+  readonly after: unknown;
+  readonly expectedValue: unknown;
+  readonly expiresAt: string;
+  readonly target: string;
+  readonly operationId: string;
+  readonly kind: 'change' | 'rollback';
+  readonly cancelled: boolean;
+  readonly receipt?: CommandDeckMutationReceipt | undefined;
+}
+
+export interface CommandDeckMutationStoredCompletion {
+  readonly previewId: string;
+  readonly receipt: CommandDeckMutationReceipt;
+}
+
+export type CommandDeckMutationStoreCompletionResult =
+  | {
+      readonly status: 'completed';
+      readonly receipt: CommandDeckMutationReceipt;
+      readonly created: boolean;
+    }
+  | { readonly status: 'idempotency_mismatch' }
+  | { readonly status: 'preview_used' };
+
+export interface CommandDeckMutationStateStore {
+  savePreview(preview: CommandDeckMutationStoredPreview): Promise<void>;
+  getPreview(
+    previewId: string,
+  ): Promise<CommandDeckMutationStoredPreview | undefined>;
+  getCompleted(
+    idempotencyKey: string,
+  ): Promise<CommandDeckMutationStoredCompletion | undefined>;
+  complete(
+    preview: CommandDeckMutationStoredPreview,
+    idempotencyKey: string,
+    receipt: CommandDeckMutationReceipt,
+  ): Promise<CommandDeckMutationStoreCompletionResult>;
+  getRollbackSource(
+    rollbackToken: string,
+  ): Promise<CommandDeckMutationStoredPreview | undefined>;
+}
+
 type ErrorCode =
   | 'INVALID_ACTION'
   | 'PREVIEW_NOT_FOUND'
@@ -98,6 +144,7 @@ export type CommandDeckMutationCancelResult =
 
 export interface CreateCommandDeckMutationServiceOptions {
   readonly adapter: CommandDeckMutationAdapter;
+  readonly stateStore?: CommandDeckMutationStateStore;
   readonly now?: () => Date;
   readonly createId?: () => string;
   readonly audit?: (
@@ -105,29 +152,9 @@ export interface CreateCommandDeckMutationServiceOptions {
   ) => void | Promise<void>;
 }
 
-interface PreviewSession {
-  readonly id: string;
-  readonly action: CommandDeckMutationAction;
-  readonly before: unknown;
-  readonly after: unknown;
-  readonly expectedValue: unknown;
-  readonly expiresAt: string;
-  readonly target: string;
-  readonly operationId: string;
-  readonly kind: 'change' | 'rollback';
-  cancelled: boolean;
-  receipt: CommandDeckMutationReceipt | undefined;
-  inFlight: InFlightConfirmation | undefined;
-}
-
 interface InFlightConfirmation {
   readonly idempotencyKey: string;
   readonly result: Promise<CommandDeckMutationConfirmResult>;
-}
-
-interface CompletedConfirmation {
-  readonly previewId: string;
-  readonly receipt: CommandDeckMutationReceipt;
 }
 
 const previewLifetimeMilliseconds = 5 * 60 * 1000;
@@ -199,13 +226,13 @@ const desiredValue = (action: CommandDeckMutationAction): unknown => {
 
 export const createCommandDeckMutationService = ({
   adapter,
+  stateStore: configuredStateStore,
   now = () => new Date(),
   createId = () => crypto.randomUUID(),
   audit,
 }: CreateCommandDeckMutationServiceOptions) => {
-  const previews = new Map<string, PreviewSession>();
-  const completed = new Map<string, CompletedConfirmation>();
-  const rollbackSources = new Map<string, PreviewSession>();
+  const stateStore = configuredStateStore ?? createMemoryMutationStateStore();
+  const inFlight = new Map<string, InFlightConfirmation>();
 
   const record = (event: CommandDeckMutationAuditEvent): void => {
     if (audit === undefined) return;
@@ -229,6 +256,8 @@ export const createCommandDeckMutationService = ({
           const url = new URL(action.url);
           return (
             url.protocol === 'https:' &&
+            url.username === '' &&
+            url.password === '' &&
             adapter.allowedRssHosts.includes(url.hostname)
           );
         } catch {
@@ -239,7 +268,7 @@ export const createCommandDeckMutationService = ({
   };
 
   const renderPreview = (
-    session: PreviewSession,
+    session: CommandDeckMutationStoredPreview,
   ): CommandDeckMutationPreview => ({
     id: session.id,
     expiresAt: session.expiresAt,
@@ -247,15 +276,15 @@ export const createCommandDeckMutationService = ({
     diff: { before: clone(session.before), after: clone(session.after) },
   });
 
-  const createPreview = (args: {
+  const createPreview = async (args: {
     action: CommandDeckMutationAction;
     before: unknown;
     after: unknown;
     expectedValue: unknown;
-    kind: PreviewSession['kind'];
-  }): PreviewSession => {
+    kind: CommandDeckMutationStoredPreview['kind'];
+  }): Promise<CommandDeckMutationStoredPreview> => {
     const previewAt = now();
-    const session: PreviewSession = {
+    const session: CommandDeckMutationStoredPreview = {
       id: createId(),
       action: clone(args.action) as CommandDeckMutationAction,
       before: clone(args.before),
@@ -268,10 +297,8 @@ export const createCommandDeckMutationService = ({
       operationId: createId(),
       kind: args.kind,
       cancelled: false,
-      receipt: undefined,
-      inFlight: undefined,
     };
-    previews.set(session.id, session);
+    await stateStore.savePreview(session);
     return session;
   };
 
@@ -285,7 +312,7 @@ export const createCommandDeckMutationService = ({
       );
     const action = clone(input) as CommandDeckMutationAction;
     const before = clone(await adapter.read(action));
-    const session = createPreview({
+    const session = await createPreview({
       action,
       before,
       after: desiredValue(action),
@@ -300,10 +327,10 @@ export const createCommandDeckMutationService = ({
     return { ok: true, preview: renderPreview(session) };
   };
 
-  const complete = (
-    session: PreviewSession,
+  const complete = async (
+    session: CommandDeckMutationStoredPreview,
     idempotencyKey: string,
-  ): CommandDeckMutationConfirmResult => {
+  ): Promise<CommandDeckMutationConfirmResult> => {
     const rollbackToken = session.kind === 'change' ? createId() : undefined;
     const receipt: CommandDeckMutationReceipt = {
       id: createId(),
@@ -311,21 +338,29 @@ export const createCommandDeckMutationService = ({
       target: session.target,
       ...(rollbackToken === undefined ? {} : { rollbackToken }),
     };
-    session.receipt = receipt;
-    completed.set(idempotencyKey, { previewId: session.id, receipt });
-    if (rollbackToken !== undefined)
-      rollbackSources.set(rollbackToken, session);
-    record({
-      event: session.kind === 'change' ? 'confirmed' : 'rollback_confirmed',
-      actionType: session.action.type,
-      previewId: session.id,
-      receiptId: receipt.id,
-    });
-    return { ok: true, receipt: clone(receipt) as CommandDeckMutationReceipt };
+    const stored = await stateStore.complete(session, idempotencyKey, receipt);
+    if (stored.status === 'idempotency_mismatch')
+      return error(
+        'IDEMPOTENCY_MISMATCH',
+        'This idempotency key belongs to a different confirmation.',
+      );
+    if (stored.status === 'preview_used')
+      return error('PREVIEW_USED', 'This preview was already confirmed.');
+    if (stored.created)
+      record({
+        event: session.kind === 'change' ? 'confirmed' : 'rollback_confirmed',
+        actionType: session.action.type,
+        previewId: session.id,
+        receiptId: stored.receipt.id,
+      });
+    return {
+      ok: true,
+      receipt: clone(stored.receipt) as CommandDeckMutationReceipt,
+    };
   };
 
   const runConfirmation = async (
-    session: PreviewSession,
+    session: CommandDeckMutationStoredPreview,
     idempotencyKey: string,
   ): Promise<CommandDeckMutationConfirmResult> => {
     try {
@@ -347,7 +382,7 @@ export const createCommandDeckMutationService = ({
           'This target changed after the preview and was not modified.',
         );
       }
-      return complete(session, idempotencyKey);
+      return await complete(session, idempotencyKey);
     } catch {
       let status: 'applied' | 'not_applied';
       try {
@@ -372,12 +407,13 @@ export const createCommandDeckMutationService = ({
   };
 
   const confirmSession = (
-    session: PreviewSession,
+    session: CommandDeckMutationStoredPreview,
     idempotencyKey: string,
   ): Promise<CommandDeckMutationConfirmResult> => {
-    if (session.inFlight !== undefined) {
-      return session.inFlight.idempotencyKey === idempotencyKey
-        ? session.inFlight.result
+    const existing = inFlight.get(session.id);
+    if (existing !== undefined) {
+      return existing.idempotencyKey === idempotencyKey
+        ? existing.result
         : Promise.resolve(
             error(
               'CONFIRMATION_IN_PROGRESS',
@@ -386,17 +422,20 @@ export const createCommandDeckMutationService = ({
           );
     }
     const pending = runConfirmation(session, idempotencyKey);
-    session.inFlight = { idempotencyKey, result: pending };
+    inFlight.set(session.id, { idempotencyKey, result: pending });
     void pending.finally(() => {
-      if (session.inFlight?.result === pending) session.inFlight = undefined;
+      if (inFlight.get(session.id)?.result === pending)
+        inFlight.delete(session.id);
     });
     return pending;
   };
 
-  const getSessionForConfirmation = (
+  const getSessionForConfirmation = async (
     previewId: string,
-  ): PreviewSession | CommandDeckMutationConfirmResult => {
-    const session = previews.get(previewId);
+  ): Promise<
+    CommandDeckMutationStoredPreview | CommandDeckMutationConfirmResult
+  > => {
+    const session = await stateStore.getPreview(previewId);
     if (session === undefined)
       return error(
         'PREVIEW_NOT_FOUND',
@@ -430,7 +469,7 @@ export const createCommandDeckMutationService = ({
         'PREVIEW_MISMATCH',
         'Confirmation does not match a valid preview.',
       );
-    const prior = completed.get(input.idempotencyKey);
+    const prior = await stateStore.getCompleted(input.idempotencyKey);
     if (prior !== undefined)
       return prior.previewId === input.previewId
         ? {
@@ -441,7 +480,7 @@ export const createCommandDeckMutationService = ({
             'IDEMPOTENCY_MISMATCH',
             'This idempotency key belongs to a different confirmation.',
           );
-    const candidate = getSessionForConfirmation(input.previewId);
+    const candidate = await getSessionForConfirmation(input.previewId);
     if ('ok' in candidate) return candidate;
     if (
       candidate.kind !== 'change' ||
@@ -457,20 +496,20 @@ export const createCommandDeckMutationService = ({
   const cancel = async (
     previewId: string,
   ): Promise<CommandDeckMutationCancelResult> => {
-    const session = previews.get(previewId);
+    const session = await stateStore.getPreview(previewId);
     if (session === undefined)
       return error(
         'PREVIEW_NOT_FOUND',
         'This preview is no longer available. Create a new preview.',
       );
-    if (session.inFlight !== undefined)
+    if (inFlight.has(session.id))
       return error(
         'CONFIRMATION_IN_PROGRESS',
         'A confirmation is already in progress for this preview.',
       );
     if (session.receipt !== undefined)
       return error('PREVIEW_USED', 'This preview was already confirmed.');
-    session.cancelled = true;
+    await stateStore.savePreview({ ...session, cancelled: true });
     record({ event: 'cancelled', actionType: session.action.type, previewId });
     return { ok: true };
   };
@@ -478,7 +517,7 @@ export const createCommandDeckMutationService = ({
   const previewRollback = async (
     token: string,
   ): Promise<CommandDeckMutationPreviewResult> => {
-    const source = rollbackSources.get(token);
+    const source = await stateStore.getRollbackSource(token);
     if (source === undefined)
       return error(
         'ROLLBACK_NOT_FOUND',
@@ -496,7 +535,7 @@ export const createCommandDeckMutationService = ({
         'Rollback is unavailable because the target changed after this confirmation.',
       );
     }
-    const session = createPreview({
+    const session = await createPreview({
       action: source.action,
       before: current,
       after: source.before,
@@ -523,7 +562,7 @@ export const createCommandDeckMutationService = ({
         'PREVIEW_MISMATCH',
         'Confirmation does not match a valid rollback preview.',
       );
-    const prior = completed.get(input.idempotencyKey);
+    const prior = await stateStore.getCompleted(input.idempotencyKey);
     if (prior !== undefined)
       return prior.previewId === input.previewId
         ? {
@@ -534,7 +573,7 @@ export const createCommandDeckMutationService = ({
             'IDEMPOTENCY_MISMATCH',
             'This idempotency key belongs to a different confirmation.',
           );
-    const candidate = getSessionForConfirmation(input.previewId);
+    const candidate = await getSessionForConfirmation(input.previewId);
     if ('ok' in candidate) return candidate;
     if (candidate.kind !== 'rollback')
       return error(
@@ -546,3 +585,70 @@ export const createCommandDeckMutationService = ({
 
   return { preview, confirm, cancel, previewRollback, confirmRollback };
 };
+
+function createMemoryMutationStateStore(): CommandDeckMutationStateStore {
+  const previews = new Map<string, CommandDeckMutationStoredPreview>();
+  const completed = new Map<string, CommandDeckMutationStoredCompletion>();
+  const rollbackSources = new Map<string, string>();
+
+  return {
+    savePreview: async (preview) => {
+      previews.set(preview.id, cloneStoredPreview(preview));
+    },
+    getPreview: async (previewId) => {
+      const preview = previews.get(previewId);
+      return preview === undefined ? undefined : cloneStoredPreview(preview);
+    },
+    getCompleted: async (idempotencyKey) => {
+      const completion = completed.get(idempotencyKey);
+      return completion === undefined
+        ? undefined
+        : {
+            previewId: completion.previewId,
+            receipt: clone(completion.receipt) as CommandDeckMutationReceipt,
+          };
+    },
+    complete: async (preview, idempotencyKey, receipt) => {
+      const existing = completed.get(idempotencyKey);
+      if (existing !== undefined)
+        return existing.previewId === preview.id
+          ? {
+              status: 'completed' as const,
+              receipt: clone(existing.receipt) as CommandDeckMutationReceipt,
+              created: false,
+            }
+          : { status: 'idempotency_mismatch' as const };
+      const storedPreview = previews.get(preview.id);
+      if (storedPreview === undefined || storedPreview.receipt !== undefined)
+        return { status: 'preview_used' as const };
+      const storedReceipt = clone(receipt) as CommandDeckMutationReceipt;
+      previews.set(preview.id, {
+        ...cloneStoredPreview(storedPreview),
+        receipt: storedReceipt,
+      });
+      completed.set(idempotencyKey, {
+        previewId: preview.id,
+        receipt: storedReceipt,
+      });
+      if (storedReceipt.rollbackToken !== undefined)
+        rollbackSources.set(storedReceipt.rollbackToken, preview.id);
+      return {
+        status: 'completed' as const,
+        receipt: clone(storedReceipt) as CommandDeckMutationReceipt,
+        created: true,
+      };
+    },
+    getRollbackSource: async (rollbackToken) => {
+      const previewId = rollbackSources.get(rollbackToken);
+      const preview =
+        previewId === undefined ? undefined : previews.get(previewId);
+      return preview === undefined ? undefined : cloneStoredPreview(preview);
+    },
+  };
+}
+
+function cloneStoredPreview(
+  preview: CommandDeckMutationStoredPreview,
+): CommandDeckMutationStoredPreview {
+  return clone(preview) as CommandDeckMutationStoredPreview;
+}

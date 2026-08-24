@@ -1366,9 +1366,26 @@ export const createApplication = async (
                 },
               },
         mutationApi:
-          config.adminConsole.readApi.token === ''
+          config.adminConsole.readApi.token === '' ||
+          config.adminConsole.token === ''
             ? undefined
             : createCommandDeckRuntimeMutationApi({
+                authorization: {
+                  ...config.adminConsole.readApi,
+                  token: config.adminConsole.token,
+                  audit: (event) => {
+                    logger?.info(
+                      {
+                        operation: 'command_deck_mutation_authorization',
+                        outcome: event.outcome,
+                        requestId: event.requestId,
+                        originClass: event.originClass,
+                        observedAt: event.observedAt,
+                      },
+                      'Command Deck mutation request recorded.',
+                    );
+                  },
+                },
                 databasePath: config.storage.databasePath,
                 guildId: config.discord.guildId,
                 broadcastStore: initializedBroadcastStore,

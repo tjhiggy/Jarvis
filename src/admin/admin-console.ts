@@ -16,6 +16,7 @@ import type {
   BroadcastStore,
 } from '../notifications/broadcast-store.js';
 import type { RssStorage } from '../notifications/rss-storage.js';
+import { isAllowedRssUrl } from '../notifications/rss-notifications.js';
 import { openSqliteDatabase } from '../storage/open-sqlite-database.js';
 import { adminConsoleWorkflowManifest } from './admin-console-workflows.js';
 import {
@@ -33,6 +34,9 @@ import type {
   CommandDeckMutationCancelResult,
   CommandDeckMutationConfirmResult,
   CommandDeckMutationPreviewResult,
+  CommandDeckMutationReceipt,
+  CommandDeckMutationStateStore,
+  CommandDeckMutationStoredPreview,
 } from './command-deck-mutations.js';
 import { createCommandDeckMutationService } from './command-deck-mutations.js';
 import { buildAdminObservabilityProjection } from './observability.js';
@@ -174,8 +178,13 @@ export interface AdminConsoleMutationService {
 }
 
 export interface AdminConsoleMutationApi {
+  readonly authorization: CommandDeckReadBoundaryPolicy;
   readonly catalog: CommandDeckMutationCatalog;
   readonly service: AdminConsoleMutationService;
+}
+
+export interface CommandDeckRuntimeMutationApiOptions extends CommandDeckRuntimeMutationOptions {
+  readonly authorization: CommandDeckReadBoundaryPolicy;
 }
 
 export interface CommandDeckRuntimeMutationOptions {
@@ -241,7 +250,11 @@ export const createCommandDeckRuntimeMutationAdapter = (
           ...new Set(
             options.allowedRssHosts
               .map((host) => host.trim().toLowerCase())
-              .filter(isHostname),
+              .filter(
+                (host) =>
+                  isHostname(host) &&
+                  isAllowedRssUrl(`https://${host}/`, [host]),
+              ),
           ),
         ]
       : [],
@@ -259,16 +272,9 @@ export const createCommandDeckRuntimeMutationAdapter = (
           throw new Error('Feature target is not configured.');
         return;
       case 'rss_feed': {
-        let host: string;
-        try {
-          const url = new URL(action.url);
-          if (url.protocol !== 'https:') throw new Error('Not HTTPS.');
-          host = url.hostname;
-        } catch {
+        if (!isAllowedRssUrl(action.url, allowedRssHosts))
           throw new Error('RSS target is not configured.');
-        }
-        if (!allowedRssHosts.includes(host))
-          throw new Error('RSS target is not configured.');
+        return;
       }
     }
   };
@@ -394,10 +400,11 @@ export const createCommandDeckRuntimeMutationAdapter = (
 };
 
 export const createCommandDeckRuntimeMutationApi = (
-  options: CommandDeckRuntimeMutationOptions,
+  options: CommandDeckRuntimeMutationApiOptions,
 ): AdminConsoleMutationApi => {
   const adapter = createCommandDeckRuntimeMutationAdapter(options);
   return {
+    authorization: options.authorization,
     catalog: {
       broadcastCategories: adapter.allowedBroadcastCategories,
       featureFlags: adapter.supportedFeatureFlags,
@@ -405,11 +412,263 @@ export const createCommandDeckRuntimeMutationApi = (
     },
     service: createCommandDeckMutationService({
       adapter,
+      stateStore: createSqliteCommandDeckMutationStateStore(
+        options.databasePath,
+      ),
       ...(options.now === undefined ? {} : { now: options.now }),
       ...(options.audit === undefined ? {} : { audit: options.audit }),
     }),
   };
 };
+
+function createSqliteCommandDeckMutationStateStore(
+  databasePath: string,
+): CommandDeckMutationStateStore {
+  const withDatabase = <T>(
+    operation: (database: ReturnType<typeof openSqliteDatabase>) => T,
+  ): T => {
+    const database = openSqliteDatabase(databasePath);
+    try {
+      ensureCommandDeckStateTables(database);
+      return operation(database);
+    } finally {
+      database.close();
+    }
+  };
+
+  return {
+    savePreview: async (preview) => {
+      withDatabase((database) => {
+        if (preview.cancelled) {
+          database
+            .prepare(
+              `UPDATE command_deck_mutation_previews
+               SET cancelled = 1
+               WHERE preview_id = ? AND receipt_json IS NULL`,
+            )
+            .run(preview.id);
+          return;
+        }
+        database
+          .prepare(
+            `INSERT INTO command_deck_mutation_previews (
+               preview_id, action_json, before_json, after_json,
+               expected_json, expires_at, target, operation_id, kind,
+               cancelled, receipt_json
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
+          )
+          .run(
+            preview.id,
+            JSON.stringify(preview.action),
+            serializeMutationValue(preview.before),
+            serializeMutationValue(preview.after),
+            serializeMutationValue(preview.expectedValue),
+            preview.expiresAt,
+            preview.target,
+            preview.operationId,
+            preview.kind,
+          );
+      });
+    },
+    getPreview: async (previewId) =>
+      withDatabase((database) => readStoredPreview(database, previewId)),
+    getCompleted: async (idempotencyKey) =>
+      withDatabase((database) => {
+        const row = database
+          .prepare(
+            `SELECT preview_id, receipt_json
+             FROM command_deck_mutation_completions
+             WHERE idempotency_key = ?`,
+          )
+          .get(idempotencyKey) as
+          | { readonly preview_id: string; readonly receipt_json: string }
+          | undefined;
+        return row === undefined
+          ? undefined
+          : {
+              previewId: row.preview_id,
+              receipt: parseReceipt(row.receipt_json),
+            };
+      }),
+    complete: async (preview, idempotencyKey, receipt) =>
+      withDatabase((database) =>
+        database
+          .transaction(() => {
+            const existing = database
+              .prepare(
+                `SELECT preview_id, receipt_json
+                 FROM command_deck_mutation_completions
+                 WHERE idempotency_key = ?`,
+              )
+              .get(idempotencyKey) as
+              | { readonly preview_id: string; readonly receipt_json: string }
+              | undefined;
+            if (existing !== undefined)
+              return existing.preview_id === preview.id
+                ? {
+                    status: 'completed' as const,
+                    receipt: parseReceipt(existing.receipt_json),
+                    created: false,
+                  }
+                : { status: 'idempotency_mismatch' as const };
+
+            const receiptJson = JSON.stringify(receipt);
+            const updated = database
+              .prepare(
+                `UPDATE command_deck_mutation_previews
+                 SET receipt_json = ?
+                 WHERE preview_id = ? AND cancelled = 0 AND receipt_json IS NULL`,
+              )
+              .run(receiptJson, preview.id).changes;
+            if (updated !== 1) return { status: 'preview_used' as const };
+            database
+              .prepare(
+                `INSERT INTO command_deck_mutation_completions
+                   (idempotency_key, preview_id, receipt_json)
+                 VALUES (?, ?, ?)`,
+              )
+              .run(idempotencyKey, preview.id, receiptJson);
+            if (receipt.rollbackToken !== undefined)
+              database
+                .prepare(
+                  `INSERT INTO command_deck_mutation_rollback_sources
+                     (rollback_token, preview_id)
+                   VALUES (?, ?)`,
+                )
+                .run(receipt.rollbackToken, preview.id);
+            return {
+              status: 'completed' as const,
+              receipt,
+              created: true,
+            };
+          })
+          .immediate(),
+      ),
+    getRollbackSource: async (rollbackToken) =>
+      withDatabase((database) => {
+        const row = database
+          .prepare(
+            `SELECT preview_id
+             FROM command_deck_mutation_rollback_sources
+             WHERE rollback_token = ?`,
+          )
+          .get(rollbackToken) as { readonly preview_id: string } | undefined;
+        return row === undefined
+          ? undefined
+          : readStoredPreview(database, row.preview_id);
+      }),
+  };
+}
+
+function ensureCommandDeckStateTables(
+  database: ReturnType<typeof openSqliteDatabase>,
+): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS command_deck_mutation_previews (
+      preview_id TEXT PRIMARY KEY,
+      action_json TEXT NOT NULL,
+      before_json TEXT NOT NULL,
+      after_json TEXT NOT NULL,
+      expected_json TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      target TEXT NOT NULL,
+      operation_id TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL CHECK (kind IN ('change', 'rollback')),
+      cancelled INTEGER NOT NULL CHECK (cancelled IN (0, 1)),
+      receipt_json TEXT
+    );
+    CREATE TABLE IF NOT EXISTS command_deck_mutation_completions (
+      idempotency_key TEXT PRIMARY KEY,
+      preview_id TEXT NOT NULL,
+      receipt_json TEXT NOT NULL,
+      FOREIGN KEY (preview_id)
+        REFERENCES command_deck_mutation_previews(preview_id)
+    );
+    CREATE TABLE IF NOT EXISTS command_deck_mutation_rollback_sources (
+      rollback_token TEXT PRIMARY KEY,
+      preview_id TEXT NOT NULL UNIQUE,
+      FOREIGN KEY (preview_id)
+        REFERENCES command_deck_mutation_previews(preview_id)
+    );
+  `);
+}
+
+function readStoredPreview(
+  database: ReturnType<typeof openSqliteDatabase>,
+  previewId: string,
+): CommandDeckMutationStoredPreview | undefined {
+  const row = database
+    .prepare(
+      `SELECT preview_id, action_json, before_json, after_json, expected_json,
+              expires_at, target, operation_id, kind, cancelled, receipt_json
+       FROM command_deck_mutation_previews
+       WHERE preview_id = ?`,
+    )
+    .get(previewId) as
+    | {
+        readonly preview_id: string;
+        readonly action_json: string;
+        readonly before_json: string;
+        readonly after_json: string;
+        readonly expected_json: string;
+        readonly expires_at: string;
+        readonly target: string;
+        readonly operation_id: string;
+        readonly kind: 'change' | 'rollback';
+        readonly cancelled: number;
+        readonly receipt_json: string | null;
+      }
+    | undefined;
+  if (row === undefined) return undefined;
+  return {
+    id: row.preview_id,
+    action: JSON.parse(row.action_json) as CommandDeckMutationAction,
+    before: parseMutationValue(row.before_json),
+    after: parseMutationValue(row.after_json),
+    expectedValue: parseMutationValue(row.expected_json),
+    expiresAt: row.expires_at,
+    target: row.target,
+    operationId: row.operation_id,
+    kind: row.kind,
+    cancelled: row.cancelled === 1,
+    ...(row.receipt_json === null
+      ? {}
+      : { receipt: parseReceipt(row.receipt_json) }),
+  };
+}
+
+function serializeMutationValue(value: unknown): string {
+  return JSON.stringify(
+    value === undefined
+      ? { encoding: 'undefined' }
+      : { encoding: 'json', value },
+  );
+}
+
+function parseMutationValue(value: string): unknown {
+  const parsed = JSON.parse(value) as {
+    readonly encoding?: unknown;
+    readonly value?: unknown;
+  };
+  if (parsed.encoding === 'undefined') return undefined;
+  if (parsed.encoding === 'json') return parsed.value;
+  throw new Error('Invalid durable Command Deck mutation value.');
+}
+
+function parseReceipt(value: string): CommandDeckMutationReceipt {
+  const parsed = JSON.parse(value) as CommandDeckMutationReceipt;
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    typeof parsed.id !== 'string' ||
+    typeof parsed.confirmedAt !== 'string' ||
+    typeof parsed.target !== 'string' ||
+    (parsed.rollbackToken !== undefined &&
+      typeof parsed.rollbackToken !== 'string')
+  )
+    throw new Error('Invalid durable Command Deck mutation receipt.');
+  return parsed;
+}
 
 function ensureCommandDeckOperationTable(
   database: ReturnType<typeof openSqliteDatabase>,
@@ -703,6 +962,10 @@ export const startAdminConsole = (options: {
     options.readApi === undefined
       ? undefined
       : createCommandDeckReadBoundary(options.readApi);
+  const mutationBoundary =
+    options.mutationApi === undefined
+      ? undefined
+      : createCommandDeckReadBoundary(options.mutationApi.authorization);
   const confirmations = new Map<
     string,
     {
@@ -784,13 +1047,13 @@ export const startAdminConsole = (options: {
         );
         return;
       }
-      if (api === undefined || readBoundary === undefined) {
+      if (api === undefined || mutationBoundary === undefined) {
         writeMutationJson(404, {
           error: { code: 'not_configured', message: 'Request denied.' },
         });
         return;
       }
-      const authorization = readBoundary.authorize(
+      const authorization = mutationBoundary.authorize(
         {
           authorization: request.headers.authorization,
           origin: headerValue(request.headers.origin),

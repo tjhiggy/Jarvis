@@ -210,6 +210,14 @@ describe('createApplication', () => {
         updatedAt: new Date('2026-08-23T20:00:00.000Z'),
       });
       const api = createCommandDeckRuntimeMutationApi({
+        authorization: {
+          token: 'write-token-with-enough-entropy',
+          allowedOrigins: [],
+          maxClockSkewMs: 60_000,
+          replayRetentionMs: 60_000,
+          rateLimit: 30,
+          rateWindowMs: 60_000,
+        },
         databasePath,
         guildId: 'guild-id',
         broadcastStore: broadcast,
@@ -223,6 +231,20 @@ describe('createApplication', () => {
           auditEvents.push(event);
         },
       });
+
+      const credentialCanary = 'rss-user-canary:rss-password-canary';
+      const credentialPreview = await api.service.preview({
+        type: 'rss_feed',
+        operation: 'add',
+        url: `https://${credentialCanary}@feeds.example.test/private.xml`,
+        label: 'Private feed',
+      });
+      expect(credentialPreview).toMatchObject({
+        ok: false,
+        error: { code: 'INVALID_ACTION' },
+      });
+      expect(JSON.stringify(credentialPreview)).not.toContain(credentialCanary);
+      expect(rss.listFeeds('guild-id')).toEqual([]);
 
       const broadcastAction = {
         type: 'broadcast_state' as const,
@@ -299,6 +321,23 @@ describe('createApplication', () => {
       expect(rss.listFeeds('guild-id')).toEqual([]);
       expect(JSON.stringify(auditEvents)).not.toContain('feeds.example.test');
       expect(JSON.stringify(auditEvents)).not.toContain('Ship News');
+      expect(JSON.stringify(auditEvents)).not.toContain('rss-user-canary');
+      const persisted = new Database(databasePath, { readonly: true });
+      const persistedMutationValues = persisted
+        .prepare(
+          `SELECT action_json || before_json || after_json || expected_json AS value
+           FROM command_deck_mutation_previews
+           UNION ALL
+           SELECT url || label AS value FROM rss_feeds`,
+        )
+        .all() as { readonly value: string }[];
+      persisted.close();
+      expect(JSON.stringify(persistedMutationValues)).not.toContain(
+        'rss-user-canary',
+      );
+      expect(JSON.stringify(persistedMutationValues)).not.toContain(
+        'rss-password-canary',
+      );
     } finally {
       rss.close();
       await engagement.closeConnection();
@@ -392,6 +431,94 @@ describe('createApplication', () => {
     }
   });
 
+  it('replays the original receipt and completes rollback after mutation-service restarts', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-state-'));
+    const databasePath = join(directory, 'jarvis.db');
+    const broadcast = new SqliteBroadcastStore(databasePath);
+    const engagement = new SQLiteEngagementRepository(databasePath);
+    const featureFlags = new FeatureFlagService(engagement);
+    const rss = new RssStorage(databasePath);
+    try {
+      const options = {
+        authorization: {
+          token: 'write-token-with-enough-entropy',
+          allowedOrigins: [],
+          maxClockSkewMs: 60_000,
+          replayRetentionMs: 60_000,
+          rateLimit: 30,
+          rateWindowMs: 60_000,
+        },
+        databasePath,
+        guildId: 'guild-id',
+        broadcastStore: broadcast,
+        featureFlags,
+        rssStorage: rss,
+        configuredBroadcasts: [] as const,
+        allowedChannelIds: new Set(['rss-channel']),
+        allowedRssHosts: ['feeds.example.test'],
+        rssChannelId: 'rss-channel',
+      };
+      const action = {
+        type: 'rss_feed' as const,
+        operation: 'add' as const,
+        url: 'https://feeds.example.test/restart.xml',
+        label: 'Restart feed',
+      };
+      const firstService = createCommandDeckRuntimeMutationApi(options).service;
+      const preview = await firstService.preview(action);
+      expect(preview.ok).toBe(true);
+      if (!preview.ok) throw new Error('Restart preview failed.');
+      const firstConfirmation = await firstService.confirm({
+        previewId: preview.preview.id,
+        action,
+        idempotencyKey: 'restart-confirmation',
+      });
+      expect(firstConfirmation.ok).toBe(true);
+      if (!firstConfirmation.ok)
+        throw new Error('Restart confirmation failed.');
+
+      const restartedService =
+        createCommandDeckRuntimeMutationApi(options).service;
+      await expect(
+        restartedService.confirm({
+          previewId: preview.preview.id,
+          action,
+          idempotencyKey: 'restart-confirmation',
+        }),
+      ).resolves.toEqual(firstConfirmation);
+      expect(rss.listFeeds('guild-id')).toHaveLength(1);
+
+      const rollbackPreview = await restartedService.previewRollback(
+        firstConfirmation.receipt.rollbackToken!,
+      );
+      expect(rollbackPreview.ok).toBe(true);
+      if (!rollbackPreview.ok)
+        throw new Error('Restart rollback preview failed.');
+
+      const rollbackRestart =
+        createCommandDeckRuntimeMutationApi(options).service;
+      const rollbackConfirmation = await rollbackRestart.confirmRollback({
+        previewId: rollbackPreview.preview.id,
+        idempotencyKey: 'restart-rollback-confirmation',
+      });
+      expect(rollbackConfirmation.ok).toBe(true);
+      expect(rss.listFeeds('guild-id')).toEqual([]);
+
+      const finalRestart = createCommandDeckRuntimeMutationApi(options).service;
+      await expect(
+        finalRestart.confirmRollback({
+          previewId: rollbackPreview.preview.id,
+          idempotencyKey: 'restart-rollback-confirmation',
+        }),
+      ).resolves.toEqual(rollbackConfirmation);
+    } finally {
+      rss.close();
+      await engagement.closeConnection();
+      await broadcast.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('passes a configuration-scoped mutation API into the Admin Console', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'jarvis-command-deck-wire-'));
     const databasePath = join(directory, 'jarvis.db');
@@ -404,7 +531,7 @@ describe('createApplication', () => {
             enabled: true,
             port: 0,
             host: '127.0.0.1',
-            token: 'local-admin-token',
+            token: 'local-admin-token-with-32-characters-minimum',
             readApi: {
               token: 'r'.repeat(32),
               allowedOrigins: ['https://deck.example.test'],
@@ -460,6 +587,9 @@ describe('createApplication', () => {
         featureFlags: [...SUPPORTED_FEATURE_FLAGS],
         rssHosts: ['feeds.example.test'],
       });
+      expect(mutationApi?.authorization.token).toBe(
+        'local-admin-token-with-32-characters-minimum',
+      );
       await application.shutdown();
     } finally {
       rmSync(directory, { recursive: true, force: true });
