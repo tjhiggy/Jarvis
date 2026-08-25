@@ -1,6 +1,6 @@
 # Jarvis Discord Bot
 
-![Jarvis community platform overview through v1.6.0](assets/jarvis-admin-overview-infographic-v5.png)
+![Jarvis community platform overview through v1.6.0](assets/jarvis-admin-overview-infographic-v6.png)
 
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6%2B-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -21,7 +21,7 @@ hosted AI without pretending an interface is a superpower.
 Release package: `1.6.0` | Runtime: Node.js 22+ | License: proprietary, except
 the Code of Conduct under CC BY 4.0
 
-Share the [Jarvis community platform overview through v1.6.0](assets/jarvis-admin-overview-infographic-v5.png)
+Share the [Jarvis community platform overview through v1.6.0](assets/jarvis-admin-overview-infographic-v6.png)
 with Muthaship server administrators for a visual summary of current
 capabilities, local and cloud dependencies, safety boundaries, and planned
 enhancements.
