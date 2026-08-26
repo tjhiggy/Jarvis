@@ -23,7 +23,9 @@ connection, provider keys, or a local `.env`.
 Linux Cloud Agent VMs.
 
 Missing `pwsh` is not a product defect and must not fail this assignment. Do
-not rewrite `docs:check` in this assignment.
+not rewrite `docs:check` in this assignment. The focused documentation
+validation test skips when `pwsh` is not on PATH so `npm test` can pass on
+Linux without PowerShell. GitHub Actions `verify` still runs `docs:check`.
 
 ## Secrets and untracked local state
 
