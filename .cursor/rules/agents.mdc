@@ -1,0 +1,12 @@
+---
+description: Follow AGENTS.md plus the security model and change-management docs
+alwaysApply: true
+---
+
+Follow [AGENTS.md](AGENTS.md) for Cloud Agent first-success, secrets, and
+repository conventions.
+
+Also follow these existing documents. Do not paste them into this rule:
+
+- [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md)
+- [docs/CHANGE_MANAGEMENT.md](docs/CHANGE_MANAGEMENT.md)
