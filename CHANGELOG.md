@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Bounded personal recurring reminders: optional `/reminder set` `every` and
+  `until` fields persist on the existing SQLite reminder row and the scheduler
+  advances the same ID to the next daily or weekly fire without inserting
+  another one-shot row. One-shot personal reminders and administrator
+  shared-set, shared-list, and shared-cancel stay unchanged.
+
 ## [1.6.0] - 2026-08-24
 
 ### Added

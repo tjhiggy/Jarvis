@@ -85,9 +85,9 @@
 - Owner: `src/reminders/reminder-service.ts`
 - Configuration: `DATABASE_PATH`, `ENGAGEMENT_ADMIN_ROLE_IDS`
 - Permissions: Members control only personal reminders; shared reminders require a configured administrator role.
-- Persistence: Reminder content is retained until delivery, cancellation, or bounded cleanup.
-- Automated: `tests/reminder-service.test.ts`, `tests/reminder-scheduler.test.ts`, `tests/reminder-delivery-gateway.test.ts`
-- Smoke: Create, list, cancel, and deliver a personal reminder, then repeat the shared flow as an administrator in the test channel.
+- Persistence: One-shot and recurring personal reminder content is retained until delivery, cancellation, or bounded cleanup. Recurring fires advance the same row.
+- Automated: `tests/reminder-service.test.ts`, `tests/reminder-scheduler.test.ts`, `tests/reminder-delivery-gateway.test.ts`, `tests/reminder-storage.test.ts`
+- Smoke: Create, list, cancel, and deliver a personal reminder, then create a bounded daily or weekly personal reminder and confirm the same ID advances without a second row. Repeat the shared one-shot flow as an administrator in the test channel.
 
 ### Sleeper Fantasy Football
 

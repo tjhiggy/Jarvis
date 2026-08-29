@@ -76,7 +76,7 @@ The following are intentionally not claimed as shipped:
 2. Complete economy and progression workflows beyond the bounded foundation.
 3. Complete entertainment workflows beyond the catalog foundation.
 4. Discord support-ticket delivery and moderation workflow.
-5. Additional reminder modes such as recurring, shared, DM fallback, and export.
+5. Additional reminder modes such as shared-reminder expansion, DM fallback, and export.
 6. Optional future provider adapters and worker/storage scaling.
 
 Each item must receive its own issue, milestone, acceptance criteria, release

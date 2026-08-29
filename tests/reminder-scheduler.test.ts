@@ -271,6 +271,65 @@ describe('ReminderScheduler delivery tick', () => {
     }
   });
 
+  it('delivers a personal recurring reminder without inserting another row', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jarvis-scheduler-'));
+    const store = new SQLiteReminderStore(join(directory, 'reminders.db'));
+    let currentNow = new Date('2026-07-29T12:00:00.000Z');
+    const deliveries: string[] = [];
+    const scheduler = schedulerFor({
+      store,
+      now: () => new Date(currentNow),
+      gateway: createGateway(async (value) => {
+        deliveries.push(value.id);
+        return { kind: 'delivered' };
+      }),
+    });
+    try {
+      await store.create(
+        {
+          id: 'daily-standup',
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          ownerUserId: 'owner-1',
+          message: 'Stand-up',
+          dueAt: new Date('2026-07-29T12:00:00.000Z'),
+          createdAt: new Date('2026-07-29T11:00:00.000Z'),
+          recurrence: 'daily',
+          untilAt: new Date('2026-07-31T12:00:00.000Z'),
+        },
+        10,
+      );
+
+      await scheduler.runNow();
+      await expect(
+        store.listByOwner('guild-1', 'owner-1'),
+      ).resolves.toMatchObject([
+        {
+          id: 'daily-standup',
+          status: 'pending',
+          dueAt: new Date('2026-07-30T12:00:00.000Z'),
+        },
+      ]);
+
+      currentNow = new Date('2026-07-30T12:00:00.000Z');
+      await scheduler.runNow();
+      currentNow = new Date('2026-07-31T12:00:00.000Z');
+      await scheduler.runNow();
+
+      expect(deliveries).toEqual([
+        'daily-standup',
+        'daily-standup',
+        'daily-standup',
+      ]);
+      await expect(
+        store.listByOwner('guild-1', 'owner-1'),
+      ).resolves.toMatchObject([{ id: 'daily-standup', status: 'delivered' }]);
+    } finally {
+      await store.closeConnection();
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it('contains individual delivery and state failures, continues the batch, and recovers health after a clean tick', async () => {
     const calls: string[] = [];
     const logs: Array<{

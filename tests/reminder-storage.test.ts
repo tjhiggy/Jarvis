@@ -40,7 +40,7 @@ describe('SQLiteReminderStore schema and creation', () => {
           'SELECT version FROM reminder_schema_migrations ORDER BY version',
         )
         .all(),
-    ).toEqual([{ version: 1 }]);
+    ).toEqual([{ version: 1 }, { version: 2 }]);
     database.close();
   });
 
@@ -98,6 +98,72 @@ describe('SQLiteReminderStore schema and creation', () => {
     await expect(store.listByOwner('guild-1', 'user-1')).resolves.toEqual([
       expected,
     ]);
+  });
+
+  it('upgrades a v1 reminder database without dropping existing one-shot rows', async () => {
+    await store.closeConnection();
+    const legacyPath = join(directory, 'legacy-v1.db');
+    const database = new Database(legacyPath);
+    database.exec(`
+      CREATE TABLE reminder_schema_migrations (
+        version INTEGER PRIMARY KEY,
+        applied_at INTEGER NOT NULL
+      );
+      CREATE TABLE reminders (
+        id TEXT PRIMARY KEY,
+        guild_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        parent_channel_id TEXT,
+        owner_user_id TEXT NOT NULL,
+        message TEXT NOT NULL,
+        due_at INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at INTEGER,
+        lease_id TEXT,
+        claimed_at INTEGER,
+        created_at INTEGER NOT NULL,
+        delivered_at INTEGER,
+        cancelled_at INTEGER,
+        failed_at INTEGER,
+        uncertain_at INTEGER,
+        failure_category TEXT,
+        updated_at INTEGER NOT NULL
+      );
+      INSERT INTO reminder_schema_migrations (version, applied_at) VALUES (1, 0);
+    `);
+    database
+      .prepare(
+        `INSERT INTO reminders (
+          id, guild_id, channel_id, owner_user_id, message, due_at, status,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      )
+      .run(
+        'legacy-one',
+        'guild-1',
+        'thread-1',
+        'user-1',
+        'Check the oven',
+        date(60).getTime(),
+        date(0).getTime(),
+        date(0).getTime(),
+      );
+    database.close();
+
+    store = new SQLiteReminderStore(legacyPath);
+    await expect(store.listByOwner('guild-1', 'user-1')).resolves.toMatchObject(
+      [{ id: 'legacy-one', status: 'pending' }],
+    );
+    const upgraded = new Database(legacyPath, { readonly: true });
+    expect(
+      upgraded
+        .prepare(
+          'SELECT version FROM reminder_schema_migrations ORDER BY version',
+        )
+        .all(),
+    ).toEqual([{ version: 1 }, { version: 2 }]);
+    upgraded.close();
   });
 
   it('validates date inputs and keeps caller date mutations outside store boundaries', async () => {
@@ -381,6 +447,49 @@ describe('SQLiteReminderStore claims and lifecycle', () => {
     });
   });
 
+  it('reschedules a delivered recurring reminder on the same row until the bound', async () => {
+    await store.create(
+      reminder({
+        id: 'daily',
+        dueAt: date(60),
+        recurrence: 'daily',
+        untilAt: date(60 + 2 * 24 * 60),
+      }),
+      10,
+    );
+
+    await store.claimDue(date(60), 'lease-one', 10);
+    await store.markDelivered('daily', 'lease-one', date(61));
+    await expect(store.listByOwner('guild-1', 'user-1')).resolves.toMatchObject(
+      [
+        {
+          id: 'daily',
+          status: 'pending',
+          attemptCount: 0,
+          dueAt: date(60 + 24 * 60),
+        },
+      ],
+    );
+
+    await store.claimDue(date(60 + 24 * 60), 'lease-two', 10);
+    await store.markDelivered('daily', 'lease-two', date(60 + 24 * 60));
+    await store.claimDue(date(60 + 2 * 24 * 60), 'lease-three', 10);
+    await store.markDelivered('daily', 'lease-three', date(60 + 2 * 24 * 60));
+    await expect(store.listByOwner('guild-1', 'user-1')).resolves.toMatchObject(
+      [{ id: 'daily', status: 'delivered', dueAt: date(60 + 2 * 24 * 60) }],
+    );
+  });
+
+  it('does not insert another reminder when a one-shot is delivered', async () => {
+    await store.create(reminder({ id: 'one-shot' }), 10);
+    await store.claimDue(date(60), 'lease-one', 1);
+    await store.markDelivered('one-shot', 'lease-one', date(61));
+
+    await expect(store.listByOwner('guild-1', 'user-1')).resolves.toMatchObject(
+      [{ id: 'one-shot', status: 'delivered' }],
+    );
+  });
+
   it('reports health and closes idempotently', async () => {
     await expect(store.healthCheck()).resolves.toBe(true);
     await store.closeConnection();
@@ -434,6 +543,8 @@ function reminder(
     message: string;
     dueAt: Date;
     createdAt: Date;
+    recurrence?: 'daily' | 'weekly';
+    untilAt?: Date;
   }> = {},
 ) {
   return {

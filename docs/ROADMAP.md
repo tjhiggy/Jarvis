@@ -9,7 +9,8 @@ dates, promises, or claims that an interface declaration is a working feature.
   no inbound web port.
 - `/ask`, `/search`, `/forget`, `/faq`, `/help`, and `/status` commands plus
   direct mention handling in server channels.
-- Personal reminders with owner-scoped delivery, read-only Sleeper standings
+- Personal reminders with owner-scoped delivery, optional bounded daily or
+  weekly recurrence on the same stored row, read-only Sleeper standings
   and weekly matchups with resolved owner display names when available, and
   read-only GitHub repository, issue, and pull-request lookup.
 - Channel allowlists, parent-thread handling, minimum reply permissions,

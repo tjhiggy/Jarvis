@@ -108,19 +108,22 @@ marks irrecoverable messages orphaned, and removes terminal rows after
 `/reminder set`, `list`, and `cancel` use a dedicated store, service, gateway,
 and non-overlapping scheduler. The service validates strict relative duration,
 500-character text, opaque IDs, and 10 active reminders per guild and owner;
-list and cancellation stay owner-scoped. Active reminders cancel idempotently,
-while delivered and failed rows return no cancellable result.
+list and cancellation stay owner-scoped. Optional daily or weekly personal
+recurrence stores `every` and `until` on the same row. Active reminders cancel
+idempotently, while delivered and failed rows return no cancellable result.
 
 `SQLiteReminderStore` owns additive `reminders` and
 `reminder_schema_migrations` tables without changing `PRAGMA user_version`.
-It uses parameterized statements, claims due rows with leases, recovers expired
-claims, retries transient delivery around 1, 5, and 15 minutes, preserves
-ambiguous send outcomes as `delivery_uncertain`, and removes terminal rows in
-bounded seven-day cleanup. The gateway revalidates the live guild, channel, and
-thread parent against the allowlist, then permits only the stored owner mention.
-Logs contain only safe counts and categories, never reminder content or IDs.
-Startup opens storage before login and starts the scheduler after handlers;
-shutdown stops new work, awaits schedulers plus active command and periodic cleanup work, closes stores,
+Version 2 adds nullable recurrence columns. It uses parameterized statements,
+claims due rows with leases, recovers expired claims, retries transient
+delivery around 1, 5, and 15 minutes, preserves ambiguous send outcomes as
+`delivery_uncertain`, advances a successful recurring fire to the next future
+slot on the same row, and removes terminal rows in bounded seven-day cleanup.
+The gateway revalidates the live guild, channel, and thread parent against the
+allowlist, then permits only the stored owner mention. Logs contain only safe
+counts and categories, never reminder content or IDs. Startup opens storage
+before login and starts the scheduler after handlers; shutdown stops new work,
+awaits schedulers plus active command and periodic cleanup work, closes stores,
 then destroys the Discord client.
 
 ## Shipboard broadcast lifecycle
