@@ -149,6 +149,23 @@ describe('command definitions', () => {
               required: true,
               max_length: 500,
             },
+            {
+              type: 3,
+              name: 'every',
+              description: 'Repeat daily or weekly until the bound.',
+              required: false,
+              choices: [
+                { name: 'Daily', value: 'daily' },
+                { name: 'Weekly', value: 'weekly' },
+              ],
+            },
+            {
+              type: 3,
+              name: 'until',
+              description: 'Stop repeating after this delay, such as 7 days.',
+              required: false,
+              max_length: 64,
+            },
           ],
         },
         {
@@ -488,6 +505,111 @@ describe('handleCommand', () => {
     ]);
   });
 
+  it('passes optional personal recurrence fields on /reminder set', async () => {
+    const fake = interaction({
+      commandName: 'reminder',
+      subcommand: 'set',
+      values: {
+        in: '1 day',
+        message: 'Stand-up',
+        every: 'daily',
+        until: '7 days',
+      },
+    });
+    const setRequests: unknown[] = [];
+    const created = reminder({
+      message: 'Stand-up',
+      recurrence: 'daily',
+      untilAt: new Date('2026-08-05T13:00:00.000Z'),
+    });
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        reminderService: {
+          ...inertReminderService(),
+          set: async (request) => {
+            setRequests.push(request);
+            return created;
+          },
+        },
+      }),
+    );
+
+    expect(setRequests).toEqual([
+      {
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        ownerUserId: 'user-1',
+        duration: '1 day',
+        message: 'Stand-up',
+        every: 'daily',
+        until: '7 days',
+      },
+    ]);
+    expect(fake.edits[0]?.content).toMatch(/repeats daily until/i);
+  });
+
+  it('keeps administrator shared-set on the one-shot request shape', async () => {
+    const fake = interaction({
+      commandName: 'reminder',
+      subcommand: 'shared-set',
+      roleIds: ['admin-role'],
+      values: {
+        in: '2 hours',
+        message: 'Crew sync',
+        every: 'daily',
+        until: '7 days',
+      },
+    });
+    const setRequests: unknown[] = [];
+    const base = dependencies({
+      reminderService: {
+        ...inertReminderService(),
+        sharedSet: async (request) => {
+          setRequests.push(request);
+          return reminder({ message: 'Crew sync' });
+        },
+      },
+    });
+    const commandDependencies = {
+      ...base,
+      config: {
+        ...base.config,
+        engagement: {
+          enabled: true,
+          channels: {
+            introductionId: '',
+            suggestionId: '',
+            eventId: '',
+            recapId: '',
+            activityId: '',
+            birthdayId: '',
+            rssId: '',
+          },
+          rssAllowedHosts: [],
+          recapSchedule: '',
+          retentionDays: 30,
+          adminRoleIds: new Set(['admin-role']),
+        },
+      },
+    } as CommandDependencies;
+
+    await handleCommand(fake.interaction, commandDependencies);
+
+    expect(setRequests).toEqual([
+      {
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        ownerUserId: 'user-1',
+        duration: '2 hours',
+        message: 'Crew sync',
+      },
+    ]);
+    expect(fake.edits[0]?.content).toMatch(/shared reminder/i);
+    expect(fake.edits[0]?.content).not.toMatch(/repeats/i);
+  });
+
   it('defers /reminder list and cancel privately with guild-and-owner scoping', async () => {
     const list = interaction({
       commandName: 'reminder',
@@ -533,6 +655,32 @@ describe('handleCommand', () => {
       /abcdef234567[\s\S]*<t:1785337200:F>[\s\S]*<#channel-1>[\s\S]*pending[\s\S]*Check the oven/i,
     );
     expect(cancel.edits[0]?.content).toMatch(/abcdef234567[\s\S]*cancelled/i);
+  });
+
+  it('lists a personal recurring reminder with its next fire and bound', async () => {
+    const fake = interaction({
+      commandName: 'reminder',
+      subcommand: 'list',
+    });
+
+    await handleCommand(
+      fake.interaction,
+      dependencies({
+        reminderService: {
+          ...inertReminderService(),
+          list: async () => [
+            reminder({
+              recurrence: 'weekly',
+              untilAt: new Date('2026-08-26T15:00:00.000Z'),
+            }),
+          ],
+        },
+      }),
+    );
+
+    expect(fake.edits[0]?.content).toMatch(
+      /abcdef234567[\s\S]*repeats weekly until[\s\S]*<t:1787756400:F>/i,
+    );
   });
 
   it('rejects malformed reminder IDs privately before cancellation', async () => {
@@ -1339,6 +1487,8 @@ describe('handleCommand', () => {
     expect(content).toMatch(
       /1 minute[\s\S]*30 days[\s\S]*500[\s\S]*10 active/i,
     );
+    expect(content).toMatch(/every:daily\|weekly/i);
+    expect(content).toMatch(/one stored row/i);
     expect(content).not.toMatch(/moderate|ban|kick|role/i);
     expect(content).toMatch(/cannot.*(?:administer|modify).*server/i);
     expect(content).toMatch(/cannot.*(?:tool|external action)/i);
@@ -1655,7 +1805,14 @@ function interaction(
     userId: string;
     values: Readonly<Record<string, string | null>>;
     subcommand:
-      'set' | 'list' | 'cancel' | 'status' | 'enable' | 'disable' | 'generate';
+      | 'set'
+      | 'list'
+      | 'cancel'
+      | 'shared-set'
+      | 'status'
+      | 'enable'
+      | 'disable'
+      | 'generate';
     roleIds: readonly string[];
   }> = {},
 ): {

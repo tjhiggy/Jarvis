@@ -72,12 +72,35 @@ interface ReminderStringOptionDefinition {
   readonly max_length: number;
 }
 
+interface ReminderRecurrenceOptionDefinition {
+  readonly type: 3;
+  readonly name: 'every';
+  readonly description: string;
+  readonly required: false;
+  readonly choices: readonly [
+    { readonly name: 'Daily'; readonly value: 'daily' },
+    { readonly name: 'Weekly'; readonly value: 'weekly' },
+  ];
+}
+
+interface ReminderUntilOptionDefinition {
+  readonly type: 3;
+  readonly name: 'until';
+  readonly description: string;
+  readonly required: false;
+  readonly max_length: 64;
+}
+
 interface ReminderSubcommandDefinition {
   readonly type: 1;
   readonly name:
     'set' | 'list' | 'cancel' | 'shared-set' | 'shared-list' | 'shared-cancel';
   readonly description: string;
-  readonly options?: readonly ReminderStringOptionDefinition[];
+  readonly options?: readonly (
+    | ReminderStringOptionDefinition
+    | ReminderRecurrenceOptionDefinition
+    | ReminderUntilOptionDefinition
+  )[];
 }
 
 interface FantasySubcommandDefinition {
@@ -598,6 +621,23 @@ export const createCommandDefinitions = (
               description: 'What to remind you about.',
               required: true,
               max_length: 500,
+            },
+            {
+              type: 3,
+              name: 'every',
+              description: 'Repeat daily or weekly until the bound.',
+              required: false,
+              choices: [
+                { name: 'Daily', value: 'daily' },
+                { name: 'Weekly', value: 'weekly' },
+              ],
+            },
+            {
+              type: 3,
+              name: 'until',
+              description: 'Stop repeating after this delay, such as 7 days.',
+              required: false,
+              max_length: 64,
             },
           ],
         },

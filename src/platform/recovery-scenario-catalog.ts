@@ -152,6 +152,15 @@ export const recoveryScenarioCatalog: readonly RecoveryScenario[] = [
       'Let bounded retry scheduling run; investigate exhausted items before manual action.',
   },
   {
+    id: 'scheduler-recurring-personal-reminder',
+    group: 'scheduler',
+    claim:
+      'A delivered personal recurring reminder advances the same row to the next bounded due time without inserting another reminder.',
+    evidence: 'tests/reminder-scheduler.test.ts',
+    recovery:
+      'Leave the live row in place. Do not insert replacement one-shot rows after a fire.',
+  },
+  {
     id: 'scheduler-draining-shutdown',
     group: 'scheduler',
     claim: 'Shutdown drains an in-flight RSS tick before storage closes.',

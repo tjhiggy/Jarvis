@@ -184,10 +184,12 @@ invalid content fails closed with a sanitized error that names
   command time, and delivers only to the original allowed channel or thread
   after live revalidation. Its public payload permits only the verified owner
   mention; reminder text cannot activate mass, member, role, or channel
-  mentions. There is no DM, recurring, exact-time, timezone, administrator
-  override, webhook, or external delivery path. SQLite reminder statements are
-  parameterized; lease and uncertain-delivery state prevent unsafe replay, and
-  logs exclude reminder content and Discord identities.
+  mentions. Personal reminders may optionally repeat daily or weekly until a
+  bound of at most 30 days on the same stored row. There is no DM, exact-time,
+  timezone, webhook, or external delivery path. Shared reminders remain
+  administrator-only one-shots. SQLite reminder statements are parameterized;
+  lease and uncertain-delivery state prevent unsafe replay, and logs exclude
+  reminder content and Discord identities.
 - **Sleeper boundary.** `SLEEPER_LEAGUE_ID` selects one public league and does
   not act as a credential. The integration reads rosters and user display
   names only, treats pre-draft unassigned owners as normal, and fails closed

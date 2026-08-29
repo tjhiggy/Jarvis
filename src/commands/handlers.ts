@@ -288,13 +288,13 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/my-stats status, enable, or disable manages your private opt-in command count.',
     '/image generate is an administrator-only image tool in its configured channel.',
     'Project feedback belongs in GitHub Discussions and native issue forms.',
-    '/reminder set in:<duration> message:<text> creates a private personal reminder request.',
+    '/reminder set in:<duration> message:<text> [every:daily|weekly until:<duration>] creates a private personal reminder request.',
     '/reminder list shows your retained reminders in this server.',
     '/reminder cancel id:<id> cancels one of your reminders.',
     '/reminder shared-set in:<duration> message:<text> posts an administrator reminder.',
     '/reminder shared-list lists shared reminders in this server.',
     '/reminder shared-cancel id:<id> cancels a shared reminder.',
-    'Reminder limits: 1 minute to 30 days, 500 characters, and 10 active reminders per server.',
+    'Reminder limits: 1 minute to 30 days, 500 characters, and 10 active reminders per server. Recurring personal reminders stay on one stored row and stop at the until bound.',
     '/help lists the available commands.',
     '/status reports safe service configuration and database health.',
     '/config shows administrators safe, non-secret Jarvis configuration.',
@@ -1142,6 +1142,8 @@ const handleReminder = async (
         return;
       }
       case 'set': {
+        const every = interaction.options.getString('every') ?? undefined;
+        const until = interaction.options.getString('until') ?? undefined;
         const reminder = await dependencies.reminderService.set({
           guildId: scope.guildId,
           channelId: scope.channelId,
@@ -1151,10 +1153,16 @@ const handleReminder = async (
           ...(scope.parentChannelId === undefined
             ? {}
             : { parentChannelId: scope.parentChannelId }),
+          ...(every === undefined ? {} : { every }),
+          ...(until === undefined ? {} : { until }),
         });
+        const recurrence =
+          reminder.recurrence === undefined || reminder.untilAt === undefined
+            ? ''
+            : ` Repeats ${reminder.recurrence} until ${discordTimestamp(reminder.untilAt)}.`;
         await editDeferredReplySafely(
           interaction,
-          `Reminder \`${reminder.id}\` set for ${discordTimestamp(reminder.dueAt)} in ${reminderDestination(reminder)}. Delivery depends on Jarvis retaining access to that location.`,
+          `Reminder \`${reminder.id}\` set for ${discordTimestamp(reminder.dueAt)} in ${reminderDestination(reminder)}.${recurrence} Delivery depends on Jarvis retaining access to that location.`,
         );
         return;
       }
@@ -1254,10 +1262,13 @@ const renderReminderList = (reminders: readonly ReminderView[]): string => {
   }
   return [
     'Your retained reminders:',
-    ...reminders.map(
-      (reminder) =>
-        `- \`${reminder.id}\` | ${discordTimestamp(reminder.dueAt)} | ${reminderDestination(reminder)} | ${reminderStatus(reminder)} | ${shortReminderText(reminder.message)}`,
-    ),
+    ...reminders.map((reminder) => {
+      const recurrence =
+        reminder.recurrence === undefined || reminder.untilAt === undefined
+          ? ''
+          : ` | repeats ${reminder.recurrence} until ${discordTimestamp(reminder.untilAt)}`;
+      return `- \`${reminder.id}\` | ${discordTimestamp(reminder.dueAt)} | ${reminderDestination(reminder)} | ${reminderStatus(reminder)}${recurrence} | ${shortReminderText(reminder.message)}`;
+    }),
   ].join('\n');
 };
 

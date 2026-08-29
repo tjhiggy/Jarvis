@@ -7,6 +7,8 @@ export type ReminderStatus =
   | 'cancelled'
   | 'failed';
 
+export type ReminderRecurrence = 'daily' | 'weekly';
+
 export interface ReminderView {
   readonly id: string;
   readonly guildId: string;
@@ -15,6 +17,8 @@ export interface ReminderView {
   readonly ownerUserId: string;
   readonly message: string;
   readonly dueAt: Date;
+  readonly recurrence?: ReminderRecurrence;
+  readonly untilAt?: Date;
   readonly status: ReminderStatus;
   readonly attemptCount: number;
   readonly nextAttemptAt?: Date;

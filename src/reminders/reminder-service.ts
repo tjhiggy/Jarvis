@@ -1,6 +1,7 @@
 import type { RateLimiter } from '../security/rate-limiter.js';
 import { parseReminderDuration } from './reminder-duration.js';
 import { createReminderId } from './reminder-identity.js';
+import { parseReminderRecurrence } from './reminder-recurrence.js';
 import {
   ReminderActiveLimitError,
   type ReminderStore,
@@ -55,6 +56,8 @@ export class ReminderService {
     readonly ownerUserId: string;
     readonly duration: string;
     readonly message: string;
+    readonly every?: string;
+    readonly until?: string;
   }): Promise<ReminderView> {
     const input = requireRequest(request);
     const guildId = requireIdentifier(input.guildId);
@@ -63,6 +66,7 @@ export class ReminderService {
     const parentChannelId = optionalIdentifier(input.parentChannelId);
     const message = requireString(input.message).trim();
     const duration = parseReminderDuration(requireString(input.duration));
+    const recurrence = optionalRecurrence(input.every, input.until);
     if (
       message.length === 0 ||
       message.length > 500 ||
@@ -71,6 +75,14 @@ export class ReminderService {
       throw new ReminderServiceError('invalid-request');
     }
     const createdAt = requireValidDate(this.now());
+    const dueAt = new Date(createdAt.getTime() + duration.milliseconds);
+    const untilAt =
+      recurrence === undefined
+        ? undefined
+        : new Date(createdAt.getTime() + recurrence.untilMilliseconds);
+    if (untilAt !== undefined && dueAt.getTime() > untilAt.getTime()) {
+      throw new ReminderServiceError('invalid-request');
+    }
     const id = requireReminderId(this.createId());
 
     this.consume(guildId, ownerUserId);
@@ -82,9 +94,15 @@ export class ReminderService {
           channelId,
           ownerUserId,
           message,
-          dueAt: new Date(createdAt.getTime() + duration.milliseconds),
+          dueAt,
           createdAt: new Date(createdAt),
           ...(parentChannelId === undefined ? {} : { parentChannelId }),
+          ...(recurrence === undefined || untilAt === undefined
+            ? {}
+            : {
+                recurrence: recurrence.every,
+                untilAt,
+              }),
         },
         this.activeLimit,
       );
@@ -137,7 +155,13 @@ export class ReminderService {
     duration: string;
     message: string;
   }): Promise<ReminderView> {
-    return this.set(request);
+    return this.set({
+      guildId: request.guildId,
+      channelId: request.channelId,
+      ownerUserId: request.ownerUserId,
+      duration: request.duration,
+      message: request.message,
+    });
   }
   async sharedList(request: {
     guildId: string;
@@ -211,6 +235,29 @@ function optionalIdentifier(value: unknown): string | undefined {
   return requireIdentifier(value);
 }
 
+function optionalRecurrence(
+  every: unknown,
+  until: unknown,
+):
+  | Readonly<{ every: 'daily' | 'weekly'; untilMilliseconds: number }>
+  | undefined {
+  if (every === undefined && until === undefined) {
+    return undefined;
+  }
+  if (typeof every !== 'string' || typeof until !== 'string') {
+    throw new ReminderServiceError('invalid-request');
+  }
+  const recurrence = parseReminderRecurrence(every);
+  const untilDuration = parseReminderDuration(until);
+  if (recurrence === undefined || untilDuration === undefined) {
+    throw new ReminderServiceError('invalid-request');
+  }
+  return {
+    every: recurrence,
+    untilMilliseconds: untilDuration.milliseconds,
+  };
+}
+
 function requireReminderId(value: unknown): string {
   const id = requireIdentifier(value);
   if (!/^[a-z2-7]{12}$/.test(id)) {
@@ -246,5 +293,8 @@ function copyReminder(reminder: ReminderView): ReminderView {
     ...(reminder.failedAt === undefined
       ? {}
       : { failedAt: new Date(reminder.failedAt) }),
+    ...(reminder.untilAt === undefined
+      ? {}
+      : { untilAt: new Date(reminder.untilAt) }),
   };
 }

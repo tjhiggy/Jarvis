@@ -50,6 +50,58 @@ describe('ReminderService', () => {
     expect(consumedKeys).toEqual([JSON.stringify(['guild-1', 'user-1'])]);
   });
 
+  it('stores a bounded personal recurrence on the same reminder row', async () => {
+    const { service, store } = fixture();
+
+    const reminder = await service.set({
+      ...request(),
+      duration: '1 day',
+      every: 'daily',
+      until: '7 days',
+    });
+
+    expect(reminder).toMatchObject({
+      recurrence: 'daily',
+      dueAt: new Date(now.getTime() + 86_400_000),
+      untilAt: new Date(now.getTime() + 7 * 86_400_000),
+    });
+    expect(store.created).toHaveLength(1);
+    expect(store.created[0]).toMatchObject({
+      recurrence: 'daily',
+      untilAt: new Date(now.getTime() + 7 * 86_400_000),
+    });
+  });
+
+  it.each([
+    { every: 'daily' },
+    { until: '7 days' },
+    { every: 'monthly', until: '7 days' },
+    { every: 'daily', until: 'tomorrow' },
+    { every: 'weekly', until: '12 hours', duration: '2 days' },
+  ])('rejects incomplete or invalid recurrence %j', async (fields) => {
+    const { service, store } = fixture();
+
+    await expect(
+      service.set({ ...request(), ...fields }),
+    ).rejects.toMatchObject({ code: 'invalid-request' });
+    expect(store.created).toEqual([]);
+  });
+
+  it('keeps shared-set on the one-shot create path', async () => {
+    const { service, store } = fixture();
+
+    await expect(
+      service.sharedSet({
+        ...request(),
+        ...({ every: 'daily', until: '7 days' } as object),
+      }),
+    ).resolves.toMatchObject({
+      message: 'Check the oven',
+    });
+    expect(store.created[0]).not.toHaveProperty('recurrence');
+    expect(store.created[0]).not.toHaveProperty('untilAt');
+  });
+
   it.each(['', 'x'.repeat(501)])(
     'rejects messages outside the allowed range',
     async (message) => {

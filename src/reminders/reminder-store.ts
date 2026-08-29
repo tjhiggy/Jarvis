@@ -1,4 +1,8 @@
-import type { ReminderStatusCounts, ReminderView } from './reminder-types.js';
+import type {
+  ReminderRecurrence,
+  ReminderStatusCounts,
+  ReminderView,
+} from './reminder-types.js';
 
 export interface CreateReminderInput {
   readonly id: string;
@@ -8,6 +12,8 @@ export interface CreateReminderInput {
   readonly ownerUserId: string;
   readonly message: string;
   readonly dueAt: Date;
+  readonly recurrence?: ReminderRecurrence;
+  readonly untilAt?: Date;
   readonly createdAt: Date;
 }
 

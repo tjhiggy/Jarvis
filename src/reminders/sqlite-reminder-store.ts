@@ -6,7 +6,9 @@ import {
   type ReminderFailureCategory,
   type ReminderStore,
 } from './reminder-store.js';
+import { nextReminderDueAt } from './reminder-recurrence.js';
 import type {
+  ReminderRecurrence,
   ReminderStatus,
   ReminderStatusCounts,
   ReminderView,
@@ -21,6 +23,8 @@ interface ReminderRow {
   owner_user_id: string;
   message: string;
   due_at: number;
+  recurrence: ReminderRecurrence | null;
+  until_at: number | null;
   status: ReminderStatus;
   attempt_count: number;
   next_attempt_at: number | null;
@@ -77,8 +81,9 @@ export class SQLiteReminderStore implements ReminderStore {
             `
               INSERT INTO reminders (
                 id, guild_id, channel_id, parent_channel_id, owner_user_id,
-                message, due_at, status, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                message, due_at, recurrence, until_at, status, created_at,
+                updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
             `,
           )
           .run(
@@ -89,6 +94,8 @@ export class SQLiteReminderStore implements ReminderStore {
             input.ownerUserId,
             input.message,
             input.dueAt.getTime(),
+            input.recurrence ?? null,
+            input.untilAt === undefined ? null : input.untilAt.getTime(),
             input.createdAt.getTime(),
             input.createdAt.getTime(),
           );
@@ -116,6 +123,9 @@ export class SQLiteReminderStore implements ReminderStore {
         ...input,
         dueAt: copyFiniteDate(input.dueAt),
         createdAt: copyFiniteDate(input.createdAt),
+        ...(input.untilAt === undefined
+          ? {}
+          : { untilAt: copyFiniteDate(input.untilAt) }),
       },
       activeLimit,
     );
@@ -288,16 +298,45 @@ export class SQLiteReminderStore implements ReminderStore {
   ): Promise<void> {
     this.ensureOpen();
     const deliveredMilliseconds = finiteDateMilliseconds(deliveredAt);
-    this.transition(
-      `
-        UPDATE reminders
-        SET status = 'delivered', delivered_at = ?, next_attempt_at = NULL,
-            lease_id = NULL, claimed_at = NULL, failure_category = NULL,
-            updated_at = ?
-        WHERE id = ? AND status = 'claimed' AND lease_id = ?
-      `,
-      [deliveredMilliseconds, deliveredMilliseconds, reminderId, leaseId],
-    );
+    this.database
+      .transaction(() => {
+        const row = this.database
+          .prepare(
+            `
+              SELECT * FROM reminders
+              WHERE id = ? AND status = 'claimed' AND lease_id = ?
+            `,
+          )
+          .get(reminderId, leaseId) as ReminderRow | undefined;
+        if (row === undefined) {
+          throw new ReminderStateConflictError('Reminder state conflict.');
+        }
+        const nextDueAt = nextDueAfterDelivery(row, deliveredAt);
+        if (nextDueAt === undefined) {
+          this.transition(
+            `
+              UPDATE reminders
+              SET status = 'delivered', delivered_at = ?, next_attempt_at = NULL,
+                  lease_id = NULL, claimed_at = NULL, failure_category = NULL,
+                  updated_at = ?
+              WHERE id = ? AND status = 'claimed' AND lease_id = ?
+            `,
+            [deliveredMilliseconds, deliveredMilliseconds, reminderId, leaseId],
+          );
+          return;
+        }
+        this.transition(
+          `
+            UPDATE reminders
+            SET status = 'pending', due_at = ?, attempt_count = 0,
+                next_attempt_at = NULL, lease_id = NULL, claimed_at = NULL,
+                failure_category = NULL, delivered_at = NULL, updated_at = ?
+            WHERE id = ? AND status = 'claimed' AND lease_id = ?
+          `,
+          [nextDueAt.getTime(), deliveredMilliseconds, reminderId, leaseId],
+        );
+      })
+      .immediate();
   }
 
   async markRetry(
@@ -450,10 +489,10 @@ export class SQLiteReminderStore implements ReminderStore {
           'SELECT version FROM reminder_schema_migrations WHERE version = 1',
         )
         .get();
-      if (applied !== undefined) return;
-      this.database
-        .prepare(
-          `
+      if (applied === undefined) {
+        this.database
+          .prepare(
+            `
             CREATE TABLE reminders (
               id TEXT PRIMARY KEY,
               guild_id TEXT NOT NULL,
@@ -479,29 +518,51 @@ export class SQLiteReminderStore implements ReminderStore {
               updated_at INTEGER NOT NULL
             )
           `,
-        )
-        .run();
-      this.database
-        .prepare(
-          `
+          )
+          .run();
+        this.database
+          .prepare(
+            `
             CREATE INDEX reminders_owner_due_id
             ON reminders (guild_id, owner_user_id, due_at, id)
           `,
-        )
-        .run();
-      this.database
-        .prepare(
-          `
+          )
+          .run();
+        this.database
+          .prepare(
+            `
             CREATE INDEX reminders_claim_due_id
             ON reminders (status, due_at, next_attempt_at, id)
           `,
-        )
-        .run();
-      this.database
+          )
+          .run();
+        this.database
+          .prepare(
+            'INSERT INTO reminder_schema_migrations (version, applied_at) VALUES (1, ?)',
+          )
+          .run(Date.now());
+      }
+      const hasRecurrence = this.database
         .prepare(
-          'INSERT INTO reminder_schema_migrations (version, applied_at) VALUES (1, ?)',
+          'SELECT version FROM reminder_schema_migrations WHERE version = 2',
         )
-        .run(Date.now());
+        .get();
+      if (hasRecurrence === undefined) {
+        this.database
+          .prepare(
+            `ALTER TABLE reminders ADD COLUMN recurrence TEXT
+              CHECK (recurrence IS NULL OR recurrence IN ('daily', 'weekly'))`,
+          )
+          .run();
+        this.database
+          .prepare('ALTER TABLE reminders ADD COLUMN until_at INTEGER')
+          .run();
+        this.database
+          .prepare(
+            'INSERT INTO reminder_schema_migrations (version, applied_at) VALUES (2, ?)',
+          )
+          .run(Date.now());
+      }
     })();
   }
 
@@ -528,6 +589,8 @@ function toReminderView(row: ReminderRow): ReminderView {
     ownerUserId: row.owner_user_id,
     message: row.message,
     dueAt: new Date(row.due_at),
+    ...(row.recurrence === null ? {} : { recurrence: row.recurrence }),
+    ...(row.until_at === null ? {} : { untilAt: new Date(row.until_at) }),
     status: row.status,
     attemptCount: row.attempt_count,
     ...(row.next_attempt_at === null
@@ -545,6 +608,21 @@ function toReminderView(row: ReminderRow): ReminderView {
       ? {}
       : { failureCategory: row.failure_category }),
   };
+}
+
+function nextDueAfterDelivery(
+  row: ReminderRow,
+  deliveredAt: Date,
+): Date | undefined {
+  if (row.recurrence === null || row.until_at === null) {
+    return undefined;
+  }
+  return nextReminderDueAt(
+    new Date(row.due_at),
+    row.recurrence,
+    new Date(row.until_at),
+    deliveredAt,
+  );
 }
 
 function copyFiniteDate(value: unknown): Date {
