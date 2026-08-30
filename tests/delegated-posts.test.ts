@@ -58,7 +58,7 @@ describe('delegated post command configuration', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]?.embeds?.[0]).toMatchObject({
       title: 'MuthaShip transmission',
-      fields: [expect.objectContaining({ name: 'Posted for' })],
+      fields: [expect.objectContaining({ name: 'Sent by' })],
     });
   });
 
@@ -190,7 +190,7 @@ describe('delegated posts', () => {
     ).resolves.toEqual({ id: 'msg-1' });
     expect(sent[0].embeds[0].title).toBe('MuthaShip transmission');
     expect(sent[0].embeds[0].fields).toContainEqual({
-      name: 'Posted for',
+      name: 'Sent by',
       value: 'U',
     });
     await expect(
