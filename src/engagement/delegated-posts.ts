@@ -113,7 +113,7 @@ export class DelegatedPostService {
     const card = buildEngagementCard({
       title: 'MuthaShip transmission',
       description: draft.content,
-      fields: [{ name: 'Posted for', value: draft.ownerName }],
+      fields: [{ name: 'Sent by', value: draft.ownerName }],
     });
     try {
       return await this.dependencies.gateway.post(draft.channelId, card);
