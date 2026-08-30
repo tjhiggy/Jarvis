@@ -1,4 +1,4 @@
-import { GatewayIntentBits } from 'discord.js';
+import { GatewayIntentBits, MessageFlags } from 'discord.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1184,6 +1184,91 @@ describe('createApplication', () => {
       listFeeds.mockRestore();
       fetch.mockRestore();
       close.mockRestore();
+    }
+  });
+
+  it('posts RSS digests with SuppressEmbeds so Discord does not unfurl article URLs', async () => {
+    const posted = deferred<unknown>();
+    let rssInterval: (() => void) | undefined;
+    const setIntervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((
+      callback: () => void,
+      delay?: number,
+    ) => {
+      if (delay === 300_000) rssInterval = callback;
+      return 1 as unknown as ReturnType<typeof setInterval>;
+    }) as typeof setInterval);
+    const clearIntervalSpy = vi
+      .spyOn(global, 'clearInterval')
+      .mockImplementation(() => undefined);
+    const listFeeds = vi
+      .spyOn(RssStorage.prototype, 'listFeeds')
+      .mockReturnValue([
+        {
+          serverId: 'guild-id',
+          url: 'https://news.example.com/feed.xml',
+          label: 'IGN',
+          paused: false,
+          baselined: true,
+        },
+      ]);
+    const fetch = vi
+      .spyOn(RssNotificationClient.prototype, 'fetch')
+      .mockResolvedValue([
+        {
+          id: 'gta-apartment',
+          title: 'GTA 6 apartment found in real life',
+          url: 'https://www.ign.com/articles/gta-6-apartment',
+          publishedAt: 'Sun, 30 Aug 2026 16:27:56 +0000',
+        },
+      ]);
+    try {
+      const application = await createTestApplication({
+        loadConfig: () => ({
+          ...config,
+          engagement: {
+            ...config.engagement,
+            enabled: true,
+            channels: { ...config.engagement.channels, rssId: 'channel-id' },
+            rssAllowedHosts: ['news.example.com'],
+            adminRoleIds: new Set(['12345678901234567']),
+          },
+        }),
+        loadPersona: async () => ({}) as TrustedPersona,
+        createStore: () => conversationStore(),
+        createAIService: () => ({ respond: async () => ({ text: 'unused' }) }),
+        createDiscordClient: () => ({
+          user: { id: 'bot-id' },
+          channels: {
+            fetch: async () => ({
+              send: async (payload: unknown) => {
+                posted.resolve(payload);
+                return { id: 'message-id' };
+              },
+            }),
+          },
+          on: () => undefined,
+          login: async () => undefined,
+          destroy: () => undefined,
+        }),
+        timers: inertTimers(),
+      });
+
+      rssInterval?.();
+      const payload = await posted.promise;
+      expect(payload).toEqual({
+        content: expect.stringContaining(
+          'https://www.ign.com/articles/gta-6-apartment',
+        ),
+        allowedMentions: { parse: [], repliedUser: false },
+        flags: MessageFlags.SuppressEmbeds,
+      });
+
+      await application.shutdown();
+    } finally {
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+      listFeeds.mockRestore();
+      fetch.mockRestore();
     }
   });
 

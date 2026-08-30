@@ -1,3 +1,4 @@
+import { MessageFlags } from 'discord.js';
 import type {
   RssNotificationClient,
   RssNotification,
@@ -21,6 +22,23 @@ export interface RssRenderedDigest {
   readonly entries: readonly RssDigestEntry[];
   readonly deliveryKeys: readonly string[];
 }
+
+export interface RssBroadcastSendPayload {
+  readonly content: string;
+  readonly allowedMentions: {
+    readonly parse: readonly [];
+    readonly repliedUser: false;
+  };
+  readonly flags: typeof MessageFlags.SuppressEmbeds;
+}
+
+export const rssBroadcastSendPayload = (
+  digest: Pick<RssRenderedDigest, 'content'>,
+): RssBroadcastSendPayload => ({
+  content: digest.content,
+  allowedMentions: { parse: [], repliedUser: false },
+  flags: MessageFlags.SuppressEmbeds,
+});
 
 export interface RssSchedulerPublisher {
   publish(channelId: string, digest: RssRenderedDigest): Promise<void>;
