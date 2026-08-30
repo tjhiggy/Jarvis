@@ -27,13 +27,16 @@ export interface DelegatedPostInteraction extends ReplyTarget {
 export async function handleDelegatedPostCommand(
   interaction: DelegatedPostInteraction,
   deps: Readonly<{
-    enabled: boolean;
     channelId: string;
     adminRoleIds: ReadonlySet<string>;
+    configuredGuildId?: string;
     service?: DelegatedPostService;
   }>,
 ): Promise<void> {
-  if (!interaction.guildId || !deps.enabled || !deps.service) {
+  const channelId = deps.channelId.trim();
+  const guildId =
+    interaction.guildId?.trim() || deps.configuredGuildId?.trim() || '';
+  if (!channelId || deps.adminRoleIds.size === 0 || !deps.service || !guildId) {
     await replySafely(
       interaction,
       'Delegated transmissions are not configured on the MuthaShip.',
@@ -48,7 +51,7 @@ export async function handleDelegatedPostCommand(
     const sub = interaction.options.getSubcommand();
     if (sub === 'confirm') {
       const posted = await deps.service.confirm({
-        guildId: interaction.guildId,
+        guildId,
         ownerUserId: interaction.user.id,
         draftId: interaction.options.getString('draft_id') ?? '',
       });
@@ -62,7 +65,7 @@ export async function handleDelegatedPostCommand(
       return replySafely(
         interaction,
         deps.service.cancel({
-          guildId: interaction.guildId,
+          guildId,
           ownerUserId: interaction.user.id,
           draftId: interaction.options.getString('draft_id') ?? '',
         })
@@ -71,14 +74,14 @@ export async function handleDelegatedPostCommand(
         true,
       );
     const draft = deps.service.preview({
-      guildId: interaction.guildId,
+      guildId,
       ownerUserId: interaction.user.id,
       ownerName:
         interaction.user.globalName ??
         interaction.user.username ??
         'crew member',
       ownerRoleIds: roleIds,
-      channelId: deps.channelId,
+      channelId,
       content: interaction.options.getString('content') ?? '',
     });
     await interaction.reply({

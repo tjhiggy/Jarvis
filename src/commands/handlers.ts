@@ -394,11 +394,9 @@ const handleCommandInternal = async (
       return;
     case 'post':
       await handleDelegatedPostCommand(interaction, {
-        enabled: dependencies.config.engagement?.enabled ?? false,
-        channelId:
-          dependencies.config.engagement?.channels.activityId ??
-          interaction.channelId,
+        channelId: dependencies.config.engagement?.channels.activityId ?? '',
         adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        configuredGuildId: dependencies.config.discord.guildId,
         ...(dependencies.delegatedPostService === undefined
           ? {}
           : { service: dependencies.delegatedPostService }),
