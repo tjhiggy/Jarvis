@@ -128,6 +128,7 @@ import {
 } from './notifications/proactive-catalog.js';
 import {
   renderRssDigest,
+  rssBroadcastSendPayload,
   RssScheduler,
   type RssDigest,
 } from './notifications/rss-scheduler.js';
@@ -943,10 +944,7 @@ export const createApplication = async (
             )
               throw new Error('Configured RSS channel is unavailable.');
             await runBroadcastDelivery('rss', () =>
-              sendable.send({
-                content: digest.content,
-                allowedMentions: { parse: [], repliedUser: false },
-              }),
+              sendable.send(rssBroadcastSendPayload(digest)),
             );
           },
         },

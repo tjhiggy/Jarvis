@@ -1,6 +1,11 @@
+import { MessageFlags } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import { formatRssDigest, rssIntegrationHealth } from '../src/index.js';
-import { RssScheduler } from '../src/notifications/rss-scheduler.js';
+import {
+  renderRssDigest,
+  rssBroadcastSendPayload,
+  RssScheduler,
+} from '../src/notifications/rss-scheduler.js';
 import { RssStorage } from '../src/notifications/rss-storage.js';
 
 describe('RssScheduler', () => {
@@ -285,6 +290,38 @@ describe('RssScheduler', () => {
       expect.any(Date),
       undefined,
     );
+  });
+
+  it('sends RSS digest URLs with SuppressEmbeds so Discord does not unfurl a second headline card', () => {
+    const digest = renderRssDigest({
+      entries: [
+        {
+          ...item('gta-apartment'),
+          sourceLabel: 'IGN',
+          deliveryKey: 'ign:gta-apartment',
+        },
+        {
+          ...item('elden-ring'),
+          sourceLabel: 'PC Gamer',
+          deliveryKey: 'pcgamer:elden-ring',
+        },
+      ],
+    });
+
+    const payload = rssBroadcastSendPayload(digest);
+
+    expect(payload.content).toContain(
+      '**IGN** · Update gta-apartment\nhttps://news.example.com/gta-apartment',
+    );
+    expect(payload.content).toContain(
+      '**PC Gamer** · Update elden-ring\nhttps://news.example.com/elden-ring',
+    );
+    expect(payload.allowedMentions).toEqual({
+      parse: [],
+      repliedUser: false,
+    });
+    expect(payload.flags).toBe(MessageFlags.SuppressEmbeds);
+    expect(payload).not.toHaveProperty('embeds');
   });
 
   it('keeps every rendered digest entry complete within the payload bound', () => {
