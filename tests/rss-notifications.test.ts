@@ -23,6 +23,11 @@ describe('RSS notifications', () => {
         'news.example.com',
       ]),
     ).toBe(false);
+    expect(
+      isAllowedRssUrl('https://user:password@news.example.com/feed.xml', [
+        'news.example.com',
+      ]),
+    ).toBe(false);
   });
 
   it('parses bounded RSS items and rejects oversized feeds', async () => {
@@ -77,6 +82,21 @@ describe('RSS notifications', () => {
       ).rejects.toThrow('RSS host did not resolve to a public address.');
     },
   );
+
+  it('rejects an allowlisted hostname that also resolves to a private address', async () => {
+    const lookup = createPublicRssLookup(async () => [
+      { address: '8.8.8.8', family: 4 },
+      { address: '127.0.0.1', family: 4 },
+    ]);
+
+    await expect(
+      new Promise((resolve, reject) =>
+        lookup('feeds.example.com', { all: true }, (error, addresses) =>
+          error === null ? resolve(addresses) : reject(error),
+        ),
+      ),
+    ).rejects.toThrow('RSS host did not resolve to a public address.');
+  });
 
   it('returns only public DNS results for the socket connection', async () => {
     const lookup = createPublicRssLookup(async () => [

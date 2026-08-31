@@ -89,6 +89,7 @@ describe('approved knowledge', () => {
   });
 
   it('lists pending and expired sources with approval status for administrators', async () => {
+    const now = Date.now();
     const catalog = buildKnowledgeCatalog(
       [
         {
@@ -97,7 +98,7 @@ describe('approved knowledge', () => {
           content: 'A',
           source: 'ops',
           approved: true,
-          updatedAt: '2026-08-01T00:00:00Z',
+          updatedAt: new Date(now - 86_400_000).toISOString(),
           retentionDays: 30,
         },
         {
@@ -106,7 +107,7 @@ describe('approved knowledge', () => {
           content: 'P',
           source: 'draft',
           approved: false,
-          updatedAt: '2026-08-01T00:00:00Z',
+          updatedAt: new Date(now - 86_400_000).toISOString(),
         },
         {
           id: 'expired',
@@ -114,11 +115,11 @@ describe('approved knowledge', () => {
           content: 'E',
           source: 'old',
           approved: true,
-          updatedAt: '2026-01-01T00:00:00Z',
+          updatedAt: new Date(now - 40 * 86_400_000).toISOString(),
           retentionDays: 1,
         },
       ],
-      new Date('2026-08-09T00:00:00Z'),
+      new Date(now),
     );
     const store = new SQLiteKnowledgeApprovalStore(':memory:');
     await expect(store.listForAdmin('crew', catalog)).resolves.toEqual([
