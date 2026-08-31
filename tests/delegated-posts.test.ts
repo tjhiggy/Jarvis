@@ -146,6 +146,91 @@ describe('delegated post command configuration', () => {
       expect(preview.replies[0]?.content).not.toContain('admin-role');
     },
   );
+
+  it('fails closed as not configured when neither the interaction nor config supplies a guild', async () => {
+    const { service, sent } = setup(new Set(['admin-role']));
+    const preview = postInteraction({
+      guildId: null,
+      roleIds: ['admin-role'],
+    });
+
+    await handleCommand(
+      preview.interaction,
+      commandDependencies({
+        service,
+        activityId: 'activity-channel',
+        adminRoleIds: new Set(['admin-role']),
+        configuredGuildId: '',
+      }),
+    );
+
+    expect(sent).toEqual([]);
+    expect(preview.replies).toEqual([
+      expect.objectContaining({
+        ephemeral: true,
+        content: 'Delegated transmissions are not configured on the MuthaShip.',
+      }),
+    ]);
+  });
+
+  it('refuses a configured /post from a member without an administrator role', async () => {
+    const { service, sent } = setup(new Set(['admin-role']));
+    const preview = postInteraction({
+      guildId: 'guild-1',
+      roleIds: ['crew-role'],
+    });
+
+    await handleCommand(
+      preview.interaction,
+      commandDependencies({
+        service,
+        activityId: 'activity-channel',
+        adminRoleIds: new Set(['admin-role']),
+      }),
+    );
+
+    expect(sent).toEqual([]);
+    expect(preview.replies).toEqual([
+      expect.objectContaining({
+        ephemeral: true,
+        content:
+          'Delegated transmissions are restricted to configured MuthaShip administrators.',
+      }),
+    ]);
+    expect(preview.replies[0]?.content).not.toMatch(/not configured/i);
+  });
+
+  it.each([
+    ['blank content', '   '],
+    ['oversized content', 'x'.repeat(1_501)],
+  ])(
+    'maps %s to the bounded character-limit reply without posting',
+    async (_name, content) => {
+      const { service, sent } = setup(new Set(['admin-role']));
+      const preview = postInteraction({
+        guildId: 'guild-1',
+        roleIds: ['admin-role'],
+        values: { content },
+      });
+
+      await handleCommand(
+        preview.interaction,
+        commandDependencies({
+          service,
+          activityId: 'activity-channel',
+          adminRoleIds: new Set(['admin-role']),
+        }),
+      );
+
+      expect(sent).toEqual([]);
+      expect(preview.replies).toEqual([
+        expect.objectContaining({
+          ephemeral: true,
+          content: 'Use a message between 1 and 1,500 characters.',
+        }),
+      ]);
+    },
+  );
 });
 
 describe('delegated posts', () => {

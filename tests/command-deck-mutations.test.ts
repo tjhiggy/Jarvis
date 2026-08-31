@@ -388,4 +388,64 @@ describe('Command Deck mutation service', () => {
       ok: true,
     });
   });
+
+  it.each([
+    [
+      'HTTP RSS URL',
+      {
+        type: 'rss_feed',
+        operation: 'add',
+        url: 'http://news.example.test/feed.xml',
+        label: 'Official feed',
+      },
+    ],
+    [
+      'credentialed RSS URL',
+      {
+        type: 'rss_feed',
+        operation: 'add',
+        url: 'https://user:password@news.example.test/feed.xml',
+        label: 'Official feed',
+      },
+    ],
+    [
+      'RSS host outside the allowlist',
+      {
+        type: 'rss_feed',
+        operation: 'add',
+        url: 'https://evil.example.test/feed.xml',
+        label: 'Official feed',
+      },
+    ],
+    [
+      'malformed RSS feed id',
+      {
+        type: 'rss_feed',
+        operation: 'remove',
+        feedId: 'rss_not-a-valid-feed-id',
+      },
+    ],
+    [
+      'broadcast category outside the catalog',
+      { type: 'broadcast_state', category: 'trivia', state: 'paused' },
+    ],
+    [
+      'feature flag outside the catalog',
+      { type: 'feature_flag', feature: 'unknownFlag', enabled: true },
+    ],
+  ])(
+    'rejects %s at preview without applying a mutation',
+    async (_label, action) => {
+      const adapter = new InMemoryMutationAdapter();
+      const service = createCommandDeckMutationService({ adapter });
+      const result = await service.preview(action);
+
+      expect(result).toMatchObject({
+        ok: false,
+        error: { code: 'INVALID_ACTION' },
+      });
+      expect(JSON.stringify(result)).not.toMatch(/password|evil\.example/i);
+      expect(adapter.attempts).toEqual([]);
+    },
+  );
 });
