@@ -26,7 +26,7 @@ Preconditions:
 - `node_modules/.bin/vitest` exists.
 - No Discord token and no Command Deck write token are in the environment.
 
-- **Preview and stale confirm.** Run `npm test -- tests/command-deck-mutations.test.ts`. The tests `previews an exact, private before and after diff` and `rejects a stale preview without applying the action` must pass. `adapter.attempts` stays empty on stale confirm.
+- **Preview and stale confirm.** Run `npm test -- tests/command-deck-mutations.test.ts --reporter=verbose`. The tests `previews an exact, private before and after diff` and `rejects a stale preview without applying the action` must pass. `adapter.attempts` stays empty on stale confirm.
 - **Cancel.** The test `cancels an unused preview and prevents confirmation` expects `PREVIEW_CANCELLED`.
 - **In-flight and retry.** The tests `serializes duplicate confirmation and rejects a different in-flight idempotency key` and `keeps a known failed confirmation retryable with the same operation id` must pass.
 - **Rollback.** The tests that require rollback preview/confirm and fail when the target changes must pass in the same file.

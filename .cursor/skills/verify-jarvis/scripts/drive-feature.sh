@@ -47,13 +47,13 @@ SECOND_COMMAND=()
 
 case "$FEATURE" in
   rss-digest)
-    COMMAND=(npm test -- tests/rss-scheduler.test.ts)
+    COMMAND=(npm test -- tests/rss-scheduler.test.ts --reporter=verbose)
     ;;
   delegated-posts)
-    COMMAND=(npm test -- tests/delegated-posts.test.ts)
+    COMMAND=(npm test -- tests/delegated-posts.test.ts --reporter=verbose)
     ;;
   command-deck-confirm)
-    COMMAND=(npm test -- tests/command-deck-mutations.test.ts)
+    COMMAND=(npm test -- tests/command-deck-mutations.test.ts --reporter=verbose)
     ;;
   discord-journey-matrix)
     COMMAND=(npm run journeys:check)

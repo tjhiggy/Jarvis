@@ -83,7 +83,7 @@ Harness is npm + Vitest + the repo's `tsx` verifiers. Real commands from this ch
 
 Feature IDs: `rss-digest`, `delegated-posts`, `command-deck-confirm`, `discord-journey-matrix`.
 
-Focused files use `npm test -- tests/<file>.test.ts`. Do not substitute a live guild smoke, Command Deck click-through against a real token, or GAMING-BRO.
+Focused files use `npm test -- tests/<file>.test.ts --reporter=verbose` so the artifact names the assertion. Do not substitute a live guild smoke, Command Deck click-through against a real token, or GAMING-BRO.
 
 Two verification runs may share `node_modules`. Do not run a second `npm ci` against the same tree in parallel. Do not start a Jarvis process.
 

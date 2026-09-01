@@ -24,7 +24,7 @@ Preconditions:
 - `node_modules/.bin/vitest` exists.
 - No Discord token is in the environment.
 
-- **Configured preview and confirm.** Run `npm test -- tests/delegated-posts.test.ts`. The test `previews and confirms for a guild interaction when channel and admin roles are configured` expects an ephemeral preview, then an ephemeral "transmission posted to the test channel" reply, `sent` length `1`, title `MuthaShip transmission`, and a field named `Sent by`.
+- **Configured preview and confirm.** Run `npm test -- tests/delegated-posts.test.ts --reporter=verbose`. The test `previews and confirms for a guild interaction when channel and admin roles are configured` expects an ephemeral preview, then an ephemeral "transmission posted to the test channel" reply, `sent` length `1`, title `MuthaShip transmission`, and a field named `Sent by`.
 - **Missing guild id.** The test `previews and confirms without interaction.guildId using the configured guild` must pass in the same file.
 - **Sent by value.** The test `confirms once and prevents duplicate drafts` expects `sent[0].embeds[0].fields` to contain `{ name: 'Sent by', value: 'U' }` and a second confirm to reject.
 - **Driver.** Equivalent one-shot: `.cursor/skills/verify-jarvis/scripts/drive-feature.sh delegated-posts`.

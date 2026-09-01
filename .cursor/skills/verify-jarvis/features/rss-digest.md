@@ -23,7 +23,7 @@ Preconditions:
 - `node_modules/.bin/vitest` exists.
 - No Discord token is in the environment.
 
-- **Digest body.** Prove the formatted entries. Run `npm test -- tests/rss-scheduler.test.ts`. The test `sends RSS digest URLs with SuppressEmbeds so Discord does not unfurl a second headline card` expects `payload.content` to contain `**IGN** · Update gta-apartment` and `**PC Gamer** · Update elden-ring` with their `https://news.example.com/...` URLs.
+- **Digest body.** Prove the formatted entries. Run `npm test -- tests/rss-scheduler.test.ts --reporter=verbose`. The test `sends RSS digest URLs with SuppressEmbeds so Discord does not unfurl a second headline card` expects `payload.content` to contain `**IGN** · Update gta-apartment` and `**PC Gamer** · Update elden-ring` with their `https://news.example.com/...` URLs.
 - **Suppress embeds.** In the same test, `payload.flags` equals `MessageFlags.SuppressEmbeds` and `payload` does not have `embeds`.
 - **Mention lock.** In the same test, `payload.allowedMentions` equals `{ parse: [], repliedUser: false }`.
 - **Bounded payload.** The test `keeps every rendered digest entry complete within the payload bound` stays in the same file and must pass with the SuppressEmbeds case.
