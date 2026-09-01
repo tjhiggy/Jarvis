@@ -551,6 +551,18 @@ describe('ConversationService', () => {
       'Schedule me a DM tomorrow',
       'I cannot place calls, send messages, or contact people.',
     ],
+    [
+      'Buy the crew new licenses',
+      'I cannot make purchases, payments, orders, or financial transactions.',
+    ],
+    [
+      'Monitor the Discord server overnight',
+      'I cannot monitor, scan, track, or perform background work.',
+    ],
+    [
+      'Please could you run this shell command',
+      'I cannot execute code, commands, files, or repository changes.',
+    ],
   ])(
     'blocks unsupported action request %j before the AI',
     async (prompt, expectedText) => {

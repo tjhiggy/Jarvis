@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { commandDeckRssFeedId } from '../src/admin/command-deck-rss-feed.js';
 import {
   createCommandDeckMutationService,
   type CommandDeckMutationAction,
@@ -25,6 +26,8 @@ class InMemoryMutationAdapter implements CommandDeckMutationAdapter {
 
   failNextApply = false;
   applyThenTimeout = false;
+  operationStatusThrows = false;
+  operationStatusOverride: 'applied' | 'not_applied' | undefined = undefined;
 
   private readonly values = new Map<string, unknown>();
   private readonly operations = new Map<string, 'applied' | 'not_applied'>();
@@ -85,7 +88,14 @@ class InMemoryMutationAdapter implements CommandDeckMutationAdapter {
   async operationStatus(
     operationId: string,
   ): Promise<'applied' | 'not_applied'> {
-    return this.operations.get(operationId) ?? 'not_applied';
+    if (this.operationStatusThrows) {
+      throw new Error('The local Jarvis adapter is unavailable.');
+    }
+    return (
+      this.operationStatusOverride ??
+      this.operations.get(operationId) ??
+      'not_applied'
+    );
   }
 
   deferNextApply(): { waitForStart: () => Promise<void>; release: () => void } {
@@ -386,6 +396,239 @@ describe('Command Deck mutation service', () => {
     ).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_ACTION' } });
     await expect(service.preview(recapPause)).resolves.toMatchObject({
       ok: true,
+    });
+  });
+
+  it('projects RSS add previews as a feed ID and trimmed label without the URL', async () => {
+    const adapter = new InMemoryMutationAdapter();
+    const url = 'https://news.example.test/feed.xml';
+    const action: CommandDeckMutationAction = {
+      type: 'rss_feed',
+      operation: 'add',
+      url,
+      label: ' Official feed ',
+    };
+    const service = createCommandDeckMutationService({ adapter });
+    const preview = await service.preview(action);
+    if (!preview.ok) throw new Error('Expected preview to succeed.');
+
+    expect(preview.preview.diff).toEqual({
+      before: undefined,
+      after: {
+        feedId: commandDeckRssFeedId(url),
+        label: 'Official feed',
+      },
+    });
+    expect(JSON.stringify(preview.preview.diff)).not.toContain(url);
+    expect(adapter.attempts).toEqual([]);
+  });
+
+  it.each([
+    [
+      'a blank RSS label',
+      {
+        type: 'rss_feed',
+        operation: 'add',
+        url: 'https://news.example.test/feed.xml',
+        label: '   ',
+      },
+    ],
+    [
+      'a malformed RSS URL',
+      {
+        type: 'rss_feed',
+        operation: 'add',
+        url: 'not a url',
+        label: 'Official feed',
+      },
+    ],
+  ])(
+    'rejects %s at preview without applying a mutation',
+    async (_label, action) => {
+      const adapter = new InMemoryMutationAdapter();
+      const service = createCommandDeckMutationService({ adapter });
+
+      await expect(service.preview(action)).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'INVALID_ACTION' },
+      });
+      expect(adapter.attempts).toEqual([]);
+    },
+  );
+
+  it('rejects confirmation of an unknown preview without applying', async () => {
+    const adapter = new InMemoryMutationAdapter();
+    adapter.set(recapPause, true);
+    const service = createCommandDeckMutationService({ adapter });
+
+    await expect(
+      service.confirm({
+        previewId: 'missing-preview',
+        action: recapPause,
+        idempotencyKey: 'unknown',
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'PREVIEW_NOT_FOUND' },
+    });
+    expect(adapter.attempts).toEqual([]);
+  });
+
+  it('rejects a confirmation whose action does not match the preview', async () => {
+    const adapter = new InMemoryMutationAdapter();
+    adapter.set(recapPause, true);
+    const service = createCommandDeckMutationService({ adapter });
+    const preview = await service.preview(recapPause);
+    if (!preview.ok) throw new Error('Expected preview to succeed.');
+
+    await expect(
+      service.confirm({
+        previewId: preview.preview.id,
+        action: { type: 'broadcast_state', category: 'rss', state: 'paused' },
+        idempotencyKey: 'mismatch',
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'PREVIEW_MISMATCH' },
+    });
+    expect(adapter.attempts).toEqual([]);
+  });
+
+  it('rejects reuse of an idempotency key against a different preview', async () => {
+    const adapter = new InMemoryMutationAdapter();
+    adapter.set(recapPause, true);
+    const service = createCommandDeckMutationService({ adapter });
+    const firstPreview = await service.preview(recapPause);
+    if (!firstPreview.ok) throw new Error('Expected preview to succeed.');
+    await expect(
+      service.confirm({
+        previewId: firstPreview.preview.id,
+        action: recapPause,
+        idempotencyKey: 'shared-key',
+      }),
+    ).resolves.toMatchObject({ ok: true });
+
+    adapter.set(recapPause, true);
+    const secondPreview = await service.preview(recapPause);
+    if (!secondPreview.ok) throw new Error('Expected preview to succeed.');
+    await expect(
+      service.confirm({
+        previewId: secondPreview.preview.id,
+        action: recapPause,
+        idempotencyKey: 'shared-key',
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'IDEMPOTENCY_MISMATCH' },
+    });
+    expect(adapter.attempts).toHaveLength(1);
+  });
+
+  it('reports an unknown apply outcome when adapter status cannot be read', async () => {
+    const adapter = new InMemoryMutationAdapter();
+    adapter.set(recapPause, true);
+    adapter.failNextApply = true;
+    adapter.operationStatusThrows = true;
+    const service = createCommandDeckMutationService({ adapter });
+    const preview = await service.preview(recapPause);
+    if (!preview.ok) throw new Error('Expected preview to succeed.');
+
+    await expect(
+      service.confirm({
+        previewId: preview.preview.id,
+        action: recapPause,
+        idempotencyKey: 'unknown-outcome',
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'APPLY_OUTCOME_UNKNOWN' },
+    });
+    expect(adapter.attempts).toEqual([]);
+  });
+
+  it('completes an expired preview when the adapter already applied the operation', async () => {
+    const adapter = new InMemoryMutationAdapter();
+    adapter.set(recapPause, true);
+    let now = new Date('2026-08-23T12:00:00.000Z');
+    const service = createCommandDeckMutationService({
+      adapter,
+      now: () => now,
+    });
+    const preview = await service.preview(recapPause);
+    if (!preview.ok) throw new Error('Expected preview to succeed.');
+    now = new Date('2026-08-23T12:05:00.001Z');
+    adapter.operationStatusOverride = 'applied';
+
+    const confirmation = await service.confirm({
+      previewId: preview.preview.id,
+      action: recapPause,
+      idempotencyKey: 'expired-applied',
+    });
+
+    expect(confirmation).toMatchObject({ ok: true });
+    expect(adapter.attempts).toEqual([]);
+  });
+
+  it('keeps an expired preview stale when adapter status cannot be read', async () => {
+    const adapter = new InMemoryMutationAdapter();
+    adapter.set(recapPause, true);
+    let now = new Date('2026-08-23T12:00:00.000Z');
+    const service = createCommandDeckMutationService({
+      adapter,
+      now: () => now,
+    });
+    const preview = await service.preview(recapPause);
+    if (!preview.ok) throw new Error('Expected preview to succeed.');
+    now = new Date('2026-08-23T12:05:00.001Z');
+    adapter.operationStatusThrows = true;
+
+    await expect(
+      service.confirm({
+        previewId: preview.preview.id,
+        action: recapPause,
+        idempotencyKey: 'expired-unknown',
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'PREVIEW_STALE' },
+    });
+    expect(adapter.attempts).toEqual([]);
+  });
+
+  it('rejects an unknown rollback token without reading the target', async () => {
+    const adapter = new InMemoryMutationAdapter();
+    const service = createCommandDeckMutationService({ adapter });
+
+    await expect(
+      service.previewRollback('missing-token'),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'ROLLBACK_NOT_FOUND' },
+    });
+  });
+
+  it('refuses rollback preview when the target changed after confirmation', async () => {
+    const adapter = new InMemoryMutationAdapter();
+    adapter.set(recapPause, true);
+    const service = createCommandDeckMutationService({ adapter });
+    const preview = await service.preview(recapPause);
+    if (!preview.ok) throw new Error('Expected preview to succeed.');
+    const confirmation = await service.confirm({
+      previewId: preview.preview.id,
+      action: recapPause,
+      idempotencyKey: 'rollback-conflict-source',
+    });
+    if (!confirmation.ok) throw new Error('Expected confirmation to succeed.');
+    if (confirmation.receipt.rollbackToken === undefined) {
+      throw new Error('Expected a rollback token.');
+    }
+    adapter.set(recapPause, true);
+
+    await expect(
+      service.previewRollback(confirmation.receipt.rollbackToken),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'ROLLBACK_CONFLICT' },
     });
   });
 });
