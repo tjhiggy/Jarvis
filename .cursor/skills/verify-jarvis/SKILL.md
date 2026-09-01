@@ -93,7 +93,7 @@ Named artifacts path (survives cleanup):
 
 ```text
 .cursor/skills/verify-jarvis/artifacts/<feature-id>/
-├── verify.log    # full command stdout/stderr
+├── verify.txt    # full command stdout/stderr (`.txt` so gitignore `*.log` does not hide proof)
 └── meta.txt      # command, UTC timestamps, exit codes
 ```
 

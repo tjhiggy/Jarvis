@@ -41,7 +41,7 @@ REPO_ROOT="$(find_repo_root "$SCRIPT_DIR")" || {
 
 ARTIFACTS="$REPO_ROOT/.cursor/skills/verify-jarvis/artifacts/$FEATURE"
 mkdir -p "$ARTIFACTS"
-LOG="$ARTIFACTS/verify.log"
+LOG="$ARTIFACTS/verify.txt"
 META="$ARTIFACTS/meta.txt"
 SECOND_COMMAND=()
 

@@ -26,7 +26,7 @@ Preconditions:
 - **Catalog freshness.** Run `npm run journeys:check`. Exit code `0` and a console line that the Discord journey matrix is current. A stale `docs/DISCORD_JOURNEY_VERIFICATION.md` fails here; do not run `journeys:write` unless the catalog change is the assigned work.
 - **Focused evidence.** Run `npm run journeys:verify`. Exit code `0`. The verifier executes the mapped test files with a disposable environment and writes `.artifacts/qa/discord-journeys.json`.
 - **Driver.** Equivalent one-shot: `.cursor/skills/verify-jarvis/scripts/drive-feature.sh discord-journey-matrix`.
-- **Proof.** Artifact `.cursor/skills/verify-jarvis/artifacts/discord-journey-matrix/verify.log` contains both commands and exit `0`. The git-ignored receipt is supporting evidence only. It must not be copied into the skill artifacts if it would include identifiers; the sanitized file is already redacted, but the named proof is the command log.
+- **Proof.** Artifact `.cursor/skills/verify-jarvis/artifacts/discord-journey-matrix/verify.txt` contains both commands and exit `0`. The git-ignored receipt is supporting evidence only. It must not be copied into the skill artifacts if it would include identifiers; the sanitized file is already redacted, but the named proof is the command transcript.
 
 ## Gotchas
 

@@ -28,7 +28,7 @@ Preconditions:
 - **Mention lock.** In the same test, `payload.allowedMentions` equals `{ parse: [], repliedUser: false }`.
 - **Bounded payload.** The test `keeps every rendered digest entry complete within the payload bound` stays in the same file and must pass with the SuppressEmbeds case.
 - **Driver.** Equivalent one-shot: `.cursor/skills/verify-jarvis/scripts/drive-feature.sh rss-digest`.
-- **Proof.** Exit code `0`. Artifact `.cursor/skills/verify-jarvis/artifacts/rss-digest/verify.log` contains the SuppressEmbeds test name and a passing Vitest summary.
+- **Proof.** Exit code `0`. Artifact `.cursor/skills/verify-jarvis/artifacts/rss-digest/verify.txt` contains the SuppressEmbeds test name and a passing Vitest summary.
 
 ## Gotchas
 

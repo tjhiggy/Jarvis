@@ -28,7 +28,7 @@ Preconditions:
 - **Missing guild id.** The test `previews and confirms without interaction.guildId using the configured guild` must pass in the same file.
 - **Sent by value.** The test `confirms once and prevents duplicate drafts` expects `sent[0].embeds[0].fields` to contain `{ name: 'Sent by', value: 'U' }` and a second confirm to reject.
 - **Driver.** Equivalent one-shot: `.cursor/skills/verify-jarvis/scripts/drive-feature.sh delegated-posts`.
-- **Proof.** Exit code `0`. Artifact `.cursor/skills/verify-jarvis/artifacts/delegated-posts/verify.log` contains `Sent by` assertions and a passing Vitest summary.
+- **Proof.** Exit code `0`. Artifact `.cursor/skills/verify-jarvis/artifacts/delegated-posts/verify.txt` contains `Sent by` assertions and a passing Vitest summary.
 
 ## Gotchas
 

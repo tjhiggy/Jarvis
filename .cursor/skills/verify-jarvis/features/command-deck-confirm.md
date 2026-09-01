@@ -31,7 +31,7 @@ Preconditions:
 - **In-flight and retry.** The tests `serializes duplicate confirmation and rejects a different in-flight idempotency key` and `keeps a known failed confirmation retryable with the same operation id` must pass.
 - **Rollback.** The tests that require rollback preview/confirm and fail when the target changes must pass in the same file.
 - **Driver.** Equivalent one-shot: `.cursor/skills/verify-jarvis/scripts/drive-feature.sh command-deck-confirm`.
-- **Proof.** Exit code `0`. Artifact `.cursor/skills/verify-jarvis/artifacts/command-deck-confirm/verify.log` contains the confirm/cancel/rollback test names and a passing Vitest summary.
+- **Proof.** Exit code `0`. Artifact `.cursor/skills/verify-jarvis/artifacts/command-deck-confirm/verify.txt` contains the confirm/cancel/rollback test names and a passing Vitest summary.
 
 ## Gotchas
 

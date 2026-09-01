@@ -1,0 +1,4 @@
+cleanup: repo=/workspace
+cleanup: preserving artifacts at /workspace/.cursor/skills/verify-jarvis/artifacts
+cleanup: no scratch directory at /tmp/verify-jarvis-scratch
+cleanup: artifacts remain at /workspace/.cursor/skills/verify-jarvis/artifacts
