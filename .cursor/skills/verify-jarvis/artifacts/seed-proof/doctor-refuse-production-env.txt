@@ -1,0 +1,8 @@
+doctor: repo=/workspace
+doctor: node=v22.14.0
+doctor: inspecting extra env-file (path only; values not printed)
+doctor: vitest=present
+doctor: FAIL closed
+doctor: - env-file has a non-empty DISCORD_TOKEN; refuse live Discord credentials
+doctor: - env-file is a production environment (JARVIS_ENVIRONMENT=production)
+exit=1
