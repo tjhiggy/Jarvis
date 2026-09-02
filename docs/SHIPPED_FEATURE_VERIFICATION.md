@@ -19,6 +19,7 @@
 | Delegated and Command Deck transmissions    | pass   | Administrator | `/post`                                                                                     | transmission-preview-send                                                                     |
 | GitHub read-only integration                | pass   | Member        | `/github`                                                                                   | github-readiness                                                                              |
 | Events, game nights, and crew matchmaking   | pass   | Mixed         | `/event`, `/game-night`, `/lfg`                                                             | event-totals, event-scheduler                                                                 |
+| Instant bird call                           | pass   | Member        | `/bird-call`                                                                                | None                                                                                          |
 | Weekly engagement recaps                    | pass   | Administrator | `/recap`                                                                                    | recap-controls                                                                                |
 | Trivia rounds                               | pass   | Mixed         | `/trivia`                                                                                   | trivia-totals, trivia-controls                                                                |
 | Engagement controls and metrics             | pass   | Administrator | `/engagement`                                                                               | engagement-metrics, feature-flags, scheduler-controls                                         |
@@ -160,6 +161,16 @@
 - Automated: `tests/event-command.test.ts`, `tests/event-scheduler.test.ts`, `tests/game-night.test.ts`, `tests/looking-for-group.test.ts`
 - Smoke: Create and cancel an event, record each RSVP choice, schedule a game night, and post one LFG request in the test channel.
 
+### Instant bird call
+
+- Status: **pass**
+- Owner: `src/commands/bird-call.ts`
+- Configuration: None
+- Permissions: Any guild member can post one public bird call in the current channel. Direct messages fail closed. Mentions in optional game text are neutralized and allowedMentions stay empty.
+- Persistence: Bird calls create no retained Jarvis record and do not replace /lfg or /game-night.
+- Automated: `tests/bird-call-command.test.ts`
+- Smoke: Run /bird-call and /bird-call game:<name> in a guild channel, confirm the public invite, then confirm a DM stays ephemeral with no public line.
+
 ### Weekly engagement recaps
 
 - Status: **pass**
@@ -232,9 +243,9 @@
 
 ## Reconciliation summary
 
-- Feature records: 20
-- Registered Discord commands: 37
-- Commands with exactly one owner: 37
+- Feature records: 21
+- Registered Discord commands: 38
+- Commands with exactly one owner: 38
 - Registered Command Deck workflows: 28
 - Workflows with exactly one owner: 28
 - Findings: 0
