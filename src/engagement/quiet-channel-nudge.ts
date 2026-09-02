@@ -221,7 +221,7 @@ export class QuietChannelNudgeService {
         },
         'Quiet channel nudge composition failed.',
       );
-      return '';
+      return fallbackNudge;
     }
   }
 
