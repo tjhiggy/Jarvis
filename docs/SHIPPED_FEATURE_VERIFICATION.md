@@ -145,7 +145,7 @@
 - Status: **pass**
 - Owner: `src/github/github-service.ts`
 - Configuration: `GITHUB_OWNER`, `GITHUB_REPO`
-- Permissions: Repository, issue, and pull-request reads are fixed to one configured repository; Jarvis has no GitHub write authority.
+- Permissions: Repository, issue, and pull-request reads are fixed to one configured repository; /github does not mutate GitHub state.
 - Persistence: GitHub response content is not retained by the integration.
 - Automated: `tests/github-service.test.ts`
 - Smoke: Run each /github read-only subcommand and verify requests cannot target another repository or mutate GitHub state.
@@ -194,11 +194,11 @@
 
 - Status: **pass**
 - Owner: `src/commands/request.ts`
-- Configuration: `ENGAGEMENT_ADMIN_ROLE_IDS`
-- Permissions: Only configured administrators can post in captains-quarters; other channels fail closed with no public request.
-- Persistence: Request posts are not retained by Jarvis.
-- Automated: `tests/request-command.test.ts`
-- Smoke: Post one /request in captains-quarters as an administrator and verify non-admins and other channels are denied without a public REQUEST.
+- Configuration: `ENGAGEMENT_ADMIN_ROLE_IDS`, `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_TOKEN`
+- Permissions: Only configured administrators can post in captains-quarters; other channels and non-admins fail closed with no public request and no GitHub issue. Issue creation uses the configured repository token, not a personal GitHub identity.
+- Persistence: Successful requests create one GitHub issue in the configured repository. Discord REQUEST posts are not retained by Jarvis. Failed issue creation stays ephemeral and does not claim an issue exists.
+- Automated: `tests/request-command.test.ts`, `tests/github-issue-create.test.ts`
+- Smoke: Post one /request in captains-quarters as an administrator and verify the public REQUEST includes the created issue URL, then verify non-admins, other channels, and GitHub failures stay ephemeral without a public REQUEST.
 
 ### Daily rewards and participation streaks
 

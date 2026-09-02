@@ -179,9 +179,9 @@ export const discordJourneyCatalog: readonly DiscordJourney[] = [
       'The retired Discord feature-request command is intentionally not registered or routed.',
     visibility: 'not-applicable',
     configuration:
-      'GitHub-native intake owns feature requests; Jarvis has no GitHub-write configuration.',
+      'The retired /feature-request command stays unregistered. Bounded administrator /request issue creation uses GITHUB_OWNER, GITHUB_REPO, and GITHUB_TOKEN.',
     permission:
-      'No Discord member or administrator can invoke a Jarvis GitHub-write journey.',
+      'No Discord member or administrator can invoke the retired /feature-request command.',
     evidence: crossCuttingEvidence('tests/register-commands.test.ts'),
     outcome: 'not-applicable',
     manualObligation:

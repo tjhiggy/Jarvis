@@ -13,6 +13,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   advances the same ID to the next daily or weekly fire without inserting
   another one-shot row. One-shot personal reminders and administrator
   shared-set, shared-list, and shared-cancel stay unchanged.
+- Administrator `/request` in captains-quarters creates one GitHub issue in the
+  configured repository from the what/why/done fields and includes that issue
+  URL on the same public REQUEST reply. Creation uses the existing
+  repository-scoped `GITHUB_TOKEN` as a GitHub App or fine-grained bot
+  credential, not a personal account. Missing or failed issue creation stays
+  ephemeral and does not post a public REQUEST.
 
 ## [1.6.0] - 2026-08-24
 
