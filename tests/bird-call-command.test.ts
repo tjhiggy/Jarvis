@@ -91,7 +91,8 @@ describe('/bird-call', () => {
 
   it('neutralizes mentions in the optional game text and keeps allowedMentions empty', async () => {
     const reply = vi.fn().mockResolvedValue(undefined);
-    const game = 'raid with @everyone <@123456789012345678> and <@&987654321098765432>';
+    const game =
+      'raid with @everyone <@123456789012345678> and <@&987654321098765432>';
     await handleBirdCallCommand(
       interaction({
         guildId: 'guild-1',
