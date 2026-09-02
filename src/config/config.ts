@@ -115,6 +115,12 @@ export interface EngagementConfig {
   readonly maxRecordsPerUser: number;
   readonly maxParticipants: number;
   readonly roleMenuChoices?: readonly import('../engagement/role-menus.js').RoleMenuChoice[];
+  readonly quietNudges: Readonly<{
+    channels: readonly Readonly<{
+      channelId: string;
+      quietWindowMs: number;
+    }>[];
+  }>;
 }
 
 export interface DiscordRegistrationConfig {
@@ -345,6 +351,10 @@ const baseEnvironmentSchema = z.object({
   ENGAGEMENT_RETENTION_DAYS: integer(30, 1, 90),
   ENGAGEMENT_MAX_RECORDS_PER_USER: integer(5, 1, 25),
   ENGAGEMENT_MAX_PARTICIPANTS: integer(100, 2, 1000),
+  ENGAGEMENT_QUIET_NUDGE_EARTHLINGS_CHANNEL_ID: optionalDiscordSnowflake,
+  ENGAGEMENT_QUIET_NUDGE_TEST_CHANNEL_ID: optionalDiscordSnowflake,
+  ENGAGEMENT_QUIET_NUDGE_EARTHLINGS_WINDOW_MINUTES: integer(1_440, 1),
+  ENGAGEMENT_QUIET_NUDGE_TEST_WINDOW_MINUTES: integer(5, 1),
 });
 
 type PollEnvironment = Pick<
@@ -674,6 +684,9 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
       roleMenuChoices: Object.freeze(
         parseRoleMenuConfig(parsed.ENGAGEMENT_ROLE_MENU_OPTIONS),
       ),
+      quietNudges: Object.freeze({
+        channels: Object.freeze(buildQuietNudgeChannels(parsed)),
+      }),
     }),
     logging: Object.freeze({ level: parsed.LOG_LEVEL }),
   });
@@ -707,3 +720,32 @@ function parseEnvironment<T>(schema: z.ZodType<T>, env: NodeJS.ProcessEnv): T {
   }
   return result.data;
 }
+
+type QuietNudgeEnvironment = Pick<
+  z.infer<typeof baseEnvironmentSchema>,
+  | 'ENGAGEMENT_QUIET_NUDGE_EARTHLINGS_CHANNEL_ID'
+  | 'ENGAGEMENT_QUIET_NUDGE_TEST_CHANNEL_ID'
+  | 'ENGAGEMENT_QUIET_NUDGE_EARTHLINGS_WINDOW_MINUTES'
+  | 'ENGAGEMENT_QUIET_NUDGE_TEST_WINDOW_MINUTES'
+>;
+
+const buildQuietNudgeChannels = (
+  parsed: QuietNudgeEnvironment,
+): ReadonlyArray<{ channelId: string; quietWindowMs: number }> => {
+  const channels: Array<{ channelId: string; quietWindowMs: number }> = [];
+  if (parsed.ENGAGEMENT_QUIET_NUDGE_EARTHLINGS_CHANNEL_ID !== '') {
+    channels.push({
+      channelId: parsed.ENGAGEMENT_QUIET_NUDGE_EARTHLINGS_CHANNEL_ID,
+      quietWindowMs:
+        parsed.ENGAGEMENT_QUIET_NUDGE_EARTHLINGS_WINDOW_MINUTES * 60_000,
+    });
+  }
+  if (parsed.ENGAGEMENT_QUIET_NUDGE_TEST_CHANNEL_ID !== '') {
+    channels.push({
+      channelId: parsed.ENGAGEMENT_QUIET_NUDGE_TEST_CHANNEL_ID,
+      quietWindowMs:
+        parsed.ENGAGEMENT_QUIET_NUDGE_TEST_WINDOW_MINUTES * 60_000,
+    });
+  }
+  return channels;
+};

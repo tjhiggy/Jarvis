@@ -148,6 +148,22 @@ export interface EngagementRepository extends Partial<PlatformMetricsRepository>
     userId: string,
   ): Promise<boolean>;
   engagementPaused?(guildId: string): Promise<boolean>;
+  getQuietNudgeState?(
+    guildId: string,
+    channelId: string,
+  ): Promise<
+    | {
+        readonly lastHumanAt?: Date;
+        readonly lastNudgeAt?: Date;
+      }
+    | undefined
+  >;
+  recordQuietNudgeHumanMessage?(
+    guildId: string,
+    channelId: string,
+    at: Date,
+  ): Promise<void>;
+  recordQuietNudge?(guildId: string, channelId: string, at: Date): Promise<void>;
   setEngagementPaused?(
     guildId: string,
     paused: boolean,

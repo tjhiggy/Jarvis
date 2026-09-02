@@ -293,6 +293,77 @@ export class SQLiteEngagementRepository implements EngagementRepository {
       )
       .run(postedAt.getTime(), postedAt.getTime(), guildId);
   }
+
+  async getQuietNudgeState(
+    guildId: string,
+    channelId: string,
+  ): Promise<
+    | {
+        readonly lastHumanAt?: Date;
+        readonly lastNudgeAt?: Date;
+      }
+    | undefined
+  > {
+    this.ensureOpen();
+    const row = this.database
+      .prepare(
+        'SELECT last_human_at, last_nudge_at FROM engagement_quiet_nudge_state WHERE guild_id = ? AND channel_id = ?',
+      )
+      .get(guildId, channelId) as
+      | {
+          last_human_at: number | null;
+          last_nudge_at: number | null;
+        }
+      | undefined;
+    if (row === undefined) return undefined;
+    return {
+      ...(row.last_human_at === null
+        ? {}
+        : { lastHumanAt: new Date(row.last_human_at) }),
+      ...(row.last_nudge_at === null
+        ? {}
+        : { lastNudgeAt: new Date(row.last_nudge_at) }),
+    };
+  }
+
+  async recordQuietNudgeHumanMessage(
+    guildId: string,
+    channelId: string,
+    at: Date,
+  ): Promise<void> {
+    this.ensureOpen();
+    const timestamp = at.getTime();
+    this.database
+      .prepare(
+        `INSERT INTO engagement_quiet_nudge_state
+          (guild_id, channel_id, last_human_at, last_nudge_at, updated_at)
+         VALUES (?, ?, ?, NULL, ?)
+         ON CONFLICT(guild_id, channel_id) DO UPDATE SET
+           last_human_at = excluded.last_human_at,
+           updated_at = excluded.updated_at`,
+      )
+      .run(guildId, channelId, timestamp, timestamp);
+  }
+
+  async recordQuietNudge(
+    guildId: string,
+    channelId: string,
+    at: Date,
+  ): Promise<void> {
+    this.ensureOpen();
+    const timestamp = at.getTime();
+    this.database
+      .prepare(
+        `INSERT INTO engagement_quiet_nudge_state
+          (guild_id, channel_id, last_human_at, last_nudge_at, updated_at)
+         VALUES (?, ?, NULL, ?, ?)
+         ON CONFLICT(guild_id, channel_id) DO UPDATE SET
+           last_nudge_at = excluded.last_nudge_at,
+           updated_at = excluded.updated_at`,
+      )
+      .run(guildId, channelId, timestamp, timestamp);
+  }
+
   async claimProactive(
     guildId: string,
     key: string,
@@ -2343,6 +2414,12 @@ export class SQLiteEngagementRepository implements EngagementRepository {
           'CREATE TABLE IF NOT EXISTS engagement_coin_ledger (guild_id TEXT NOT NULL, user_id TEXT NOT NULL, amount INTEGER NOT NULL, award_key TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (guild_id,user_id,award_key)); CREATE INDEX IF NOT EXISTS engagement_coin_ledger_balance ON engagement_coin_ledger(guild_id,user_id,created_at);',
         );
         this.recordMigration(29);
+      }
+      if (!this.hasMigration(30)) {
+        this.database.exec(
+          'CREATE TABLE IF NOT EXISTS engagement_quiet_nudge_state (guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, last_human_at INTEGER, last_nudge_at INTEGER, updated_at INTEGER NOT NULL, PRIMARY KEY (guild_id, channel_id)); CREATE INDEX IF NOT EXISTS engagement_quiet_nudge_state_retention ON engagement_quiet_nudge_state (updated_at, guild_id, channel_id);',
+        );
+        this.recordMigration(30);
       }
       this.database.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS engagement_active_introduction_owner ON engagement_introductions (guild_id, owner_user_id) WHERE status = 'active';",
