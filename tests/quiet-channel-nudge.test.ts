@@ -4,6 +4,10 @@ import {
   QuietChannelNudgeService,
   evaluateQuietNudge,
 } from '../src/engagement/quiet-channel-nudge.js';
+import { OpenAIServiceError } from '../src/openai/openai-errors.js';
+
+const fallbackNudge =
+  'The channel has gone quiet on the MuthaShip. Drop a line if you are around.';
 
 const earthlingsChannel = '953011731356086284';
 const testChannel = '1536175231373148181';
@@ -282,23 +286,42 @@ describe('quiet channel nudge service', () => {
     expect(await service.tick()).toBe(false);
   });
 
-  it('does not post when globally paused or AI composition fails closed', async () => {
+  it('does not post when globally paused', async () => {
     const paused = setup({
       paused: true,
       latestHumanAt: new Date('2026-09-02T11:00:00.000Z'),
     });
     expect(await paused.service.tick()).toBe(false);
     expect(paused.posts).toHaveLength(0);
+  });
 
+  it('posts the fallback nudge once when AI composition throws', async () => {
     const failedAi = setup({
       latestHumanAt: new Date('2026-09-02T11:00:00.000Z'),
       channels: [{ channelId: testChannel, quietWindowMs: fiveMinutesMs }],
       aiRespond: async () => {
-        throw new Error('provider unavailable');
+        throw new OpenAIServiceError('service');
       },
     });
+    expect(await failedAi.service.tick()).toBe(true);
+    expect(failedAi.posts).toEqual([
+      {
+        channelId: testChannel,
+        content: fallbackNudge,
+        allowedMentions: { parse: [], repliedUser: false },
+      },
+    ]);
     expect(await failedAi.service.tick()).toBe(false);
-    expect(failedAi.posts).toHaveLength(0);
+    expect(failedAi.posts).toHaveLength(1);
+  });
+
+  it('does not post while humans are still talking inside the quiet window', async () => {
+    const active = setup({
+      latestHumanAt: new Date('2026-09-02T11:58:00.000Z'),
+      channels: [{ channelId: testChannel, quietWindowMs: fiveMinutesMs }],
+    });
+    expect(await active.service.tick()).toBe(false);
+    expect(active.posts).toHaveLength(0);
   });
 
   it('runs scheduler ticks through the durable wrapper', async () => {
