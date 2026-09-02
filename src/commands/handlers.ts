@@ -80,6 +80,7 @@ import type { FeatureFlagService } from '../engagement/feature-flags.js';
 import { handleMemberProfileCommand } from './member-profile.js';
 import type { MemberProfileService } from '../engagement/member-profiles.js';
 import { handleNotificationCommand } from './notifications.js';
+import { handleRequestCommand } from './request.js';
 import type { BroadcastStore } from '../notifications/broadcast-store.js';
 import type { MemberStatisticsService } from '../community/member-statistics.js';
 import {
@@ -721,6 +722,11 @@ const handleCommandInternal = async (
         ...(dependencies.broadcastStore === undefined
           ? {}
           : { store: dependencies.broadcastStore }),
+      });
+      return;
+    case 'request':
+      await handleRequestCommand(interaction, {
+        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
       });
       return;
     default:

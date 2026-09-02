@@ -323,6 +323,14 @@ interface ImageSubcommandDefinition {
   }[];
 }
 
+interface RequestOptionDefinition {
+  readonly type: 3;
+  readonly name: 'what' | 'why' | 'done';
+  readonly description: string;
+  readonly required: true;
+  readonly max_length: number;
+}
+
 export type CommandOptionDefinition =
   | InputCommandOptionDefinition
   | FaqTopicOptionDefinition
@@ -350,7 +358,8 @@ export type CommandOptionDefinition =
   | GitHubSubcommandDefinition
   | RssSubcommandDefinition
   | NotificationSubcommandDefinition
-  | ImageSubcommandDefinition;
+  | ImageSubcommandDefinition
+  | RequestOptionDefinition;
 // GitHub is intentionally read-only and repository-scoped.
 
 export interface CommandDefinition {
@@ -391,7 +400,8 @@ export interface CommandDefinition {
     | 'profile'
     | 'github'
     | 'rss'
-    | 'notifications';
+    | 'notifications'
+    | 'request';
   readonly description: string;
   readonly options?: readonly CommandOptionDefinition[];
 }
@@ -1270,6 +1280,34 @@ export const createCommandDefinitions = (
           type: 1,
           name: 'resume',
           description: 'Resume scheduled weekly recaps.',
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'request',
+      description: 'Post a MuthaShip administrator request in captains-quarters.',
+      options: [
+        {
+          type: 3,
+          name: 'what',
+          description: 'What is being requested.',
+          required: true,
+          max_length: 1_500,
+        },
+        {
+          type: 3,
+          name: 'why',
+          description: 'Why the request matters.',
+          required: true,
+          max_length: 1_500,
+        },
+        {
+          type: 3,
+          name: 'done',
+          description: 'What done looks like.',
+          required: true,
+          max_length: 1_500,
         },
       ],
     },
