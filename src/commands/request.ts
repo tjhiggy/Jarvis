@@ -1,6 +1,8 @@
 import {
   allowedMentions,
   replySafely,
+  type DeferredReplyTarget,
+  type ReplyPayload,
   type ReplyTarget,
 } from '../discord/delivery.js';
 import {
@@ -12,6 +14,7 @@ import {
 import { neutralizeDiscordMentions } from '../utils/mentions.js';
 
 export const CAPTAINS_QUARTERS_CHANNEL_ID = '953011731356086283';
+export const DISCORD_REQUEST_CONTENT_MAX = 2_000;
 
 const wrongChannelMessage =
   'The /request command is only available in captains-quarters.';
@@ -19,8 +22,12 @@ const administratorMessage =
   'Request posting is restricted to configured MuthaShip administrators.';
 const issueUnavailableMessage =
   'The GitHub issue could not be created. The request was not posted.';
+const requestPostedMessage = 'Request posted.';
+const requestPostedWithoutChannelMessage =
+  'The GitHub issue was created but the public REQUEST could not be posted.';
 
-export interface RequestCommandInteraction extends ReplyTarget {
+export interface RequestCommandInteraction
+  extends ReplyTarget, DeferredReplyTarget {
   readonly guildId: string | null;
   readonly channelId: string;
   readonly member?: Readonly<{
@@ -29,6 +36,8 @@ export interface RequestCommandInteraction extends ReplyTarget {
   readonly options: Readonly<{
     getString(name: string): string | null;
   }>;
+  readonly channel?: unknown;
+  deferReply(payload: ReplyPayload): Promise<unknown>;
 }
 
 export const formatRequestIssue = (
@@ -59,14 +68,25 @@ export const formatRequestMessage = (
   why: string,
   done: string,
   issueUrl: string,
-): string =>
-  [
+): string => {
+  const issueLine = `issue: ${neutralizeDiscordMentions(issueUrl).trim()}`;
+  const body = [
     'REQUEST',
     `what: ${neutralizeDiscordMentions(what).trim()}`,
     `why: ${neutralizeDiscordMentions(why).trim()}`,
     `done: ${neutralizeDiscordMentions(done).trim()}`,
-    `issue: ${neutralizeDiscordMentions(issueUrl).trim()}`,
   ].join('\n');
+  const suffix = `\n${issueLine}`;
+  const maximumBodyLength = DISCORD_REQUEST_CONTENT_MAX - suffix.length;
+  if (maximumBodyLength < 1) {
+    return takeWithinLimit(issueLine, DISCORD_REQUEST_CONTENT_MAX);
+  }
+  if (body.length <= maximumBodyLength) {
+    return `${body}${suffix}`;
+  }
+  const truncated = takeWithinLimit(body, Math.max(0, maximumBodyLength - 1));
+  return `${truncated}…${suffix}`;
+};
 
 const isAdministrator = (
   interaction: RequestCommandInteraction,
@@ -119,20 +139,85 @@ export async function handleRequestCommand(
     await replySafely(interaction, issueUnavailableMessage, true);
     return;
   }
+
+  await interaction.deferReply({ ephemeral: true, allowedMentions });
+
   let created: GitHubIssueCreateResult;
   try {
     created = await dependencies.issues.createIssue(draft);
   } catch {
-    await replySafely(interaction, issueUnavailableMessage, true);
+    await interaction.editReply({
+      content: issueUnavailableMessage,
+      allowedMentions,
+    });
     return;
   }
   if (created.url.trim() === '') {
-    await replySafely(interaction, issueUnavailableMessage, true);
+    await interaction.editReply({
+      content: issueUnavailableMessage,
+      allowedMentions,
+    });
     return;
   }
-  await interaction.reply({
-    content: formatRequestMessage(what, why, done, created.url),
-    ephemeral: false,
+
+  const content = formatRequestMessage(what, why, done, created.url);
+  const issueLine = `issue: ${neutralizeDiscordMentions(created.url).trim()}`;
+  try {
+    await postPublicRequest(interaction, content);
+  } catch {
+    await interaction.editReply({
+      content: `${requestPostedWithoutChannelMessage}\n${issueLine}`,
+      allowedMentions,
+    });
+    return;
+  }
+  await interaction.editReply({
+    content: `${requestPostedMessage}\n${issueLine}`,
     allowedMentions,
   });
 }
+
+const postPublicRequest = async (
+  interaction: RequestCommandInteraction,
+  content: string,
+): Promise<void> => {
+  const send = channelSend(interaction.channel);
+  if (send !== undefined) {
+    await send({
+      content,
+      allowedMentions,
+    });
+    return;
+  }
+  await interaction.followUp({
+    content,
+    ephemeral: false,
+    allowedMentions,
+  });
+};
+
+const channelSend = (
+  channel: unknown,
+): ((payload: ReplyPayload) => Promise<unknown>) | undefined => {
+  if (typeof channel !== 'object' || channel === null || !('send' in channel)) {
+    return undefined;
+  }
+  const send = channel.send;
+  if (typeof send !== 'function') {
+    return undefined;
+  }
+  return (payload) => Promise.resolve(send.call(channel, payload));
+};
+
+const takeWithinLimit = (content: string, limit: number): string => {
+  let length = 0;
+  let end = 0;
+  for (const character of content) {
+    if (length + character.length > limit) {
+      break;
+    }
+    length += character.length;
+    end += character.length;
+  }
+  return content.slice(0, end);
+};
