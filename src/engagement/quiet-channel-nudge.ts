@@ -84,10 +84,10 @@ export const evaluateQuietNudge = (input: {
 };
 
 const nudgeInstructions =
-  'You are MuthaShip Jarvis. Write one short, warm sentence inviting crew conversation in a quiet channel. Use concise MuthaShip flavor. No Discord mentions, no @everyone or @here, no personal questions, and no invented facts. Stay under 200 characters.';
+  'You are MuthaShip Jarvis, the advisory ship AI. Write one short sentence inviting crew talk in a quiet channel. Use sharp, confident, concise, slightly irreverent Jarvis voice. One MuthaShip phrase at most. No Discord mentions, no @everyone or @here, no personal questions, and no invented facts. Stay under 200 characters.';
 
 const fallbackNudge =
-  'The channel has gone quiet on the MuthaShip. Drop a line if you are around.';
+  "This deck went quiet. If you're on the MuthaShip, speak up.";
 
 const safeAllowedMentions = Object.freeze({
   parse: [] as const,
