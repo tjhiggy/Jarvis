@@ -14,9 +14,9 @@
  ✓ tests/rss-scheduler.test.ts > RssScheduler > suppresses entries after twenty completed RSS items on a UTC day 5ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > completes each non-digest post before a later delivery fails and retries only the unposted item 2ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > rechecks policy after non-digest reservation rollover before posting 2ms
- ✓ tests/rss-scheduler.test.ts > RssScheduler > rechecks policy after digest reservation rollover and rendering before posting 1ms
- ✓ tests/rss-scheduler.test.ts > RssScheduler > sends RSS digest URLs with SuppressEmbeds so Discord does not unfurl a second headline card 1ms
- ✓ tests/rss-scheduler.test.ts > RssScheduler > keeps every rendered digest entry complete within the payload bound 0ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > rechecks policy after digest reservation rollover and rendering before posting 2ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > sends one native Discord card per headline with SuppressEmbeds so Discord does not unfurl a second card 1ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > keeps every rendered digest entry complete within the payload bound 1ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > reports configured RSS as unavailable until a scheduler exists 0ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > releases digest claims omitted by rendering instead of completing them 1ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > reserves only the two remaining daily RSS delivery slots before posting 3ms
@@ -25,6 +25,6 @@
 
  Test Files  1 passed (1)
       Tests  16 passed (16)
-   Start at  22:16:24
-   Duration  891ms (transform 401ms, setup 0ms, import 752ms, tests 38ms, environment 0ms)
+   Start at  00:16:06
+   Duration  928ms (transform 421ms, setup 0ms, import 795ms, tests 40ms, environment 0ms)
 
