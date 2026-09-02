@@ -167,6 +167,120 @@ describe('/request', () => {
     expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/github\.com/i);
   });
 
+  it('fails closed in a DM without creating an issue or posting a REQUEST', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const createIssue = vi.fn();
+    await handleRequestCommand(
+      interaction({
+        guildId: null,
+        channelId: CAPTAINS_QUARTERS_CHANNEL_ID,
+        admin: true,
+        what: 'Refresh the FAQ',
+        why: 'Members keep asking the same onboarding questions.',
+        done: 'FAQ answers match the current ship rules.',
+        reply,
+      }),
+      {
+        adminRoleIds: new Set(['admin-role']),
+        issues: { createIssue },
+      },
+    );
+
+    expect(createIssue).not.toHaveBeenCalled();
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringMatching(/server channel/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+    expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/^REQUEST/m);
+    expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/github\.com/i);
+  });
+
+  it.each([
+    ['what', { what: '   ', why: 'Need it.', done: 'Shipped.' }],
+    ['why', { what: 'Refresh the FAQ', why: '', done: 'Shipped.' }],
+    ['done', { what: 'Refresh the FAQ', why: 'Need it.', done: null }],
+  ])(
+    'rejects a missing %s field without creating an issue or posting a REQUEST',
+    async (_field, values) => {
+      const reply = vi.fn().mockResolvedValue(undefined);
+      const createIssue = vi.fn();
+      await handleRequestCommand(
+        interaction({
+          channelId: CAPTAINS_QUARTERS_CHANNEL_ID,
+          admin: true,
+          what: values.what,
+          why: values.why,
+          done: values.done,
+          reply,
+        }),
+        {
+          adminRoleIds: new Set(['admin-role']),
+          issues: { createIssue },
+        },
+      );
+
+      expect(createIssue).not.toHaveBeenCalled();
+      expect(reply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringMatching(/what, why, and done/i),
+          ephemeral: true,
+          allowedMentions: safeMentions,
+        }),
+      );
+      expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/^REQUEST/m);
+    },
+  );
+
+  it('keeps an empty GitHub issue URL ephemeral without a public REQUEST', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const createIssue = vi.fn().mockResolvedValue({
+      number: 401,
+      url: '   ',
+    });
+    await handleRequestCommand(
+      interaction({
+        channelId: CAPTAINS_QUARTERS_CHANNEL_ID,
+        admin: true,
+        what: 'Refresh the FAQ',
+        why: 'Members keep asking the same onboarding questions.',
+        done: 'FAQ answers match the current ship rules.',
+        reply,
+      }),
+      {
+        adminRoleIds: new Set(['admin-role']),
+        issues: { createIssue },
+      },
+    );
+
+    expect(createIssue).toHaveBeenCalledOnce();
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringMatching(/could not be created/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+    expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/^REQUEST/m);
+    expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/github\.com/i);
+  });
+
+  it('formats the GitHub draft with neutralized mentions and a bounded title', () => {
+    const draft = formatRequestIssue(
+      `Ping <@123> ${'x'.repeat(300)}`,
+      'Need @everyone aligned.',
+      'Done in <#999>.',
+    );
+    expect(draft.title).toHaveLength(256);
+    expect(draft.title).not.toContain('<@123>');
+    expect(draft.body).toMatch(/^## What\n[\s\S]*\n## Why\n[\s\S]*\n## Done\n/);
+    expect(draft.body).not.toContain('<@123>');
+    expect(draft.body).not.toMatch(/@everyone/);
+    expect(draft.body).not.toContain('<#999>');
+  });
+
   it('keeps allowedMentions empty and mentions neutralized on the public REQUEST', async () => {
     const reply = vi.fn().mockResolvedValue(undefined);
     const createIssue = vi.fn().mockResolvedValue({
@@ -215,13 +329,14 @@ describe('/request', () => {
 function interaction(input: {
   channelId: string;
   admin: boolean;
-  what: string;
-  why: string;
-  done: string;
+  what: string | null;
+  why: string | null;
+  done: string | null;
   reply: (payload: unknown) => Promise<unknown>;
+  guildId?: string | null;
 }) {
   return {
-    guildId: 'guild-1',
+    guildId: input.guildId === undefined ? 'guild-1' : input.guildId,
     channelId: input.channelId,
     member: {
       roles: {

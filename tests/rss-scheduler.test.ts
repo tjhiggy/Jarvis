@@ -352,6 +352,41 @@ describe('RssScheduler', () => {
     );
   });
 
+  it('omits credentialed, private, and non-HTTPS images from the Discord card payload', () => {
+    const payloads = [
+      rssBroadcastSendPayload({
+        title: 'Credentialed',
+        url: 'https://news.example.com/cred',
+        sourceLabel: 'IGN',
+        imageUrl: 'https://user:pass@cdn.example.com/hero.jpg',
+      }),
+      rssBroadcastSendPayload({
+        title: 'Private',
+        url: 'https://news.example.com/private',
+        sourceLabel: 'IGN',
+        imageUrl: 'https://192.168.1.9/hero.jpg',
+      }),
+      rssBroadcastSendPayload({
+        title: 'Insecure',
+        url: 'https://news.example.com/insecure',
+        sourceLabel: 'IGN',
+        imageUrl: 'http://cdn.example.com/hero.jpg',
+      }),
+    ];
+
+    for (const payload of payloads) {
+      expect(payload.embeds[0]).not.toHaveProperty('image');
+      expect(payload.flags).toBe(MessageFlags.SuppressEmbeds);
+      expect(payload.allowedMentions).toEqual({
+        parse: [],
+        repliedUser: false,
+      });
+    }
+    expect(JSON.stringify(payloads)).not.toMatch(
+      /user:pass|192\.168\.1\.9|http:\/\//,
+    );
+  });
+
   it('keeps every rendered digest entry complete within the payload bound', () => {
     const digest = renderRssDigest({
       entries: [

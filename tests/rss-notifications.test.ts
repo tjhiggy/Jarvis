@@ -3,6 +3,7 @@ import {
   RssNotificationClient,
   createPublicRssLookup,
   isAllowedRssUrl,
+  sanitizeRssImageUrl,
 } from '../src/notifications/rss-notifications.js';
 
 describe('RSS notifications', () => {
@@ -172,5 +173,34 @@ describe('RSS notifications', () => {
 
     expect(items).toHaveLength(5);
     expect(items[0]).toMatchObject({ url: 'https://news.example.com/post/0' });
+  });
+
+  it.each([
+    ['https://cdn.example.com/hero.jpg', 'https://cdn.example.com/hero.jpg'],
+    [
+      'https://cdn.example.com/hero.jpg?w=800',
+      'https://cdn.example.com/hero.jpg?w=800',
+    ],
+  ])('keeps a public HTTPS image URL %s', (input, expected) => {
+    expect(sanitizeRssImageUrl(input)).toBe(expected);
+  });
+
+  it.each([
+    ['non-HTTPS', 'http://cdn.example.com/hero.jpg'],
+    ['credentialed', 'https://user:pass@cdn.example.com/hero.jpg'],
+    ['username-only userinfo', 'https://user@cdn.example.com/hero.jpg'],
+    ['loopback', 'https://127.0.0.1/hero.jpg'],
+    ['private 10/8', 'https://10.0.0.4/hero.jpg'],
+    ['private 192.168/16', 'https://192.168.1.9/hero.jpg'],
+    ['private 172.16/12', 'https://172.16.0.8/hero.jpg'],
+    ['localhost', 'https://localhost/hero.jpg'],
+    ['unparseable', 'not-a-url'],
+    ['oversized', `https://cdn.example.com/${'a'.repeat(2_100)}.jpg`],
+  ])('omits an unsafe RSS image URL (%s)', (_kind, input) => {
+    expect(sanitizeRssImageUrl(input)).toBeUndefined();
+  });
+
+  it('omits an undefined image URL', () => {
+    expect(sanitizeRssImageUrl(undefined)).toBeUndefined();
   });
 });

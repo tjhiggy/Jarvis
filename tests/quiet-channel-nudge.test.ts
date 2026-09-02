@@ -119,6 +119,33 @@ describe('quiet channel nudge evaluation', () => {
       }).action,
     ).toBe('nudge');
   });
+
+  it('does not nudge without a human baseline', () => {
+    expect(
+      evaluateQuietNudge({
+        now,
+        quietWindowMs: fiveMinutesMs,
+        state: {},
+        paused: false,
+        channelConfigured: true,
+        channelAvailable: true,
+      }),
+    ).toEqual({ action: 'skip', reason: 'no_human_baseline' });
+  });
+
+  it('uses the more recent of stored and history human timestamps', () => {
+    expect(
+      evaluateQuietNudge({
+        now,
+        quietWindowMs: fiveMinutesMs,
+        state: { lastHumanAt: new Date(now.getTime() - 10 * 60 * 1_000) },
+        latestHumanAt: new Date(now.getTime() - 60 * 1_000),
+        paused: false,
+        channelConfigured: true,
+        channelAvailable: true,
+      }),
+    ).toEqual({ action: 'skip', reason: 'channel_active' });
+  });
 });
 
 describe('quiet channel nudge service', () => {
@@ -172,7 +199,8 @@ describe('quiet channel nudge service', () => {
         respond:
           options?.aiRespond ??
           (async () => ({
-            text: options?.aiText ?? 'The MuthaShip channel is quiet. Say hello.',
+            text:
+              options?.aiText ?? 'The MuthaShip channel is quiet. Say hello.',
           })),
       },
       guildId: 'guild-1',
@@ -313,6 +341,72 @@ describe('quiet channel nudge service', () => {
     ]);
     expect(await failedAi.service.tick()).toBe(false);
     expect(failedAi.posts).toHaveLength(1);
+  });
+
+  it('posts the fallback nudge when AI returns blank text', async () => {
+    const blank = setup({
+      latestHumanAt: new Date('2026-09-02T11:00:00.000Z'),
+      channels: [{ channelId: testChannel, quietWindowMs: fiveMinutesMs }],
+      aiText: '   ',
+    });
+    expect(await blank.service.tick()).toBe(true);
+    expect(blank.posts).toEqual([
+      {
+        channelId: testChannel,
+        content: fallbackNudge,
+        allowedMentions: { parse: [], repliedUser: false },
+      },
+    ]);
+  });
+
+  it('neutralizes Discord mentions in composed nudge text', async () => {
+    const mentioned = setup({
+      latestHumanAt: new Date('2026-09-02T11:00:00.000Z'),
+      channels: [{ channelId: testChannel, quietWindowMs: fiveMinutesMs }],
+      aiText: 'Ping <@123456789012345678> and @everyone in this deck.',
+    });
+    expect(await mentioned.service.tick()).toBe(true);
+    expect(mentioned.posts).toHaveLength(1);
+    expect(mentioned.posts[0]?.content).not.toContain('<@123456789012345678>');
+    expect(mentioned.posts[0]?.content).not.toMatch(/@everyone/);
+    expect(mentioned.posts[0]?.allowedMentions).toEqual({
+      parse: [],
+      repliedUser: false,
+    });
+  });
+
+  it('does not record a nudge when Discord delivery fails', async () => {
+    const state = new Map<string, { lastHumanAt?: Date; lastNudgeAt?: Date }>([
+      [testChannel, { lastHumanAt: new Date('2026-09-02T11:00:00.000Z') }],
+    ]);
+    const service = new QuietChannelNudgeService({
+      store: {
+        get: async (_guildId, channelId) => state.get(channelId),
+        recordHumanMessage: async () => undefined,
+        recordNudge: async (_guildId, channelId, at) => {
+          state.set(channelId, {
+            ...(state.get(channelId) ?? {}),
+            lastNudgeAt: at,
+          });
+        },
+      },
+      gateway: {
+        channelAvailable: async () => true,
+        post: async () => {
+          throw new Error('discord unavailable');
+        },
+      },
+      ai: {
+        respond: async () => ({ text: 'The MuthaShip channel is quiet.' }),
+      },
+      guildId: 'guild-1',
+      channels: [{ channelId: testChannel, quietWindowMs: fiveMinutesMs }],
+      isGloballyPaused: async () => false,
+      now: () => new Date('2026-09-02T12:00:00.000Z'),
+    });
+
+    expect(await service.tick()).toBe(false);
+    expect(state.get(testChannel)?.lastNudgeAt).toBeUndefined();
   });
 
   it('does not post while humans are still talking inside the quiet window', async () => {
