@@ -107,6 +107,7 @@ and role boundary:
 - `/event cancel`
 - `/game-night create`, `/game-night list`
 - `/lfg`
+- `/bird-call`
 - `/birthday set`, `/birthday show`, `/birthday delete`
 - `/roles`
 - `/profile create`, `/profile view`, `/profile edit`, `/profile hide`, `/profile show`, `/profile delete`

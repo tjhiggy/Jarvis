@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `/bird-call` posts one public MuthaShip-voice invite so any guild member can
+  ask who wants to game now. Optional `game` (max 120) names the activity.
+  Mentions are neutralized and `allowedMentions` stay empty. Direct messages
+  fail closed. This is an instant ping; it does not replace `/lfg` or
+  `/game-night`.
 - Bounded personal recurring reminders: optional `/reminder set` `every` and
   `until` fields persist on the existing SQLite reminder row and the scheduler
   advances the same ID to the next daily or weekly fire without inserting

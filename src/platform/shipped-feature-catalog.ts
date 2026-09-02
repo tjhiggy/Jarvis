@@ -346,6 +346,26 @@ export const shippedFeatureCatalog = [
     ],
   },
   {
+    id: 'bird-call',
+    name: 'Instant bird call',
+    status: 'pass',
+    ownerModule: 'src/commands/bird-call.ts',
+    entryPoints: {
+      discordCommands: ['bird-call'],
+      commandDeckWorkflows: [],
+    },
+    audience: 'member',
+    requiredConfiguration: [],
+    permissionBoundary:
+      'Any guild member can post one public bird call in the current channel. Direct messages fail closed. Mentions in optional game text are neutralized and allowedMentions stay empty.',
+    persistenceBehavior:
+      'Bird calls create no retained Jarvis record and do not replace /lfg or /game-night.',
+    automatedEvidence: ['tests/bird-call-command.test.ts'],
+    manualSmokeCases: [
+      'Run /bird-call and /bird-call game:<name> in a guild channel, confirm the public invite, then confirm a DM stays ephemeral with no public line.',
+    ],
+  },
+  {
     id: 'weekly-recaps',
     name: 'Weekly engagement recaps',
     status: 'pass',

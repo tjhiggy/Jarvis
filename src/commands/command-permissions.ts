@@ -20,7 +20,7 @@ export const commandPermissionRules: readonly CommandPermissionRule[] = [
   },
   {
     command:
-      '/forget, /reminder, /birthday, /lfg, /roles, /introduce, /suggest, /event list, /event details',
+      '/forget, /reminder, /birthday, /lfg, /bird-call, /roles, /introduce, /suggest, /event list, /event details',
     scope: 'member',
     notes: 'User-owned data or explicitly allowlisted engagement choices only.',
   },
