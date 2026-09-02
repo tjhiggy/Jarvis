@@ -7,7 +7,7 @@ import {
 import { OpenAIServiceError } from '../src/openai/openai-errors.js';
 
 const fallbackNudge =
-  'The channel has gone quiet on the MuthaShip. Drop a line if you are around.';
+  "This deck went quiet. If you're on the MuthaShip, speak up.";
 
 const earthlingsChannel = '953011731356086284';
 const testChannel = '1536175231373148181';
