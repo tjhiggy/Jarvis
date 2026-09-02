@@ -1,7 +1,8 @@
 import { MessageFlags } from 'discord.js';
-import type {
-  RssNotificationClient,
-  RssNotification,
+import {
+  sanitizeRssImageUrl,
+  type RssNotificationClient,
+  type RssNotification,
 } from './rss-notifications.js';
 import type { RssStorage, RssFeedRecord } from './rss-storage.js';
 import type { BroadcastPolicyService } from './broadcast-policy.js';
@@ -23,8 +24,15 @@ export interface RssRenderedDigest {
   readonly deliveryKeys: readonly string[];
 }
 
+export interface RssBroadcastEmbed {
+  readonly title: string;
+  readonly url: string;
+  readonly author: { readonly name: string };
+  readonly image?: { readonly url: string };
+}
+
 export interface RssBroadcastSendPayload {
-  readonly content: string;
+  readonly embeds: readonly [RssBroadcastEmbed];
   readonly allowedMentions: {
     readonly parse: readonly [];
     readonly repliedUser: false;
@@ -33,12 +41,24 @@ export interface RssBroadcastSendPayload {
 }
 
 export const rssBroadcastSendPayload = (
-  digest: Pick<RssRenderedDigest, 'content'>,
-): RssBroadcastSendPayload => ({
-  content: digest.content,
-  allowedMentions: { parse: [], repliedUser: false },
-  flags: MessageFlags.SuppressEmbeds,
-});
+  entry: Pick<RssDigestEntry, 'title' | 'url' | 'sourceLabel'> & {
+    readonly imageUrl?: string;
+  },
+): RssBroadcastSendPayload => {
+  const imageUrl = sanitizeRssImageUrl(entry.imageUrl);
+  return {
+    embeds: [
+      {
+        title: boundedRssText(entry.title, 180),
+        url: entry.url.trim(),
+        author: { name: boundedRssText(entry.sourceLabel, 64) },
+        ...(imageUrl === undefined ? {} : { image: { url: imageUrl } }),
+      },
+    ],
+    allowedMentions: { parse: [], repliedUser: false },
+    flags: MessageFlags.SuppressEmbeds,
+  };
+};
 
 export interface RssSchedulerPublisher {
   publish(channelId: string, digest: RssRenderedDigest): Promise<void>;
@@ -308,25 +328,34 @@ export class RssScheduler {
         await release(postable);
         return 0;
       }
-      if (!(await policyAllowsPost())) {
-        await release(postable);
-        return 0;
-      }
 
-      try {
-        await this.publisher.publish(this.channelId, postableRendered);
-      } catch {
-        await release(postable, 'network');
-        return 0;
-      }
+      const remaining = postable.filter((delivery) =>
+        postableRendered.deliveryKeys.includes(delivery.key),
+      );
+      const omitted = postable.filter(
+        (delivery) => !postableRendered.deliveryKeys.includes(delivery.key),
+      );
+      if (omitted.length > 0) await release(omitted);
 
       let published = 0;
-      for (const delivery of postable) {
-        if (postableRendered.deliveryKeys.includes(delivery.key)) {
-          if (await complete(delivery)) published += 1;
-        } else {
+      for (const [index, delivery] of remaining.entries()) {
+        const rendered = renderRssDigest({ entries: [delivery.entry] });
+        if (!rendered.deliveryKeys.includes(delivery.key)) {
           await release([delivery]);
+          continue;
         }
+        if (!(await policyAllowsPost())) {
+          await release(remaining.slice(index));
+          return published;
+        }
+        try {
+          await this.publisher.publish(this.channelId, rendered);
+        } catch {
+          await release([delivery], 'network');
+          await release(remaining.slice(index + 1));
+          return published;
+        }
+        if (await complete(delivery)) published += 1;
       }
       return published;
     })();

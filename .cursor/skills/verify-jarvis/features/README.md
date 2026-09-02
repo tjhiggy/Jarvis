@@ -42,7 +42,7 @@ Keep live-guild steps out of the map. Name only user paths, stable test files, r
 
 ## Features
 
-- [RSS digest SuppressEmbeds](./rss-digest.md) covers public RSS digest payloads that suppress Discord link unfurls.
+- [RSS native cards with SuppressEmbeds](./rss-digest.md) covers public RSS cards that keep `SuppressEmbeds` so Discord does not unfurl a second headline.
 - [Delegated posts Sent by](./delegated-posts.md) covers `/post` preview and confirm, including the `Sent by` attribution field.
 - [Command Deck confirm](./command-deck-confirm.md) covers preview, confirm, cancel, stale, retry, and rollback of Deck mutations.
 - [Discord journey matrix](./discord-journey-matrix.md) covers the 36-command journey catalog check and focused verifier.

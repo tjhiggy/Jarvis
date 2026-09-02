@@ -1219,6 +1219,7 @@ describe('createApplication', () => {
           title: 'GTA 6 apartment found in real life',
           url: 'https://www.ign.com/articles/gta-6-apartment',
           publishedAt: 'Sun, 30 Aug 2026 16:27:56 +0000',
+          imageUrl: 'https://cdn.example.com/gta-6-apartment.jpg',
         },
       ]);
     try {
@@ -1256,12 +1257,18 @@ describe('createApplication', () => {
       rssInterval?.();
       const payload = await posted.promise;
       expect(payload).toEqual({
-        content: expect.stringContaining(
-          'https://www.ign.com/articles/gta-6-apartment',
-        ),
+        embeds: [
+          {
+            title: 'GTA 6 apartment found in real life',
+            url: 'https://www.ign.com/articles/gta-6-apartment',
+            author: { name: 'IGN' },
+            image: { url: 'https://cdn.example.com/gta-6-apartment.jpg' },
+          },
+        ],
         allowedMentions: { parse: [], repliedUser: false },
         flags: MessageFlags.SuppressEmbeds,
       });
+      expect(payload).not.toHaveProperty('content');
 
       await application.shutdown();
     } finally {

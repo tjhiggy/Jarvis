@@ -104,35 +104,42 @@ describe('RssScheduler', () => {
     );
 
     await expect(scheduler.tick()).resolves.toBe(5);
-    expect(publisher.publish).toHaveBeenCalledTimes(1);
-    expect(publisher.publish).toHaveBeenCalledWith(
-      'channel-1',
-      expect.objectContaining({
-        entries: [
+    expect(publisher.publish).toHaveBeenCalledTimes(5);
+    expect(publisher.publish.mock.calls.map((call) => call[1].entries)).toEqual(
+      [
+        [
           expect.objectContaining({
             sourceLabel: 'News',
             title: 'Update item-0',
             url: 'https://news.example.com/item-0',
             publishedAt: '2026-08-11T12:00:00Z',
           }),
+        ],
+        [
           expect.objectContaining({
             sourceLabel: 'News',
             title: 'Update item-1',
           }),
+        ],
+        [
           expect.objectContaining({
             sourceLabel: 'News',
             title: 'Update item-2',
           }),
+        ],
+        [
           expect.objectContaining({
             sourceLabel: 'News',
             title: 'Update item-3',
           }),
+        ],
+        [
           expect.objectContaining({
             sourceLabel: 'News',
             title: 'Update item-4',
           }),
         ],
-      }),
+      ],
     );
   });
 
@@ -172,7 +179,7 @@ describe('RssScheduler', () => {
     await expect(scheduler.tick()).resolves.toBe(5);
     await expect(scheduler.tick()).resolves.toBe(5);
     await expect(scheduler.tick()).resolves.toBe(0);
-    expect(publisher.publish).toHaveBeenCalledTimes(4);
+    expect(publisher.publish).toHaveBeenCalledTimes(20);
   });
 
   it('completes each non-digest post before a later delivery fails and retries only the unposted item', async () => {
@@ -292,11 +299,13 @@ describe('RssScheduler', () => {
     );
   });
 
-  it('sends RSS digest URLs with SuppressEmbeds so Discord does not unfurl a second headline card', () => {
+  it('sends one native Discord card per headline with SuppressEmbeds so Discord does not unfurl a second card', () => {
     const digest = renderRssDigest({
       entries: [
         {
-          ...item('gta-apartment'),
+          ...item('gta-apartment', {
+            imageUrl: 'https://cdn.example.com/gta-apartment.jpg',
+          }),
           sourceLabel: 'IGN',
           deliveryKey: 'ign:gta-apartment',
         },
@@ -308,24 +317,43 @@ describe('RssScheduler', () => {
       ],
     });
 
-    const payload = rssBroadcastSendPayload(digest);
+    const payloads = digest.entries.map((entry) =>
+      rssBroadcastSendPayload(entry),
+    );
 
-    expect(payload.content).toContain(
-      '**IGN** · Update gta-apartment\nhttps://news.example.com/gta-apartment',
-    );
-    expect(payload.content).toContain(
-      '**PC Gamer** · Update elden-ring\nhttps://news.example.com/elden-ring',
-    );
-    expect(payload.allowedMentions).toEqual({
-      parse: [],
-      repliedUser: false,
+    expect(payloads).toHaveLength(2);
+    expect(payloads[0]).toEqual({
+      embeds: [
+        {
+          title: 'Update gta-apartment',
+          url: 'https://news.example.com/gta-apartment',
+          author: { name: 'IGN' },
+          image: { url: 'https://cdn.example.com/gta-apartment.jpg' },
+        },
+      ],
+      allowedMentions: { parse: [], repliedUser: false },
+      flags: MessageFlags.SuppressEmbeds,
     });
-    expect(payload.flags).toBe(MessageFlags.SuppressEmbeds);
-    expect(payload).not.toHaveProperty('embeds');
+    expect(payloads[1]).toEqual({
+      embeds: [
+        {
+          title: 'Update elden-ring',
+          url: 'https://news.example.com/elden-ring',
+          author: { name: 'PC Gamer' },
+        },
+      ],
+      allowedMentions: { parse: [], repliedUser: false },
+      flags: MessageFlags.SuppressEmbeds,
+    });
+    expect(payloads[1]!.embeds[0]).not.toHaveProperty('image');
+    expect(payloads[0]).not.toHaveProperty('content');
+    expect(JSON.stringify(payloads[0])).not.toContain(
+      '**IGN** · Update gta-apartment',
+    );
   });
 
   it('keeps every rendered digest entry complete within the payload bound', () => {
-    const digest = formatRssDigest({
+    const digest = renderRssDigest({
       entries: [
         {
           ...item('oversized'),
@@ -338,12 +366,24 @@ describe('RssScheduler', () => {
         { ...item('retained'), deliveryKey: 'retained', sourceLabel: 'News' },
       ],
     });
+    const payloads = digest.entries.map((entry) =>
+      rssBroadcastSendPayload(entry),
+    );
 
-    expect(digest.length).toBeLessThanOrEqual(1_900);
-    expect(digest).not.toContain('u'.repeat(500));
-    expect(digest).toContain('**News** · Update retained');
-    expect(digest).toContain('https://news.example.com/retained');
-    expect(digest).toContain('2026-08-11T12:00:00Z');
+    expect(digest.entries.map((entry) => entry.id)).toEqual(['retained']);
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]).toMatchObject({
+      embeds: [
+        {
+          title: 'Update retained',
+          url: 'https://news.example.com/retained',
+          author: { name: 'News' },
+        },
+      ],
+      flags: MessageFlags.SuppressEmbeds,
+    });
+    expect(JSON.stringify(payloads)).not.toContain('u'.repeat(500));
+    expect(formatRssDigest(digest)).not.toContain('u'.repeat(500));
   });
 
   it('reports configured RSS as unavailable until a scheduler exists', () => {
@@ -425,15 +465,12 @@ describe('RssScheduler', () => {
     await expect(scheduler.tick()).resolves.toBe(2);
 
     expect(delivery.claimDelivery).toHaveBeenCalledTimes(2);
-    expect(publisher.publish).toHaveBeenCalledWith(
-      'channel-1',
-      expect.objectContaining({
-        entries: [
-          expect.objectContaining({ id: 'slot-1' }),
-          expect.objectContaining({ id: 'slot-2' }),
-        ],
-      }),
-    );
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    expect(
+      publisher.publish.mock.calls.map((call) =>
+        call[1].entries.map((entry: { id: string }) => entry.id),
+      ),
+    ).toEqual([['slot-1'], ['slot-2']]);
   });
 
   it('re-reserves pre-midnight claims against the actual post day before sending', async () => {
@@ -588,11 +625,12 @@ function deliveryStore(digestMode = true) {
   };
 }
 
-function item(id: string) {
+function item(id: string, extras: { readonly imageUrl?: string } = {}) {
   return {
     id,
     title: `Update ${id}`,
     url: `https://news.example.com/${id}`,
     publishedAt: '2026-08-11T12:00:00Z',
+    ...extras,
   };
 }

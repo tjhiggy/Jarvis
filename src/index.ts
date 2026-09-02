@@ -943,9 +943,11 @@ export const createApplication = async (
               typeof sendable.send !== 'function'
             )
               throw new Error('Configured RSS channel is unavailable.');
-            await runBroadcastDelivery('rss', () =>
-              sendable.send(rssBroadcastSendPayload(digest)),
-            );
+            for (const entry of digest.entries) {
+              await runBroadcastDelivery('rss', () =>
+                sendable.send(rssBroadcastSendPayload(entry)),
+              );
+            }
           },
         },
         config.discord.guildId,
