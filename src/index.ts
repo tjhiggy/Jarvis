@@ -149,6 +149,7 @@ import type {
 } from './notifications/broadcast-store.js';
 import { SqliteBroadcastStore } from './notifications/sqlite-broadcast-store.js';
 import { HttpGitHubReadOnlyService } from './github/github-service.js';
+import { HttpGitHubIssueCreateService } from './github/issue-create.js';
 import {
   createCommandDeckRuntimeMutationApi,
   startAdminConsole as startAdminConsoleRuntime,
@@ -1346,7 +1347,9 @@ export const createApplication = async (
           quietNudgeState.service
             .recordMessageSnapshot(discordMessage.channelId, {
               authorIsBot: discordMessage.author.bot === true,
-              createdAt: new Date(discordMessage.createdTimestamp ?? Date.now()),
+              createdAt: new Date(
+                discordMessage.createdTimestamp ?? Date.now(),
+              ),
             })
             .catch((error: unknown) => {
               logger?.warn(
@@ -1821,6 +1824,16 @@ export const createApplication = async (
                     config.github.token,
                     config.github.timeoutMs,
                   ),
+                  ...(config.github.token.trim() === ''
+                    ? {}
+                    : {
+                        issues: new HttpGitHubIssueCreateService(
+                          config.github.owner,
+                          config.github.repo,
+                          config.github.token,
+                          config.github.timeoutMs,
+                        ),
+                      }),
                 },
               }
             : {}),
@@ -2136,8 +2149,7 @@ export const createApplication = async (
             const latest = [...messages.values()]
               .filter((entry) => !entry.author.bot)
               .sort(
-                (left, right) =>
-                  right.createdTimestamp - left.createdTimestamp,
+                (left, right) => right.createdTimestamp - left.createdTimestamp,
               )[0];
             return latest === undefined
               ? undefined

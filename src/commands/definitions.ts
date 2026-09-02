@@ -1286,7 +1286,8 @@ export const createCommandDefinitions = (
     {
       type: 1,
       name: 'request',
-      description: 'Post a MuthaShip administrator request in captains-quarters.',
+      description:
+        'Post a MuthaShip administrator request in captains-quarters and open one GitHub issue.',
       options: [
         {
           type: 3,

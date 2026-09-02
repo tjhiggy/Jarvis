@@ -42,8 +42,9 @@ enhancements.
 
 Jarvis does not moderate Discord, create roles, change channels, or edit content owned
 by others, execute shell commands, access arbitrary files, or grant itself tools.
-Jarvis has no GitHub write capability. Feedback and feature intake use native
-GitHub Discussions and issue forms. The contracts in `src/extensions/contracts.ts` are inert
+The only GitHub write is administrator `/request` creating one issue in the
+configured repository. Other feedback and feature intake use native GitHub
+Discussions and issue forms. The contracts in `src/extensions/contracts.ts` are inert
 design seams. Calling them "integrations" would be marketing with a fake
 mustache.
 
@@ -236,6 +237,7 @@ gate reduce risk but cannot make language-model output infallible; use
 | `/poll-close poll_id:<id>`                                                                                                     | Configured administrators close an open poll early. Available only when polls are enabled.                                                                                                               |
 | `/birthday set`, `/birthday show`, `/birthday delete`                                                                          | Members opt in to a month-and-day birthday announcement, view it privately, or delete it. Announcements use the configured birthday channel.                                                             |
 | `/github repository`, `/github issue`, `/github pull-request`                                                                  | Reads metadata from the configured GitHub repository.                                                                                                                                                    |
+| `/request what:<text> why:<text> done:<text>`                                                                                  | Configured administrators in captains-quarters post a public REQUEST and create one GitHub issue in the configured repository. Failed issue creation stays ephemeral.                                    |
 | `/roles`                                                                                                                       | Shows the explicitly allowlisted self-service roles. Jarvis can assign only configured roles below its bot role.                                                                                         |
 | `/profile create`, `/profile view`, `/profile edit`, `/profile hide`, `/profile show`, `/profile delete`                       | Creates an opt-in, server-scoped crew profile through private confirmation. Hidden or missing profiles share one neutral response.                                                                       |
 | `/engagement proactive preview`, `/engagement proactive enable`, `/engagement proactive pause`, `/engagement proactive status` | Administrators preview or control proactive posts. Delivery is disabled by default and remains bounded by the configured activity channel, quiet hours, and cadence.                                     |

@@ -42,7 +42,7 @@ Upload the avatar and banner through the Discord Developer Portal. Do not commit
 
 ## Capability boundary
 
-Public copy must not imply that Jarvis can execute code, change server settings, write to GitHub, manage roles, moderate members, or learn from conversations as a training loop. Feature intake stays in native GitHub Discussions and issue forms.
+Public copy must not imply that Jarvis can execute code, change server settings, perform general GitHub writes, manage roles, moderate members, or learn from conversations as a training loop. The only GitHub write is administrator `/request` creating one issue in the configured repository. Other feature intake stays in native GitHub Discussions and issue forms.
 
 ## Manual verification record
 

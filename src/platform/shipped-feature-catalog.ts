@@ -308,7 +308,7 @@ export const shippedFeatureCatalog = [
     audience: 'member',
     requiredConfiguration: ['GITHUB_OWNER', 'GITHUB_REPO'],
     permissionBoundary:
-      'Repository, issue, and pull-request reads are fixed to one configured repository; Jarvis has no GitHub write authority.',
+      'Repository, issue, and pull-request reads are fixed to one configured repository; /github does not mutate GitHub state.',
     persistenceBehavior:
       'GitHub response content is not retained by the integration.',
     automatedEvidence: ['tests/github-service.test.ts'],
@@ -437,13 +437,22 @@ export const shippedFeatureCatalog = [
       commandDeckWorkflows: [],
     },
     audience: 'administrator',
-    requiredConfiguration: ['ENGAGEMENT_ADMIN_ROLE_IDS'],
+    requiredConfiguration: [
+      'ENGAGEMENT_ADMIN_ROLE_IDS',
+      'GITHUB_OWNER',
+      'GITHUB_REPO',
+      'GITHUB_TOKEN',
+    ],
     permissionBoundary:
-      'Only configured administrators can post in captains-quarters; other channels fail closed with no public request.',
-    persistenceBehavior: 'Request posts are not retained by Jarvis.',
-    automatedEvidence: ['tests/request-command.test.ts'],
+      'Only configured administrators can post in captains-quarters; other channels and non-admins fail closed with no public request and no GitHub issue. Issue creation uses the configured repository token, not a personal GitHub identity.',
+    persistenceBehavior:
+      'Successful requests create one GitHub issue in the configured repository. Discord REQUEST posts are not retained by Jarvis. Failed issue creation stays ephemeral and does not claim an issue exists.',
+    automatedEvidence: [
+      'tests/request-command.test.ts',
+      'tests/github-issue-create.test.ts',
+    ],
     manualSmokeCases: [
-      'Post one /request in captains-quarters as an administrator and verify non-admins and other channels are denied without a public REQUEST.',
+      'Post one /request in captains-quarters as an administrator and verify the public REQUEST includes the created issue URL, then verify non-admins, other channels, and GitHub failures stay ephemeral without a public REQUEST.',
     ],
   },
   {
