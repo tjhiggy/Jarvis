@@ -52,6 +52,7 @@ describe('SQLiteEngagementRepository', () => {
       'engagement_participation_streaks',
       'engagement_preferences',
       'engagement_proactive_preferences',
+      'engagement_quiet_nudge_state',
       'engagement_recap_preferences',
       'engagement_recap_runs',
       'engagement_rsvps',

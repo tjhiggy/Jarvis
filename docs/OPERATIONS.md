@@ -17,7 +17,9 @@ read token after suspected exposure.
 
 ## Engagement controls
 
-Configured engagement administrators may run `/engagement status`, `/engagement pause`, and `/engagement resume`. Status is private and reports only configured features, aggregate record counts, scheduler state, and last-run outcome. `/engagement delete` durably queues bot-owned cards, deletes each card first, and removes the corresponding content row only afterward; administrators may provide a member ID. Its private response separates records removed immediately from card-backed records still queued for bounded retry. Pause suppresses scheduled recap, event-reminder, and trivia-result delivery without deleting records and persists until explicit resume.
+Configured engagement administrators may run `/engagement status`, `/engagement pause`, and `/engagement resume`. Status is private and reports only configured features, aggregate record counts, scheduler state, and last-run outcome. `/engagement delete` durably queues bot-owned cards, deletes each card first, and removes the corresponding content row only afterward; administrators may provide a member ID. Its private response separates records removed immediately from card-backed records still queued for bounded retry. Pause suppresses scheduled recap, event-reminder, trivia-result delivery, and quiet-channel nudges without deleting records and persists until explicit resume.
+
+Quiet-channel nudges are optional and configured only through deployment environment keys. Set `ENGAGEMENT_QUIET_NUDGE_EARTHLINGS_CHANNEL_ID` for the main crew channel and `ENGAGEMENT_QUIET_NUDGE_TEST_CHANNEL_ID` for the proof channel. Their windows default to 1,440 and 5 minutes respectively. Jarvis posts at most one model-generated nudge per quiet stretch per channel, ignores bot messages when measuring quiet, and uses empty `allowedMentions`. Blank channel IDs, missing channels, provider failures, or `/engagement pause` all fail closed with no post.
 
 This guide covers routine operation of the deployed Jarvis process. It does
 not authorize Discord administration, repository changes, shell execution, or

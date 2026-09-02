@@ -118,6 +118,7 @@ const config: AppConfig = {
     retentionDays: 30,
     maxRecordsPerUser: 5,
     maxParticipants: 100,
+    quietNudges: { channels: [] },
   },
   logging: { level: 'silent' },
 };
