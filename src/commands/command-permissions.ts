@@ -31,7 +31,7 @@ export const commandPermissionRules: readonly CommandPermissionRule[] = [
   },
   {
     command:
-      '/engagement, /config, /game-night, /event create, /event cancel, /post',
+      '/engagement, /config, /game-night, /event create, /event cancel, /post, /request',
     scope: 'configured-admin',
     notes:
       'Requires the configured administrator role allowlist and feature-specific gates.',

@@ -428,6 +428,25 @@ export const shippedFeatureCatalog = [
     ],
   },
   {
+    id: 'administrator-requests',
+    name: 'Administrator requests in captains-quarters',
+    status: 'pass',
+    ownerModule: 'src/commands/request.ts',
+    entryPoints: {
+      discordCommands: ['request'],
+      commandDeckWorkflows: [],
+    },
+    audience: 'administrator',
+    requiredConfiguration: ['ENGAGEMENT_ADMIN_ROLE_IDS'],
+    permissionBoundary:
+      'Only configured administrators can post in captains-quarters; other channels fail closed with no public request.',
+    persistenceBehavior: 'Request posts are not retained by Jarvis.',
+    automatedEvidence: ['tests/request-command.test.ts'],
+    manualSmokeCases: [
+      'Post one /request in captains-quarters as an administrator and verify non-admins and other channels are denied without a public REQUEST.',
+    ],
+  },
+  {
     id: 'daily-progression',
     name: 'Daily rewards and participation streaks',
     status: 'pass',

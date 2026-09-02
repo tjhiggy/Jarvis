@@ -25,9 +25,9 @@ describe('shipped feature catalog', () => {
       resolve('.'),
     );
 
-    expect(commands).toHaveLength(36);
-    expect(result.registeredCommandCount).toBe(36);
-    expect(result.ownedCommandCount).toBe(36);
+    expect(commands).toHaveLength(37);
+    expect(result.registeredCommandCount).toBe(37);
+    expect(result.ownedCommandCount).toBe(37);
     expect(result.registeredWorkflowCount).toBe(adminConsoleWorkflows.length);
     expect(result.ownedWorkflowCount).toBe(adminConsoleWorkflows.length);
     expect(result.findings).toEqual([]);
