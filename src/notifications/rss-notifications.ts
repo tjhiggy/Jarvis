@@ -7,6 +7,7 @@ export interface RssNotification {
   readonly title: string;
   readonly url: string;
   readonly publishedAt: string;
+  readonly imageUrl?: string;
 }
 
 interface RssLookupAddress {
@@ -161,6 +162,56 @@ const canonicalUrl = (value: string): string => {
   }
 };
 
+const attributeValue = (attributes: string, name: string): string =>
+  attributes.match(new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, 'i'))?.[1] ??
+  '';
+
+export const sanitizeRssImageUrl = (
+  value: string | undefined,
+): string | undefined => {
+  if (value === undefined) return undefined;
+  const url = canonicalUrl(value);
+  if (url === '' || url.length > 2_048) return undefined;
+  try {
+    const parsed = new URL(url);
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.username !== '' ||
+      parsed.password !== '' ||
+      privateHost(parsed.hostname)
+    ) {
+      return undefined;
+    }
+    return url;
+  } catch {
+    return undefined;
+  }
+};
+
+const parseRssItemImageUrl = (item: string): string | undefined => {
+  for (const match of item.matchAll(/<media:content\b([^>]*)\/?>/gi)) {
+    const attributes = match[1] ?? '';
+    const medium = attributeValue(attributes, 'medium').toLowerCase();
+    const type = attributeValue(attributes, 'type').toLowerCase();
+    if (medium === 'video' || medium === 'audio') continue;
+    if (type !== '' && !type.startsWith('image/')) continue;
+    const imageUrl = sanitizeRssImageUrl(attributeValue(attributes, 'url'));
+    if (imageUrl !== undefined) return imageUrl;
+  }
+  for (const match of item.matchAll(/<media:thumbnail\b([^>]*)\/?>/gi)) {
+    const imageUrl = sanitizeRssImageUrl(attributeValue(match[1] ?? '', 'url'));
+    if (imageUrl !== undefined) return imageUrl;
+  }
+  for (const match of item.matchAll(/<enclosure\b([^>]*)\/?>/gi)) {
+    const attributes = match[1] ?? '';
+    const type = attributeValue(attributes, 'type').toLowerCase();
+    if (!type.startsWith('image/')) continue;
+    const imageUrl = sanitizeRssImageUrl(attributeValue(attributes, 'url'));
+    if (imageUrl !== undefined) return imageUrl;
+  }
+  return undefined;
+};
+
 export class RssNotificationClient {
   constructor(
     private readonly fetcher: typeof fetch = createSafeRssFetcher(),
@@ -188,6 +239,7 @@ export class RssNotificationClient {
         .slice(0, Math.min(Math.max(0, maximumItems), 20))
         .map((match) => {
           const item = match[1] ?? '';
+          const imageUrl = parseRssItemImageUrl(item);
           return {
             id: decode(
               item.match(/<guid[^>]*>([\s\S]*?)<\/guid>/i)?.[1] ??
@@ -206,6 +258,7 @@ export class RssNotificationClient {
                 /<(?:pubDate|published)[^>]*>([\s\S]*?)<\/(?:pubDate|published)>/i,
               )?.[1] ?? '',
             ),
+            ...(imageUrl === undefined ? {} : { imageUrl }),
           };
         })
         .filter((item) => item.id !== '' && item.url !== '');
