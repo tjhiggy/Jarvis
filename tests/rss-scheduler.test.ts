@@ -4,6 +4,7 @@ import { formatRssDigest, rssIntegrationHealth } from '../src/index.js';
 import {
   renderRssDigest,
   rssBroadcastSendPayload,
+  rssBroadcastShowsItem,
   RssScheduler,
 } from '../src/notifications/rss-scheduler.js';
 import { RssStorage } from '../src/notifications/rss-storage.js';
@@ -299,7 +300,52 @@ describe('RssScheduler', () => {
     );
   });
 
-  it('sends one native Discord card per headline with SuppressEmbeds so Discord does not unfurl a second card', () => {
+  it('refuses to send an RSS payload without a visible title and link', () => {
+    expect(() =>
+      rssBroadcastSendPayload({
+        title: '   ',
+        url: '',
+        sourceLabel: 'IGN',
+      }),
+    ).toThrow('RSS payload has no visible title and link.');
+  });
+
+  it('rejects empty content when SuppressEmbeds would hide the only RSS card', () => {
+    const item = {
+      title: 'Update gta-apartment',
+      url: 'https://news.example.com/gta-apartment',
+    };
+    const blankCard = {
+      embeds: [
+        {
+          title: item.title,
+          url: item.url,
+          author: { name: 'IGN' },
+        },
+      ],
+      allowedMentions: { parse: [], repliedUser: false },
+      flags: MessageFlags.SuppressEmbeds,
+    };
+
+    expect(rssBroadcastShowsItem(blankCard, item)).toBe(false);
+    expect(rssBroadcastShowsItem({ ...blankCard, content: '' }, item)).toBe(
+      false,
+    );
+    expect(
+      rssBroadcastShowsItem(
+        { content: item.title, flags: MessageFlags.SuppressEmbeds },
+        item,
+      ),
+    ).toBe(false);
+    expect(
+      rssBroadcastShowsItem(
+        { embeds: [{ title: item.title, url: item.url }] },
+        item,
+      ),
+    ).toBe(true);
+  });
+
+  it('sends title and link in content so SuppressEmbeds cannot blank the RSS post', () => {
     const digest = renderRssDigest({
       entries: [
         {
@@ -323,6 +369,8 @@ describe('RssScheduler', () => {
 
     expect(payloads).toHaveLength(2);
     expect(payloads[0]).toEqual({
+      content:
+        '**IGN** · Update gta-apartment\nhttps://news.example.com/gta-apartment\n2026-08-11T12:00:00Z',
       embeds: [
         {
           title: 'Update gta-apartment',
@@ -335,6 +383,8 @@ describe('RssScheduler', () => {
       flags: MessageFlags.SuppressEmbeds,
     });
     expect(payloads[1]).toEqual({
+      content:
+        '**PC Gamer** · Update elden-ring\nhttps://news.example.com/elden-ring\n2026-08-11T12:00:00Z',
       embeds: [
         {
           title: 'Update elden-ring',
@@ -346,10 +396,18 @@ describe('RssScheduler', () => {
       flags: MessageFlags.SuppressEmbeds,
     });
     expect(payloads[1]!.embeds[0]).not.toHaveProperty('image');
-    expect(payloads[0]).not.toHaveProperty('content');
-    expect(JSON.stringify(payloads[0])).not.toContain(
-      '**IGN** · Update gta-apartment',
-    );
+    expect(
+      rssBroadcastShowsItem(payloads[0]!, {
+        title: 'Update gta-apartment',
+        url: 'https://news.example.com/gta-apartment',
+      }),
+    ).toBe(true);
+    expect(
+      rssBroadcastShowsItem(payloads[1]!, {
+        title: 'Update elden-ring',
+        url: 'https://news.example.com/elden-ring',
+      }),
+    ).toBe(true);
   });
 
   it('keeps every rendered digest entry complete within the payload bound', () => {
@@ -373,6 +431,8 @@ describe('RssScheduler', () => {
     expect(digest.entries.map((entry) => entry.id)).toEqual(['retained']);
     expect(payloads).toHaveLength(1);
     expect(payloads[0]).toMatchObject({
+      content:
+        '**News** · Update retained\nhttps://news.example.com/retained\n2026-08-11T12:00:00Z',
       embeds: [
         {
           title: 'Update retained',
@@ -382,6 +442,12 @@ describe('RssScheduler', () => {
       ],
       flags: MessageFlags.SuppressEmbeds,
     });
+    expect(
+      rssBroadcastShowsItem(payloads[0]!, {
+        title: 'Update retained',
+        url: 'https://news.example.com/retained',
+      }),
+    ).toBe(true);
     expect(JSON.stringify(payloads)).not.toContain('u'.repeat(500));
     expect(formatRssDigest(digest)).not.toContain('u'.repeat(500));
   });

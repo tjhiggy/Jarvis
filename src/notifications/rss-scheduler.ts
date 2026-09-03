@@ -32,6 +32,7 @@ export interface RssBroadcastEmbed {
 }
 
 export interface RssBroadcastSendPayload {
+  readonly content: string;
   readonly embeds: readonly [RssBroadcastEmbed];
   readonly allowedMentions: {
     readonly parse: readonly [];
@@ -40,17 +41,69 @@ export interface RssBroadcastSendPayload {
   readonly flags: typeof MessageFlags.SuppressEmbeds;
 }
 
+export interface RssBroadcastVisibilityItem {
+  readonly title: string;
+  readonly url: string;
+}
+
+export interface RssBroadcastVisibilityPayload {
+  readonly content?: string;
+  readonly embeds?: readonly {
+    readonly title?: string;
+    readonly url?: string;
+  }[];
+  readonly flags?: number;
+}
+
+const boundedRssText = (value: string, limit: number): string =>
+  value.replace(/\s+/g, ' ').trim().slice(0, limit);
+
+export const formatRssBroadcastContent = (
+  entry: Pick<RssDigestEntry, 'title' | 'url' | 'sourceLabel'> & {
+    readonly publishedAt?: string;
+  },
+): string => {
+  const source = boundedRssText(entry.sourceLabel, 64);
+  const title = boundedRssText(entry.title, 180);
+  const url = entry.url.trim();
+  const publishedAt = boundedRssText(entry.publishedAt ?? '', 64);
+  return publishedAt === ''
+    ? `**${source}** · ${title}\n${url}`
+    : `**${source}** · ${title}\n${url}\n${publishedAt}`;
+};
+
+export const rssBroadcastShowsItem = (
+  payload: RssBroadcastVisibilityPayload,
+  item: RssBroadcastVisibilityItem,
+): boolean => {
+  const title = boundedRssText(item.title, 180);
+  const url = item.url.trim();
+  if (title === '' || url === '') return false;
+  const content = payload.content?.trim() ?? '';
+  if (content.includes(title) && content.includes(url)) return true;
+  const embedsSuppressed =
+    (Number(payload.flags ?? 0) & MessageFlags.SuppressEmbeds) ===
+    MessageFlags.SuppressEmbeds;
+  if (embedsSuppressed) return false;
+  const embed = payload.embeds?.[0];
+  return embed?.title === title && embed.url === url;
+};
+
 export const rssBroadcastSendPayload = (
   entry: Pick<RssDigestEntry, 'title' | 'url' | 'sourceLabel'> & {
     readonly imageUrl?: string;
+    readonly publishedAt?: string;
   },
 ): RssBroadcastSendPayload => {
+  const title = boundedRssText(entry.title, 180);
+  const url = entry.url.trim();
   const imageUrl = sanitizeRssImageUrl(entry.imageUrl);
-  return {
+  const payload: RssBroadcastSendPayload = {
+    content: formatRssBroadcastContent(entry),
     embeds: [
       {
-        title: boundedRssText(entry.title, 180),
-        url: entry.url.trim(),
+        title,
+        url,
         author: { name: boundedRssText(entry.sourceLabel, 64) },
         ...(imageUrl === undefined ? {} : { image: { url: imageUrl } }),
       },
@@ -58,6 +111,10 @@ export const rssBroadcastSendPayload = (
     allowedMentions: { parse: [], repliedUser: false },
     flags: MessageFlags.SuppressEmbeds,
   };
+  if (!rssBroadcastShowsItem(payload, { title, url })) {
+    throw new Error('RSS payload has no visible title and link.');
+  }
+  return payload;
 };
 
 export interface RssSchedulerPublisher {
@@ -384,11 +441,8 @@ export class RssScheduler {
   }
 }
 
-const boundedRssText = (value: string, limit: number): string =>
-  value.replace(/\s+/g, ' ').trim().slice(0, limit);
-
 const renderRssDigestEntry = (entry: RssDigestEntry): string | undefined => {
   const url = entry.url.trim();
   if (url === '' || url.length > 400) return undefined;
-  return `**${boundedRssText(entry.sourceLabel, 64)}** · ${boundedRssText(entry.title, 180)}\n${url}\n${boundedRssText(entry.publishedAt, 64)}`;
+  return formatRssBroadcastContent(entry);
 };

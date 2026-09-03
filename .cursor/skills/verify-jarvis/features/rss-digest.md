@@ -1,22 +1,25 @@
-# RSS native cards with SuppressEmbeds
+# RSS visible title and link with SuppressEmbeds
 
 RSS broadcasts post each new allowlisted feed entry as one bot-authored Discord
-card. Jarvis keeps `MessageFlags.SuppressEmbeds` so Discord does not unfurl a
-second headline card beside the embed.
+message. The payload always includes the title and a working link in `content`.
+Jarvis keeps `MessageFlags.SuppressEmbeds` so Discord does not unfurl a second
+headline card beside that text. SuppressEmbeds must not be the only visible
+surface: an embed-only payload is a blank post.
 
 ## Sub-features
 
-- `rss-digest-card` sends one embed per headline: linked title, optional feed image, source as author.
-- `rss-digest-suppress-embeds` sets `flags` to `MessageFlags.SuppressEmbeds` and includes the bot-authored `embeds` property.
-- `rss-digest-mentions` sends `allowedMentions.parse` as an empty list so the card cannot ping roles or everyone.
-- `rss-digest-bound` keeps oversized entries from becoming a card and omits invalid images instead of attaching a broken image.
-- `rss-digest-split` publishes one Discord message per retained item so a cycle of several headlines is several cards, not one text dump.
+- `rss-digest-content` sends title and URL in `content` so the post stays visible when embeds are suppressed.
+- `rss-digest-card` still includes one embed per headline: linked title, optional feed image, source as author.
+- `rss-digest-suppress-embeds` sets `flags` to `MessageFlags.SuppressEmbeds` only after `content` already has title and link.
+- `rss-digest-mentions` sends `allowedMentions.parse` as an empty list so the post cannot ping roles or everyone.
+- `rss-digest-bound` keeps oversized entries from becoming a post and omits invalid images instead of attaching a broken image.
+- `rss-digest-split` publishes one Discord message per retained item so a cycle of several headlines is several posts, not one text dump.
 
 ## How to get to it (user POV)
 
 - An administrator adds an allowlisted HTTPS feed with `/rss` (or the Command Deck RSS controls).
-- Jarvis later posts new entries to the configured RSS channel as native cards.
-- Crew members see one card per headline in that channel. They do not run a verify command.
+- Jarvis later posts new entries to the configured RSS channel.
+- Crew members see the title and a working link for each headline. They do not run a verify command.
 
 ## Driving it with the Jarvis CI harness
 
@@ -26,13 +29,14 @@ Preconditions:
 - `node_modules/.bin/vitest` exists.
 - No Discord token is in the environment.
 
-- **Native card.** Prove the embed. Run `npm test -- tests/rss-scheduler.test.ts --reporter=verbose`. The test `sends one native Discord card per headline with SuppressEmbeds so Discord does not unfurl a second card` expects one payload per entry. The IGN payload `embeds[0]` has `title` `Update gta-apartment`, `url` `https://news.example.com/gta-apartment`, `author.name` `IGN`, and `image.url` `https://cdn.example.com/gta-apartment.jpg`. The PC Gamer payload has title, url, and author, and does not have `image`.
-- **Suppress embeds.** In the same test, each payload `flags` equals `MessageFlags.SuppressEmbeds` and the payload does not have `content`.
+- **Blank-post reject.** Prove empty content fails. Run `npm test -- tests/rss-scheduler.test.ts --reporter=verbose`. The test `rejects empty content when SuppressEmbeds would hide the only RSS card` expects `rssBroadcastShowsItem` to be false for an embed-only `SuppressEmbeds` payload and for title-only content, and true for an unsuppressed embed that has title and URL.
+- **Visible content.** In the same file, the test `sends title and link in content so SuppressEmbeds cannot blank the RSS post` expects one payload per entry. Each payload `content` includes the source label, title, and URL. The IGN payload `embeds[0]` has `title` `Update gta-apartment`, `url` `https://news.example.com/gta-apartment`, `author.name` `IGN`, and `image.url` `https://cdn.example.com/gta-apartment.jpg`. The PC Gamer payload has title, url, and author, and does not have `image`. `rssBroadcastShowsItem` is true for both.
+- **Suppress embeds.** In the same test, each payload `flags` equals `MessageFlags.SuppressEmbeds` and `content` still contains the title and URL.
 - **Mention lock.** In the same test, `payload.allowedMentions` equals `{ parse: [], repliedUser: false }`.
-- **Bounded payload.** The test `keeps every rendered digest entry complete within the payload bound` stays in the same file and must pass with the native-card case.
+- **Bounded payload.** The test `keeps every rendered digest entry complete within the payload bound` stays in the same file and must pass with visible title-and-link content.
 - **Split messages.** The test `publishes at most five new entries in one source-labelled digest` expects five `publish` calls, one entry each.
 - **Driver.** Equivalent one-shot: `.cursor/skills/verify-jarvis/scripts/drive-feature.sh rss-digest`.
-- **Proof.** Exit code `0`. Artifact `.cursor/skills/verify-jarvis/artifacts/rss-digest/verify.txt` contains the native-card SuppressEmbeds test name and a passing Vitest summary.
+- **Proof.** Exit code `0`. Artifact `.cursor/skills/verify-jarvis/artifacts/rss-digest/verify.txt` contains the visible-content and blank-post reject test names and a passing Vitest summary.
 
 ## Gotchas
 
