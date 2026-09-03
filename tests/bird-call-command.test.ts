@@ -92,7 +92,7 @@ describe('/bird-call', () => {
   it('neutralizes mentions in the optional game text and keeps allowedMentions empty', async () => {
     const reply = vi.fn().mockResolvedValue(undefined);
     const game =
-      'raid with @everyone <@123456789012345678> and <@&987654321098765432>';
+      'raid with @everyone @here <@123456789012345678> <@!123456789012345678> <@&987654321098765432> in <#111222333444555666>';
     await handleBirdCallCommand(
       interaction({
         guildId: 'guild-1',
@@ -109,11 +109,38 @@ describe('/bird-call', () => {
       }),
     );
     expect(content).not.toContain('@everyone');
+    expect(content).not.toContain('@here');
     expect(content).not.toContain('<@123456789012345678>');
+    expect(content).not.toContain('<@!123456789012345678>');
     expect(content).not.toContain('<@&987654321098765432>');
+    expect(content).not.toContain('<#111222333444555666>');
     expect(content).toContain('@\u200beveryone');
+    expect(content).toContain('@\u200bhere');
     expect(content).toContain('<@\u200b123456789012345678>');
+    expect(content).toContain('<@\u200b!123456789012345678>');
     expect(content).toContain('<@\u200b&987654321098765432>');
+    expect(content).toContain('<#\u200b111222333444555666>');
+  });
+
+  it('fails closed for a whitespace-only guild id without posting a public bird call', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    await handleBirdCallCommand(
+      interaction({
+        guildId: '   ',
+        game: 'Fortnite',
+        reply,
+      }),
+    );
+
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringMatching(/server channel/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+    expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/bird call/i);
+    expect(reply.mock.calls[0]?.[0]?.content).not.toContain('Fortnite');
   });
 
   it('fails closed in DMs without posting a public bird call', async () => {
