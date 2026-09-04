@@ -261,7 +261,12 @@ export class RssNotificationClient {
             ...(imageUrl === undefined ? {} : { imageUrl }),
           };
         })
-        .filter((item) => item.id !== '' && item.url !== '');
+        .filter(
+          (item) =>
+            item.id !== '' &&
+            item.url !== '' &&
+            item.title.replace(/\s+/g, ' ').trim() !== '',
+        );
     } finally {
       clearTimeout(timer);
     }

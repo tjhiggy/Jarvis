@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- RSS ticks no longer abort the rest of the digest when a feed item has a
+  URL but an empty or whitespace-only title. Those items are dropped at fetch
+  and omitted from rendering so later headlines can still post. The send
+  payload still refuses a card with no visible title and link.
+
 ### Added
 
 - `/bird-call` posts one public MuthaShip-voice invite so any guild member can

@@ -152,6 +152,33 @@ describe('RSS notifications', () => {
     ]);
   });
 
+  it('drops feed items with an empty or whitespace-only title', async () => {
+    const client = new RssNotificationClient(
+      vi.fn().mockResolvedValue(
+        new Response(
+          `<rss><channel>
+            <item><guid>blank</guid><title></title><link>https://news.example.com/blank</link><pubDate>2026-09-04</pubDate></item>
+            <item><guid>spaces</guid><title>   </title><link>https://news.example.com/spaces</link><pubDate>2026-09-04</pubDate></item>
+            <item><guid>ok</guid><title>Visible headline</title><link>https://news.example.com/ok</link><pubDate>2026-09-04</pubDate></item>
+          </channel></rss>`,
+        ),
+      ),
+      2_000,
+      ['news.example.com'],
+    );
+
+    const items = await client.fetch('https://news.example.com/feed.xml');
+
+    expect(items).toEqual([
+      {
+        id: 'ok',
+        title: 'Visible headline',
+        url: 'https://news.example.com/ok',
+        publishedAt: '2026-09-04',
+      },
+    ]);
+  });
+
   it('canonicalizes item URLs and applies the requested parsed-entry bound', async () => {
     const entries = Array.from(
       { length: 25 },
