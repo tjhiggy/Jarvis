@@ -412,10 +412,28 @@ function faqEntry(id: string, label: string): FaqEntry {
 }
 
 describe('isAllowedChannel', () => {
+  it('accepts every channel when the allowlist is empty', () => {
+    expect(isAllowedChannel('any-channel', null, new Set())).toBe(true);
+    expect(isAllowedChannel('any-channel', 'parent-9', new Set())).toBe(true);
+  });
+
+  it('accepts a directly listed channel', () => {
+    expect(isAllowedChannel('channel-1', null, new Set(['channel-1']))).toBe(
+      true,
+    );
+  });
+
   it('accepts a thread whose parent is allowlisted', () => {
     expect(
       isAllowedChannel('thread-7', 'channel-1', new Set(['channel-1'])),
     ).toBe(true);
+  });
+
+  it('denies an unknown channel whose parent is not listed', () => {
+    expect(isAllowedChannel('other', 'parent-9', new Set(['channel-1']))).toBe(
+      false,
+    );
+    expect(isAllowedChannel('other', null, new Set(['channel-1']))).toBe(false);
   });
 });
 

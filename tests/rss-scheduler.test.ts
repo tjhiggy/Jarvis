@@ -88,6 +88,60 @@ describe('RssScheduler', () => {
     expect(publisher.publish).toHaveBeenCalledTimes(2);
   });
 
+  it('releases the delivery lease when the daily reservation is refused', async () => {
+    const storage = readyStorage();
+    vi.spyOn(storage, 'reserveDailyDelivery').mockReturnValue(false);
+    const delivery = deliveryStore();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      { fetch: vi.fn().mockResolvedValue([item('blocked')]) },
+      publisher,
+      'server',
+      undefined,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(delivery.completeDelivery).not.toHaveBeenCalled();
+    expect(delivery.releaseDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:blocked',
+      'lease:https://news.example.com/feed.xml:blocked',
+      expect.any(Date),
+    );
+  });
+
+  it('continues past a failed feed fetch and still publishes the next feed', async () => {
+    const storage = readyStorage();
+    storage.addFeed('server', 'https://other.example.com/feed.xml', 'Other');
+    storage.establishBaseline(
+      'server',
+      'https://other.example.com/feed.xml',
+      [],
+    );
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockRejectedValueOnce(new Error('timeout'))
+          .mockResolvedValueOnce([item('survived')]),
+      },
+      publisher,
+      'server',
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'survived', sourceLabel: 'Other' }),
+    ]);
+  });
+
   it('publishes at most five new entries in one source-labelled digest', async () => {
     const storage = readyStorage();
     const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
@@ -157,6 +211,35 @@ describe('RssScheduler', () => {
     await scheduler.stop();
     await expect(scheduler.tick()).resolves.toBe(0);
     expect(client.fetch).not.toHaveBeenCalled();
+  });
+
+  it('coalesces overlapping ticks onto one in-flight poll', async () => {
+    let releaseFetch: (items: ReturnType<typeof item>[]) => void = () =>
+      undefined;
+    let startedFetch: () => void = () => undefined;
+    const fetchStarted = new Promise<void>((resolve) => {
+      startedFetch = resolve;
+    });
+    const client = {
+      fetch: vi.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            startedFetch();
+            releaseFetch = resolve;
+          }),
+      ),
+    };
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(readyStorage(), client, publisher, 'server');
+
+    const first = scheduler.tick();
+    await fetchStarted;
+    const second = scheduler.tick();
+    releaseFetch([item('once')]);
+
+    await expect(Promise.all([first, second])).resolves.toEqual([1, 1]);
+    expect(client.fetch).toHaveBeenCalledTimes(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
   });
 
   it('suppresses entries after twenty completed RSS items on a UTC day', async () => {
@@ -450,6 +533,95 @@ describe('RssScheduler', () => {
     ).toBe(true);
     expect(JSON.stringify(payloads)).not.toContain('u'.repeat(500));
     expect(formatRssDigest(digest)).not.toContain('u'.repeat(500));
+  });
+
+  it('renders explicit fallback copy when every digest entry is unrenderable', () => {
+    expect(
+      renderRssDigest({
+        entries: [
+          {
+            id: 'blank',
+            title: 'Blank',
+            url: '',
+            publishedAt: '2026-08-11T12:00:00Z',
+            sourceLabel: 'News',
+            deliveryKey: 'blank',
+          },
+          {
+            id: 'oversized-url',
+            title: 'Huge',
+            url: `https://news.example.com/${'u'.repeat(400)}`,
+            publishedAt: '2026-08-11T12:00:00Z',
+            sourceLabel: 'News',
+            deliveryKey: 'oversized-url',
+          },
+        ],
+      }),
+    ).toEqual({
+      content: '**RSS update**\nNo bounded entries available.',
+      entries: [],
+      deliveryKeys: [],
+    });
+  });
+
+  it('releases claimed items when every digest entry is unrenderable', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore(true);
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockResolvedValue([
+          {
+            id: 'blank',
+            title: 'Blank',
+            url: '',
+            publishedAt: '2026-08-11T12:00:00Z',
+          },
+        ]),
+      },
+      publisher,
+      'server',
+      undefined,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(delivery.completeDelivery).not.toHaveBeenCalled();
+    expect(delivery.releaseDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:blank',
+      'lease:https://news.example.com/feed.xml:blank',
+      expect.any(Date),
+      undefined,
+    );
+  });
+
+  it('does not count a published item when completeDelivery refuses the lease', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore(false);
+    delivery.completeDelivery.mockResolvedValue(false);
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      { fetch: vi.fn().mockResolvedValue([item('uncounted')]) },
+      publisher,
+      'server',
+      undefined,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(delivery.completeDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:uncounted',
+      'lease:https://news.example.com/feed.xml:uncounted',
+      expect.any(Date),
+    );
   });
 
   it('reports configured RSS as unavailable until a scheduler exists', () => {
