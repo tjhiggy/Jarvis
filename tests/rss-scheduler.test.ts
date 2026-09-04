@@ -458,6 +458,65 @@ describe('RssScheduler', () => {
     expect(rssIntegrationHealth('channel-1', true)).toBe('ready');
   });
 
+  it('omits empty-title headlines so a later visible item can still post', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore(true);
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockResolvedValue([
+          {
+            ...item('blank-title'),
+            title: '   ',
+          },
+          item('visible'),
+        ]),
+      },
+      publisher,
+      'server',
+      undefined,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries[0]).toMatchObject({
+      id: 'visible',
+    });
+    expect(delivery.completeDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:visible',
+      'lease:https://news.example.com/feed.xml:visible',
+      expect.any(Date),
+    );
+    expect(delivery.completeDelivery).not.toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:blank-title',
+      expect.anything(),
+      expect.any(Date),
+    );
+    expect(delivery.releaseDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:blank-title',
+      'lease:https://news.example.com/feed.xml:blank-title',
+      expect.any(Date),
+      undefined,
+    );
+    expect(delivery.releaseDelivery).not.toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:visible',
+      expect.anything(),
+      expect.any(Date),
+      'network',
+    );
+  });
+
   it('releases digest claims omitted by rendering instead of completing them', async () => {
     const storage = readyStorage();
     const delivery = deliveryStore(true);
