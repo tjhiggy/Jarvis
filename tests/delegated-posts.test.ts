@@ -8,6 +8,7 @@ import {
 import {
   DelegatedPostError,
   DelegatedPostService,
+  type DelegatedPostGateway,
 } from '../src/engagement/delegated-posts.js';
 
 describe('delegated post command configuration', () => {
@@ -146,6 +147,65 @@ describe('delegated post command configuration', () => {
       expect(preview.replies[0]?.content).not.toContain('admin-role');
     },
   );
+
+  it('cancels an owned draft and refuses a draft that is not the caller', async () => {
+    const { service, sent } = setup(new Set(['admin-role']));
+    const preview = postInteraction({
+      guildId: 'guild-1',
+      roleIds: ['admin-role'],
+    });
+    await handleCommand(
+      preview.interaction,
+      commandDependencies({
+        service,
+        activityId: 'activity-channel',
+        adminRoleIds: new Set(['admin-role']),
+        engagementEnabled: false,
+      }),
+    );
+
+    const foreign = postInteraction({
+      guildId: 'guild-1',
+      roleIds: ['admin-role'],
+      subcommand: 'cancel',
+      userId: 'other',
+      values: { draft_id: 'draft-1' },
+    });
+    await handleCommand(
+      foreign.interaction,
+      commandDependencies({
+        service,
+        activityId: 'activity-channel',
+        adminRoleIds: new Set(['admin-role']),
+        engagementEnabled: false,
+      }),
+    );
+    expect(foreign.replies[0]).toMatchObject({
+      ephemeral: true,
+      content: 'That transmission preview was not found or is not yours.',
+    });
+
+    const cancel = postInteraction({
+      guildId: 'guild-1',
+      roleIds: ['admin-role'],
+      subcommand: 'cancel',
+      values: { draft_id: 'draft-1' },
+    });
+    await handleCommand(
+      cancel.interaction,
+      commandDependencies({
+        service,
+        activityId: 'activity-channel',
+        adminRoleIds: new Set(['admin-role']),
+        engagementEnabled: false,
+      }),
+    );
+    expect(sent).toEqual([]);
+    expect(cancel.replies[0]).toMatchObject({
+      ephemeral: true,
+      content: 'Private transmission cancelled.',
+    });
+  });
 });
 
 describe('delegated posts', () => {
@@ -197,18 +257,107 @@ describe('delegated posts', () => {
       service.confirm({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
     ).rejects.toThrow();
   });
+
+  it('restores the draft when Discord post fails so the owner can retry confirm', async () => {
+    let attempts = 0;
+    const { service, sent } = setup(new Set(['admin']), {
+      post: async (_channelId, card) => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error('gateway');
+        }
+        sent.push(card);
+        return { id: 'msg-2' };
+      },
+    });
+    const draft = service.preview({
+      guildId: 'g',
+      ownerUserId: 'u',
+      ownerName: 'U',
+      ownerRoleIds: new Set(['admin']),
+      channelId: 'c',
+      content: 'hello',
+    });
+
+    await expect(
+      service.confirm({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
+    ).rejects.toThrow('gateway');
+    expect(sent).toEqual([]);
+    await expect(
+      service.confirm({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
+    ).resolves.toEqual({ id: 'msg-2' });
+    expect(sent).toHaveLength(1);
+  });
+
+  it('cancels only the owner draft and refuses a missing or foreign draft', () => {
+    const { service } = setup();
+    const draft = service.preview({
+      guildId: 'g',
+      ownerUserId: 'u',
+      ownerName: 'U',
+      ownerRoleIds: new Set(['admin']),
+      channelId: 'c',
+      content: 'hello',
+    });
+
+    expect(
+      service.cancel({ guildId: 'g', ownerUserId: 'other', draftId: draft.id }),
+    ).toBe(false);
+    expect(
+      service.cancel({ guildId: 'g', ownerUserId: 'u', draftId: 'missing' }),
+    ).toBe(false);
+    expect(
+      service.cancel({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
+    ).toBe(true);
+    expect(
+      service.cancel({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
+    ).toBe(false);
+  });
+
+  it('expires a draft after the TTL so confirm cannot post it', async () => {
+    const createdAt = new Date('2026-08-11T12:00:00Z');
+    let now = createdAt;
+    const { service } = setup(new Set(['admin']), {
+      now: () => now,
+    });
+    const draft = service.preview({
+      guildId: 'g',
+      ownerUserId: 'u',
+      ownerName: 'U',
+      ownerRoleIds: new Set(['admin']),
+      channelId: 'c',
+      content: 'hello',
+    });
+
+    now = new Date(createdAt.getTime() + 15 * 60 * 1_000);
+    await expect(
+      service.confirm({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
+    ).rejects.toBeInstanceOf(DelegatedPostError);
+    await expect(
+      service.confirm({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
+    ).rejects.toMatchObject({ code: 'not-found' });
+  });
 });
 
-function setup(adminRoleIds: ReadonlySet<string> = new Set(['admin'])) {
+function setup(
+  adminRoleIds: ReadonlySet<string> = new Set(['admin']),
+  options: Readonly<{
+    now?: () => Date;
+    post?: DelegatedPostGateway['post'];
+  }> = {},
+) {
   const sent: any[] = [];
   const service = new DelegatedPostService({
     createId: () => 'draft-1',
     adminRoleIds,
+    ...(options.now === undefined ? {} : { now: options.now }),
     gateway: {
-      post: async (_c, card) => {
-        sent.push(card);
-        return { id: 'msg-1' };
-      },
+      post:
+        options.post ??
+        (async (_c, card) => {
+          sent.push(card);
+          return { id: 'msg-1' };
+        }),
     },
   });
   return { service, sent };
@@ -297,6 +446,7 @@ function postInteraction(
     guildId?: string | null;
     channelId?: string;
     roleIds?: readonly string[];
+    userId?: string;
     subcommand?: 'preview' | 'confirm' | 'cancel';
     values?: Readonly<Record<string, string | null>>;
   }> = {},
@@ -314,7 +464,7 @@ function postInteraction(
       guildId: overrides.guildId === undefined ? 'guild-1' : overrides.guildId,
       channelId: overrides.channelId ?? 'current-channel',
       channel: { parentId: null, isThread: () => false },
-      user: { id: 'u', username: 'Jim' },
+      user: { id: overrides.userId ?? 'u', username: 'Jim' },
       member: {
         roles: {
           cache: {

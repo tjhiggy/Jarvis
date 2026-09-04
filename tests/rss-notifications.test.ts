@@ -152,6 +152,55 @@ describe('RSS notifications', () => {
     ]);
   });
 
+  it('throws before fetching when the feed URL is not allowlisted', async () => {
+    const fetcher = vi.fn();
+    const client = new RssNotificationClient(fetcher, 2_000, [
+      'news.example.com',
+    ]);
+
+    await expect(
+      client.fetch('https://evil.example.com/feed.xml'),
+    ).rejects.toThrow('RSS feed is not allowlisted.');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('throws when the feed response is not OK', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response('nope', { status: 503 }));
+    const client = new RssNotificationClient(fetcher, 2_000, [
+      'news.example.com',
+    ]);
+
+    await expect(
+      client.fetch('https://news.example.com/feed.xml'),
+    ).rejects.toThrow('RSS feed unavailable.');
+  });
+
+  it('drops items that have no id or no canonical HTTPS URL', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          `<rss><channel><item><title>No id or link</title></item><item><guid>only-guid</guid><title>No link</title></item><item><guid></guid><link>not-a-url</link><title>Bad url</title></item><item><link>https://news.example.com/kept</link><title>Link as id</title></item></channel></rss>`,
+        ),
+      );
+    const client = new RssNotificationClient(fetcher, 2_000, [
+      'news.example.com',
+    ]);
+
+    await expect(
+      client.fetch('https://news.example.com/feed.xml'),
+    ).resolves.toEqual([
+      {
+        id: 'https://news.example.com/kept',
+        title: 'Link as id',
+        url: 'https://news.example.com/kept',
+        publishedAt: '',
+      },
+    ]);
+  });
+
   it('canonicalizes item URLs and applies the requested parsed-entry bound', async () => {
     const entries = Array.from(
       { length: 25 },
