@@ -357,7 +357,7 @@ export const shippedFeatureCatalog = [
     audience: 'member',
     requiredConfiguration: [],
     permissionBoundary:
-      'Any guild member can post one public bird call in the current channel. Direct messages fail closed. Mentions in optional game text are neutralized and allowedMentions stay empty.',
+      'Any guild member can post one public bird call in the current channel. Direct messages fail closed. Role mentions in optional game text stay intact with matching allowedMentions.roles; mass, user, and channel mentions stay neutralized. Default invites keep empty allowedMentions.',
     persistenceBehavior:
       'Bird calls create no retained Jarvis record and do not replace /lfg or /game-night.',
     automatedEvidence: ['tests/bird-call-command.test.ts'],
