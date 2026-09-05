@@ -1795,6 +1795,40 @@ describe('handleCommand', () => {
       allowedMentions: safeMentions,
     });
   });
+
+  it('routes /bird-call to one public invite and keeps DMs ephemeral', async () => {
+    const publicCall = interaction({
+      commandName: 'bird-call',
+      values: { game: 'Helldivers 2' },
+    });
+    await handleCommand(publicCall.interaction, dependencies());
+
+    expect(publicCall.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/bird call/i),
+        ephemeral: false,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+    expect(publicCall.replies[0]?.content).toContain('Helldivers 2');
+
+    const dm = interaction({
+      commandName: 'bird-call',
+      guildId: null,
+      values: { game: 'Helldivers 2' },
+    });
+    await handleCommand(dm.interaction, dependencies());
+
+    expect(dm.replies).toEqual([
+      expect.objectContaining({
+        content: expect.stringMatching(/server channel/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+    expect(dm.replies[0]?.content).not.toMatch(/bird call/i);
+    expect(dm.replies[0]?.content).not.toContain('Helldivers 2');
+  });
 });
 
 function interaction(

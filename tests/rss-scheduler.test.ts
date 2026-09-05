@@ -2,6 +2,7 @@ import { MessageFlags } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import { formatRssDigest, rssIntegrationHealth } from '../src/index.js';
 import {
+  formatRssBroadcastContent,
   renderRssDigest,
   rssBroadcastSendPayload,
   rssBroadcastShowsItem,
@@ -820,6 +821,159 @@ describe('RssScheduler', () => {
       setIntervalSpy.mockRestore();
       clearIntervalSpy.mockRestore();
     }
+  });
+});
+
+describe('RSS broadcast visibility', () => {
+  it('omits the published-at line when that timestamp is missing or blank', () => {
+    const entry = {
+      title: 'Update gta-apartment',
+      url: 'https://news.example.com/gta-apartment',
+      sourceLabel: 'IGN',
+    };
+
+    expect(formatRssBroadcastContent(entry)).toBe(
+      '**IGN** · Update gta-apartment\nhttps://news.example.com/gta-apartment',
+    );
+    expect(formatRssBroadcastContent({ ...entry, publishedAt: '   ' })).toBe(
+      '**IGN** · Update gta-apartment\nhttps://news.example.com/gta-apartment',
+    );
+
+    const payload = rssBroadcastSendPayload(entry);
+    expect(payload.content).toBe(
+      '**IGN** · Update gta-apartment\nhttps://news.example.com/gta-apartment',
+    );
+    expect(payload.content.split('\n')).toHaveLength(2);
+    expect(payload.flags).toBe(MessageFlags.SuppressEmbeds);
+    expect(
+      rssBroadcastShowsItem(payload, {
+        title: entry.title,
+        url: entry.url,
+      }),
+    ).toBe(true);
+  });
+
+  it('treats a blank title or URL as not visible even when content looks populated', () => {
+    const populated = {
+      content: '**IGN** · leftover text\nhttps://news.example.com/leftover',
+      flags: MessageFlags.SuppressEmbeds,
+    };
+
+    expect(
+      rssBroadcastShowsItem(populated, {
+        title: '   ',
+        url: 'https://news.example.com/leftover',
+      }),
+    ).toBe(false);
+    expect(
+      rssBroadcastShowsItem(populated, {
+        title: 'leftover text',
+        url: '  ',
+      }),
+    ).toBe(false);
+    expect(() =>
+      rssBroadcastSendPayload({
+        title: 'Update',
+        url: '   ',
+        sourceLabel: 'IGN',
+      }),
+    ).toThrow('RSS payload has no visible title and link.');
+  });
+
+  it('keeps truncated titles and sources visible in content under SuppressEmbeds', () => {
+    const title = `GTA 6 ${'apartment '.repeat(30)}found`;
+    const sourceLabel = `IGN ${'Gaming '.repeat(20)}News`;
+    const url = 'https://news.example.com/gta-apartment';
+    const payload = rssBroadcastSendPayload({
+      title,
+      url,
+      sourceLabel,
+    });
+    const boundedTitle = title.replace(/\s+/g, ' ').trim().slice(0, 180);
+    const boundedSource = sourceLabel.replace(/\s+/g, ' ').trim().slice(0, 64);
+
+    expect(boundedTitle.length).toBe(180);
+    expect(boundedSource.length).toBe(64);
+    expect(payload.content).toContain(boundedTitle);
+    expect(payload.content).toContain(url);
+    expect(payload.content).toContain(`**${boundedSource}**`);
+    expect(payload.embeds[0]?.title).toBe(boundedTitle);
+    expect(payload.embeds[0]?.author.name).toBe(boundedSource);
+    expect(payload.flags).toBe(MessageFlags.SuppressEmbeds);
+    expect(rssBroadcastShowsItem(payload, { title, url })).toBe(true);
+    expect(
+      rssBroadcastShowsItem(
+        { embeds: payload.embeds, flags: payload.flags },
+        { title, url },
+      ),
+    ).toBe(false);
+  });
+
+  it('treats combined SuppressEmbeds flags as hiding an embed-only card', () => {
+    const item = {
+      title: 'Update gta-apartment',
+      url: 'https://news.example.com/gta-apartment',
+    };
+
+    expect(
+      rssBroadcastShowsItem(
+        {
+          embeds: [{ title: item.title, url: item.url }],
+          flags:
+            MessageFlags.SuppressEmbeds | MessageFlags.SuppressNotifications,
+        },
+        item,
+      ),
+    ).toBe(false);
+    expect(
+      rssBroadcastShowsItem(
+        {
+          content: `**IGN** · ${item.title}\n${item.url}`,
+          flags:
+            MessageFlags.SuppressEmbeds | MessageFlags.SuppressNotifications,
+        },
+        item,
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps allowedMentions empty when the headline contains mention syntax', () => {
+    const payload = rssBroadcastSendPayload({
+      title: 'Patch @everyone with <@123456789012345678>',
+      url: 'https://news.example.com/patch',
+      sourceLabel: '@here IGN',
+    });
+
+    expect(payload.allowedMentions).toEqual({
+      parse: [],
+      repliedUser: false,
+    });
+    expect(payload.flags).toBe(MessageFlags.SuppressEmbeds);
+    expect(payload.content).toContain('https://news.example.com/patch');
+    expect(
+      rssBroadcastShowsItem(payload, {
+        title: 'Patch @everyone with <@123456789012345678>',
+        url: 'https://news.example.com/patch',
+      }),
+    ).toBe(true);
+  });
+
+  it('matches visibility after collapsing whitespace in titles', () => {
+    const title = 'GTA  6\napartment   found';
+    const url = '  https://news.example.com/gta-apartment  ';
+    const payload = rssBroadcastSendPayload({
+      title,
+      url,
+      sourceLabel: 'IGN',
+    });
+
+    expect(payload.content).toContain('GTA 6 apartment found');
+    expect(payload.content).toContain('https://news.example.com/gta-apartment');
+    expect(payload.embeds[0]?.title).toBe('GTA 6 apartment found');
+    expect(payload.embeds[0]?.url).toBe(
+      'https://news.example.com/gta-apartment',
+    );
+    expect(rssBroadcastShowsItem(payload, { title, url })).toBe(true);
   });
 });
 
