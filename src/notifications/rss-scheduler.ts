@@ -56,6 +56,14 @@ export interface RssBroadcastVisibilityPayload {
 
 const RSS_CYCLE_CAPACITY = 1;
 const RSS_CATCH_UP_MAX_AGE_MS = 2 * 60 * 60 * 1_000;
+export const RSS_POLL_INTERVAL_MS = 300_000;
+
+export const rotateRssFeeds = <T>(feeds: readonly T[], now: Date): T[] => {
+  if (feeds.length <= 1) return [...feeds];
+  const offset =
+    Math.floor(now.getTime() / RSS_POLL_INTERVAL_MS) % feeds.length;
+  return [...feeds.slice(offset), ...feeds.slice(0, offset)];
+};
 
 const boundedRssText = (value: string, limit: number): string =>
   value.replace(/\s+/g, ' ').trim().slice(0, limit);
@@ -191,7 +199,11 @@ export class RssScheduler {
     private readonly policy: Pick<BroadcastPolicyService, 'evaluate'>,
     private readonly deliveryStore: Pick<
       BroadcastStore,
-      'getPolicy' | 'claimDelivery' | 'completeDelivery' | 'releaseDelivery'
+      | 'getPolicy'
+      | 'claimDelivery'
+      | 'completeDelivery'
+      | 'releaseDelivery'
+      | 'deliveryHealth'
     >,
     private readonly now: () => Date = () => new Date(),
     private readonly logger?: {
@@ -231,10 +243,13 @@ export class RssScheduler {
         readonly lease: string;
         readonly entry: RssDigestEntry;
       }> = [];
-      const feeds = this.storage
-        .listFeeds(this.serverId)
-        .filter((feed: RssFeedRecord) => !feed.paused)
-        .slice(0, 20);
+      const feeds = rotateRssFeeds(
+        this.storage
+          .listFeeds(this.serverId)
+          .filter((feed: RssFeedRecord) => !feed.paused)
+          .slice(0, 20),
+        startedAt,
+      );
       for (const feed of feeds) {
         let items: readonly RssNotification[];
         try {
@@ -254,8 +269,15 @@ export class RssScheduler {
           if (claimed.length >= cycleCapacity) break;
           if (this.storage.isBaselineItem(this.serverId, feed.url, item.id))
             continue;
-          if (!rssCatchUpItemIsFresh(item.publishedAt, startedAt)) continue;
           const key = `${feed.url}:${item.id}`;
+          if (!rssCatchUpItemIsFresh(item.publishedAt, startedAt)) {
+            const health = await this.deliveryStore.deliveryHealth(
+              this.serverId,
+              'rss',
+              key,
+            );
+            if (health === undefined || health.status === 'completed') continue;
+          }
           const lease = await this.deliveryStore.claimDelivery(
             this.serverId,
             'rss',
@@ -439,7 +461,7 @@ export class RssScheduler {
       return published;
     })();
   }
-  start(intervalMs = 300_000): void {
+  start(intervalMs = RSS_POLL_INTERVAL_MS): void {
     if (this.timer !== undefined) return;
     this.acceptingTicks = true;
     this.timer = setInterval(() => {

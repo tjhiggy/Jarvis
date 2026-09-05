@@ -644,6 +644,85 @@ describe('RssScheduler', () => {
     ]);
   });
 
+  it('retries a released Discord failure after the two-hour catch-up window', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore();
+    const publisher = {
+      publish: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('gateway'))
+        .mockResolvedValue(undefined),
+    };
+    let now = new Date('2026-09-05T00:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('near-cutoff', { publishedAt: '2026-09-04T22:01:00.000Z' }),
+          ]),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      delivery,
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+    now = new Date('2026-09-05T00:02:00.000Z');
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    expect(publisher.publish.mock.calls[1]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'near-cutoff' }),
+    ]);
+  });
+
+  it('rotates the starting feed each five-minute tick so one feed cannot monopolize', async () => {
+    const storage = new RssStorage(':memory:');
+    storage.addFeed('server', 'https://alpha.example.com/feed.xml', 'Alpha');
+    storage.addFeed('server', 'https://zeta.example.com/feed.xml', 'Zeta');
+    storage.establishBaseline(
+      'server',
+      'https://alpha.example.com/feed.xml',
+      [],
+    );
+    storage.establishBaseline(
+      'server',
+      'https://zeta.example.com/feed.xml',
+      [],
+    );
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    let now = new Date('2026-08-11T12:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockImplementation(async (url: string) => {
+          if (url === 'https://alpha.example.com/feed.xml') {
+            return [
+              item('alpha-1', { publishedAt: '2026-08-11T12:00:00.000Z' }),
+              item('alpha-2', { publishedAt: '2026-08-11T12:00:00.000Z' }),
+            ];
+          }
+          return [item('zeta-1', { publishedAt: '2026-08-11T12:00:00.000Z' })];
+        }),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    now = new Date('2026-08-11T12:05:00.000Z');
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(
+      publisher.publish.mock.calls.map((call) => call[1].entries[0].id),
+    ).toEqual(['alpha-1', 'zeta-1']);
+  });
+
   it('safe-logs an interval tick failure instead of leaking a rejected callback', async () => {
     let interval: (() => void) | undefined;
     const warnings: Array<Record<string, string>> = [];
@@ -720,12 +799,22 @@ function readyStorage(): RssStorage {
 function deliveryStore(digestMode = true) {
   const completed = new Set<string>();
   const claimed = new Set<string>();
+  const pending = new Set<string>();
   return {
     getPolicy: vi.fn().mockResolvedValue({ digestMode }),
+    deliveryHealth: vi
+      .fn()
+      .mockImplementation(async (_server, _category, key) => {
+        if (completed.has(key)) return { status: 'completed' };
+        if (claimed.has(key)) return { status: 'claimed' };
+        if (pending.has(key)) return { status: 'pending' };
+        return undefined;
+      }),
     claimDelivery: vi
       .fn()
       .mockImplementation(async (_server, _category, key) => {
         if (completed.has(key) || claimed.has(key)) return undefined;
+        pending.delete(key);
         claimed.add(key);
         return `lease:${key}`;
       }),
@@ -733,6 +822,7 @@ function deliveryStore(digestMode = true) {
       .fn()
       .mockImplementation(async (_server, _category, key) => {
         claimed.delete(key);
+        pending.delete(key);
         completed.add(key);
         return true;
       }),
@@ -740,6 +830,7 @@ function deliveryStore(digestMode = true) {
       .fn()
       .mockImplementation(async (_server, _category, key) => {
         claimed.delete(key);
+        pending.add(key);
         return true;
       }),
   };
