@@ -440,7 +440,7 @@ describe('RssScheduler', () => {
     expect(rssIntegrationHealth('channel-1', true)).toBe('ready');
   });
 
-  it('releases digest claims omitted by rendering instead of completing them', async () => {
+  it('does not claim an unrenderable digest entry', async () => {
     const storage = readyStorage();
     const delivery = deliveryStore(true);
     const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
@@ -462,14 +462,42 @@ describe('RssScheduler', () => {
 
     await expect(scheduler.tick()).resolves.toBe(0);
 
+    expect(delivery.claimDelivery).not.toHaveBeenCalled();
     expect(delivery.completeDelivery).not.toHaveBeenCalled();
-    expect(delivery.releaseDelivery).toHaveBeenCalledWith(
+    expect(delivery.releaseDelivery).not.toHaveBeenCalled();
+  });
+
+  it('skips an unrenderable headline and still publishes the next valid item', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockResolvedValue([
+          {
+            ...item('too-large'),
+            url: `https://news.example.com/${'u'.repeat(500)}`,
+          },
+          item('usable'),
+        ]),
+      },
+      publisher,
+      'server',
+      undefined,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'usable' }),
+    ]);
+    expect(delivery.claimDelivery).toHaveBeenCalledTimes(1);
+    expect(delivery.claimDelivery).toHaveBeenCalledWith(
       'server',
       'rss',
-      'https://news.example.com/feed.xml:too-large',
-      'lease:https://news.example.com/feed.xml:too-large',
+      'https://news.example.com/feed.xml:usable',
       expect.any(Date),
-      undefined,
     );
   });
 
@@ -644,6 +672,113 @@ describe('RssScheduler', () => {
     ]);
   });
 
+  it('retries a released Discord failure after the two-hour catch-up window', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore();
+    const publisher = {
+      publish: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('gateway'))
+        .mockResolvedValue(undefined),
+    };
+    let now = new Date('2026-09-05T00:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('near-cutoff', { publishedAt: '2026-09-04T22:01:00.000Z' }),
+          ]),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      delivery,
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+    now = new Date('2026-09-05T00:02:00.000Z');
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    expect(publisher.publish.mock.calls[1]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'near-cutoff' }),
+    ]);
+  });
+
+  it('does not retry a pending item after two hours unless a delivery error was recorded', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const now = new Date('2026-09-05T00:00:00.000Z');
+    const key = 'https://news.example.com/feed.xml:omitted';
+    await delivery.releaseDelivery('server', 'rss', key, `lease:${key}`, now);
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('omitted', { publishedAt: '2026-09-04T21:00:00.000Z' }),
+          ]),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      delivery,
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(delivery.claimDelivery).not.toHaveBeenCalled();
+  });
+
+  it('rotates the starting feed each five-minute tick so one feed cannot monopolize', async () => {
+    const storage = new RssStorage(':memory:');
+    storage.addFeed('server', 'https://alpha.example.com/feed.xml', 'Alpha');
+    storage.addFeed('server', 'https://zeta.example.com/feed.xml', 'Zeta');
+    storage.establishBaseline(
+      'server',
+      'https://alpha.example.com/feed.xml',
+      [],
+    );
+    storage.establishBaseline(
+      'server',
+      'https://zeta.example.com/feed.xml',
+      [],
+    );
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    let now = new Date('2026-08-11T12:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockImplementation(async (url: string) => {
+          if (url === 'https://alpha.example.com/feed.xml') {
+            return [
+              item('alpha-1', { publishedAt: '2026-08-11T12:00:00.000Z' }),
+              item('alpha-2', { publishedAt: '2026-08-11T12:00:00.000Z' }),
+            ];
+          }
+          return [item('zeta-1', { publishedAt: '2026-08-11T12:00:00.000Z' })];
+        }),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    now = new Date('2026-08-11T12:05:00.000Z');
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(
+      publisher.publish.mock.calls.map((call) => call[1].entries[0].id),
+    ).toEqual(['alpha-1', 'zeta-1']);
+  });
+
   it('safe-logs an interval tick failure instead of leaking a rejected callback', async () => {
     let interval: (() => void) | undefined;
     const warnings: Array<Record<string, string>> = [];
@@ -720,12 +855,28 @@ function readyStorage(): RssStorage {
 function deliveryStore(digestMode = true) {
   const completed = new Set<string>();
   const claimed = new Set<string>();
+  const pending = new Map<string, string | undefined>();
   return {
     getPolicy: vi.fn().mockResolvedValue({ digestMode }),
+    deliveryHealth: vi
+      .fn()
+      .mockImplementation(async (_server, _category, key) => {
+        if (completed.has(key)) return { status: 'completed' };
+        if (claimed.has(key)) return { status: 'claimed' };
+        if (pending.has(key)) {
+          const errorCategory = pending.get(key);
+          return {
+            status: 'pending',
+            ...(errorCategory === undefined ? {} : { errorCategory }),
+          };
+        }
+        return undefined;
+      }),
     claimDelivery: vi
       .fn()
       .mockImplementation(async (_server, _category, key) => {
         if (completed.has(key) || claimed.has(key)) return undefined;
+        pending.delete(key);
         claimed.add(key);
         return `lease:${key}`;
       }),
@@ -733,15 +884,26 @@ function deliveryStore(digestMode = true) {
       .fn()
       .mockImplementation(async (_server, _category, key) => {
         claimed.delete(key);
+        pending.delete(key);
         completed.add(key);
         return true;
       }),
     releaseDelivery: vi
       .fn()
-      .mockImplementation(async (_server, _category, key) => {
-        claimed.delete(key);
-        return true;
-      }),
+      .mockImplementation(
+        async (
+          _server,
+          _category,
+          key,
+          _lease,
+          _now,
+          errorCategory?: string,
+        ) => {
+          claimed.delete(key);
+          pending.set(key, errorCategory);
+          return true;
+        },
+      ),
   };
 }
 
