@@ -38,7 +38,6 @@ export interface RssBroadcastSendPayload {
     readonly parse: readonly [];
     readonly repliedUser: false;
   };
-  readonly flags: typeof MessageFlags.SuppressEmbeds;
 }
 
 export interface RssBroadcastVisibilityItem {
@@ -55,8 +54,31 @@ export interface RssBroadcastVisibilityPayload {
   readonly flags?: number;
 }
 
+const RSS_CYCLE_CAPACITY = 1;
+const RSS_CATCH_UP_MAX_AGE_MS = 2 * 60 * 60 * 1_000;
+
 const boundedRssText = (value: string, limit: number): string =>
   value.replace(/\s+/g, ' ').trim().slice(0, limit);
+
+export const parseRssItemTimestamp = (
+  value: string | undefined,
+): Date | undefined => {
+  const raw = value?.trim() ?? '';
+  if (raw === '') return undefined;
+  const parsed = Date.parse(raw);
+  if (Number.isNaN(parsed)) return undefined;
+  return new Date(parsed);
+};
+
+export const rssCatchUpItemIsFresh = (
+  publishedAt: string | undefined,
+  now: Date,
+  maxAgeMs = RSS_CATCH_UP_MAX_AGE_MS,
+): boolean => {
+  const availableAt = parseRssItemTimestamp(publishedAt);
+  if (availableAt === undefined) return false;
+  return now.getTime() - availableAt.getTime() <= maxAgeMs;
+};
 
 export const formatRssBroadcastContent = (
   entry: Pick<RssDigestEntry, 'title' | 'url' | 'sourceLabel'> & {
@@ -99,7 +121,7 @@ export const rssBroadcastSendPayload = (
   const url = entry.url.trim();
   const imageUrl = sanitizeRssImageUrl(entry.imageUrl);
   const payload: RssBroadcastSendPayload = {
-    content: formatRssBroadcastContent(entry),
+    content: '',
     embeds: [
       {
         title,
@@ -109,7 +131,6 @@ export const rssBroadcastSendPayload = (
       },
     ],
     allowedMentions: { parse: [], repliedUser: false },
-    flags: MessageFlags.SuppressEmbeds,
   };
   if (!rssBroadcastShowsItem(payload, { title, url })) {
     throw new Error('RSS payload has no visible title and link.');
@@ -201,7 +222,7 @@ export class RssScheduler {
         (await this.deliveryStore.getPolicy(this.serverId, 'rss'))
           ?.digestMode ?? true;
       const cycleCapacity = Math.min(
-        5,
+        RSS_CYCLE_CAPACITY,
         this.storage.remainingDailyDeliveryCapacity(this.serverId, startedAt),
       );
       if (cycleCapacity === 0) return 0;
@@ -233,6 +254,7 @@ export class RssScheduler {
           if (claimed.length >= cycleCapacity) break;
           if (this.storage.isBaselineItem(this.serverId, feed.url, item.id))
             continue;
+          if (!rssCatchUpItemIsFresh(item.publishedAt, startedAt)) continue;
           const key = `${feed.url}:${item.id}`;
           const lease = await this.deliveryStore.claimDelivery(
             this.serverId,
