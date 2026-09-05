@@ -166,7 +166,7 @@
 - Status: **pass**
 - Owner: `src/commands/bird-call.ts`
 - Configuration: None
-- Permissions: Any guild member can post one public bird call in the current channel. Direct messages fail closed. Mentions in optional game text are neutralized and allowedMentions stay empty.
+- Permissions: Any guild member can post one public bird call in the current channel. Direct messages fail closed. Role mentions in optional game text stay intact with matching allowedMentions.roles; mass, user, and channel mentions stay neutralized. Default invites keep empty allowedMentions.
 - Persistence: Bird calls create no retained Jarvis record and do not replace /lfg or /game-night.
 - Automated: `tests/bird-call-command.test.ts`
 - Smoke: Run /bird-call and /bird-call game:<name> in a guild channel, confirm the public invite, then confirm a DM stays ephemeral with no public line.

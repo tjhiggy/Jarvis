@@ -6,12 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `/bird-call` renders role mentions from the optional `game` field as normal
+  Discord role chips. The public reply keeps those `<@&id>` tokens and sets
+  `allowedMentions.roles` to exactly those role IDs. `@everyone`, `@here`,
+  user, and channel mentions stay neutralized. Other commands still use empty
+  `allowedMentions`.
+
 ### Added
 
 - `/bird-call` posts one public MuthaShip-voice invite so any guild member can
   ask who wants to game now. Optional `game` (max 120) names the activity.
-  Mentions are neutralized and `allowedMentions` stay empty. Direct messages
-  fail closed. This is an instant ping; it does not replace `/lfg` or
+  Role mentions in `game` stay intact with matching `allowedMentions.roles`.
+  Mass, user, and channel mentions stay neutralized. Direct messages fail
+  closed. This is an instant ping; it does not replace `/lfg` or
   `/game-night`.
 - Bounded personal recurring reminders: optional `/reminder set` `every` and
   `until` fields persist on the existing SQLite reminder row and the scheduler
