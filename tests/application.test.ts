@@ -1,4 +1,4 @@
-import { GatewayIntentBits, MessageFlags } from 'discord.js';
+import { GatewayIntentBits } from 'discord.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1188,7 +1188,7 @@ describe('createApplication', () => {
     }
   });
 
-  it('posts RSS items with visible title and link while SuppressEmbeds blocks URL unfurls', async () => {
+  it('posts RSS items as native Discord cards with visible title and link', async () => {
     const posted = deferred<unknown>();
     let rssInterval: (() => void) | undefined;
     const setIntervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((
@@ -1219,7 +1219,7 @@ describe('createApplication', () => {
           id: 'gta-apartment',
           title: 'GTA 6 apartment found in real life',
           url: 'https://www.ign.com/articles/gta-6-apartment',
-          publishedAt: 'Sun, 30 Aug 2026 16:27:56 +0000',
+          publishedAt: new Date(Date.now() - 60_000).toISOString(),
           imageUrl: 'https://cdn.example.com/gta-6-apartment.jpg',
         },
       ]);
@@ -1258,8 +1258,7 @@ describe('createApplication', () => {
       rssInterval?.();
       const payload = await posted.promise;
       expect(payload).toEqual({
-        content:
-          '**IGN** · GTA 6 apartment found in real life\nhttps://www.ign.com/articles/gta-6-apartment\nSun, 30 Aug 2026 16:27:56 +0000',
+        content: '',
         embeds: [
           {
             title: 'GTA 6 apartment found in real life',
@@ -1269,8 +1268,8 @@ describe('createApplication', () => {
           },
         ],
         allowedMentions: { parse: [], repliedUser: false },
-        flags: MessageFlags.SuppressEmbeds,
       });
+      expect(payload).not.toHaveProperty('flags');
 
       await application.shutdown();
     } finally {

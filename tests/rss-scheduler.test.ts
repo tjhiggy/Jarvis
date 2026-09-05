@@ -88,7 +88,7 @@ describe('RssScheduler', () => {
     expect(publisher.publish).toHaveBeenCalledTimes(2);
   });
 
-  it('publishes at most five new entries in one source-labelled digest', async () => {
+  it('publishes at most one new entry per tick', async () => {
     const storage = readyStorage();
     const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
     const scheduler = schedulerFor(
@@ -104,44 +104,26 @@ describe('RssScheduler', () => {
       'server',
     );
 
-    await expect(scheduler.tick()).resolves.toBe(5);
-    expect(publisher.publish).toHaveBeenCalledTimes(5);
-    expect(publisher.publish.mock.calls.map((call) => call[1].entries)).toEqual(
-      [
-        [
-          expect.objectContaining({
-            sourceLabel: 'News',
-            title: 'Update item-0',
-            url: 'https://news.example.com/item-0',
-            publishedAt: '2026-08-11T12:00:00Z',
-          }),
-        ],
-        [
-          expect.objectContaining({
-            sourceLabel: 'News',
-            title: 'Update item-1',
-          }),
-        ],
-        [
-          expect.objectContaining({
-            sourceLabel: 'News',
-            title: 'Update item-2',
-          }),
-        ],
-        [
-          expect.objectContaining({
-            sourceLabel: 'News',
-            title: 'Update item-3',
-          }),
-        ],
-        [
-          expect.objectContaining({
-            sourceLabel: 'News',
-            title: 'Update item-4',
-          }),
-        ],
-      ],
-    );
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({
+        sourceLabel: 'News',
+        title: 'Update item-0',
+        url: 'https://news.example.com/item-0',
+        publishedAt: '2026-08-11T12:00:00Z',
+      }),
+    ]);
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    expect(publisher.publish.mock.calls[1]?.[1].entries).toEqual([
+      expect.objectContaining({
+        sourceLabel: 'News',
+        title: 'Update item-1',
+        url: 'https://news.example.com/item-1',
+      }),
+    ]);
   });
 
   it('does not start a new tick after stop', async () => {
@@ -175,10 +157,9 @@ describe('RssScheduler', () => {
       'server',
     );
 
-    await expect(scheduler.tick()).resolves.toBe(5);
-    await expect(scheduler.tick()).resolves.toBe(5);
-    await expect(scheduler.tick()).resolves.toBe(5);
-    await expect(scheduler.tick()).resolves.toBe(5);
+    for (let index = 0; index < 20; index += 1) {
+      await expect(scheduler.tick()).resolves.toBe(1);
+    }
     await expect(scheduler.tick()).resolves.toBe(0);
     expect(publisher.publish).toHaveBeenCalledTimes(20);
   });
@@ -204,6 +185,7 @@ describe('RssScheduler', () => {
     );
 
     await expect(scheduler.tick()).resolves.toBe(1);
+    await expect(scheduler.tick()).resolves.toBe(0);
     await expect(scheduler.tick()).resolves.toBe(1);
 
     expect(publisher.publish).toHaveBeenCalledTimes(3);
@@ -225,7 +207,7 @@ describe('RssScheduler', () => {
       expect.any(Date),
       'network',
     );
-    expect(policy.evaluate).toHaveBeenCalledTimes(5);
+    expect(policy.evaluate).toHaveBeenCalledTimes(6);
   });
 
   it('rechecks policy after non-digest reservation rollover before posting', async () => {
@@ -345,7 +327,7 @@ describe('RssScheduler', () => {
     ).toBe(true);
   });
 
-  it('sends title and link in content so SuppressEmbeds cannot blank the RSS post', () => {
+  it('sends a native Discord card with visible title and link and no SuppressEmbeds', () => {
     const digest = renderRssDigest({
       entries: [
         {
@@ -369,8 +351,7 @@ describe('RssScheduler', () => {
 
     expect(payloads).toHaveLength(2);
     expect(payloads[0]).toEqual({
-      content:
-        '**IGN** · Update gta-apartment\nhttps://news.example.com/gta-apartment\n2026-08-11T12:00:00Z',
+      content: '',
       embeds: [
         {
           title: 'Update gta-apartment',
@@ -380,11 +361,9 @@ describe('RssScheduler', () => {
         },
       ],
       allowedMentions: { parse: [], repliedUser: false },
-      flags: MessageFlags.SuppressEmbeds,
     });
     expect(payloads[1]).toEqual({
-      content:
-        '**PC Gamer** · Update elden-ring\nhttps://news.example.com/elden-ring\n2026-08-11T12:00:00Z',
+      content: '',
       embeds: [
         {
           title: 'Update elden-ring',
@@ -393,9 +372,13 @@ describe('RssScheduler', () => {
         },
       ],
       allowedMentions: { parse: [], repliedUser: false },
-      flags: MessageFlags.SuppressEmbeds,
     });
+    expect(payloads[0]).not.toHaveProperty('flags');
+    expect(payloads[1]).not.toHaveProperty('flags');
     expect(payloads[1]!.embeds[0]).not.toHaveProperty('image');
+    expect(JSON.stringify(payloads)).not.toContain(
+      String(MessageFlags.SuppressEmbeds),
+    );
     expect(
       rssBroadcastShowsItem(payloads[0]!, {
         title: 'Update gta-apartment',
@@ -431,8 +414,7 @@ describe('RssScheduler', () => {
     expect(digest.entries.map((entry) => entry.id)).toEqual(['retained']);
     expect(payloads).toHaveLength(1);
     expect(payloads[0]).toMatchObject({
-      content:
-        '**News** · Update retained\nhttps://news.example.com/retained\n2026-08-11T12:00:00Z',
+      content: '',
       embeds: [
         {
           title: 'Update retained',
@@ -440,8 +422,8 @@ describe('RssScheduler', () => {
           author: { name: 'News' },
         },
       ],
-      flags: MessageFlags.SuppressEmbeds,
     });
+    expect(payloads[0]).not.toHaveProperty('flags');
     expect(
       rssBroadcastShowsItem(payloads[0]!, {
         title: 'Update retained',
@@ -466,7 +448,6 @@ describe('RssScheduler', () => {
       storage,
       {
         fetch: vi.fn().mockResolvedValue([
-          item('delivered'),
           {
             ...item('too-large'),
             url: `https://news.example.com/${'u'.repeat(500)}`,
@@ -479,22 +460,9 @@ describe('RssScheduler', () => {
       delivery,
     );
 
-    await expect(scheduler.tick()).resolves.toBe(1);
+    await expect(scheduler.tick()).resolves.toBe(0);
 
-    expect(delivery.completeDelivery).toHaveBeenCalledWith(
-      'server',
-      'rss',
-      'https://news.example.com/feed.xml:delivered',
-      'lease:https://news.example.com/feed.xml:delivered',
-      expect.any(Date),
-    );
-    expect(delivery.completeDelivery).not.toHaveBeenCalledWith(
-      'server',
-      'rss',
-      'https://news.example.com/feed.xml:too-large',
-      expect.anything(),
-      expect.any(Date),
-    );
+    expect(delivery.completeDelivery).not.toHaveBeenCalled();
     expect(delivery.releaseDelivery).toHaveBeenCalledWith(
       'server',
       'rss',
@@ -505,10 +473,10 @@ describe('RssScheduler', () => {
     );
   });
 
-  it('reserves only the two remaining daily RSS delivery slots before posting', async () => {
+  it('reserves only the one remaining daily RSS delivery slot before posting', async () => {
     const storage = readyStorage();
     const now = new Date('2026-08-11T12:00:00Z');
-    for (let index = 0; index < 18; index += 1) {
+    for (let index = 0; index < 19; index += 1) {
       expect(
         storage.recordCompletedItem('server', `completed-${index}`, now),
       ).toBe(true);
@@ -528,15 +496,15 @@ describe('RssScheduler', () => {
       delivery,
     );
 
-    await expect(scheduler.tick()).resolves.toBe(2);
+    await expect(scheduler.tick()).resolves.toBe(1);
 
-    expect(delivery.claimDelivery).toHaveBeenCalledTimes(2);
-    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    expect(delivery.claimDelivery).toHaveBeenCalledTimes(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
     expect(
       publisher.publish.mock.calls.map((call) =>
         call[1].entries.map((entry: { id: string }) => entry.id),
       ),
-    ).toEqual([['slot-1'], ['slot-2']]);
+    ).toEqual([['slot-1']]);
   });
 
   it('re-reserves pre-midnight claims against the actual post day before sending', async () => {
@@ -568,11 +536,13 @@ describe('RssScheduler', () => {
     const scheduler = schedulerFor(
       storage,
       {
-        fetch: vi
-          .fn()
-          .mockResolvedValue(
-            Array.from({ length: 5 }, (_, index) => item(`midnight-${index}`)),
+        fetch: vi.fn().mockResolvedValue(
+          Array.from({ length: 2 }, (_, index) =>
+            item(`midnight-${index}`, {
+              publishedAt: '2026-08-11T23:59:00.000Z',
+            }),
           ),
+        ),
       },
       publisher,
       'server',
@@ -588,8 +558,92 @@ describe('RssScheduler', () => {
 
     expect(publisher.publish).not.toHaveBeenCalled();
     expect(delivery.completeDelivery).not.toHaveBeenCalled();
-    expect(delivery.releaseDelivery).toHaveBeenCalledTimes(5);
+    expect(delivery.releaseDelivery).toHaveBeenCalledTimes(1);
   });
+  it('does not publish catch-up items older than two hours', async () => {
+    const storage = readyStorage();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const now = new Date('2026-09-05T00:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('stale', { publishedAt: '2026-09-04T21:59:59.000Z' }),
+            item('fresh', { publishedAt: '2026-09-04T22:00:00.000Z' }),
+          ]),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'fresh' }),
+    ]);
+  });
+
+  it('publishes a catch-up item that is still within two hours', async () => {
+    const storage = readyStorage();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const now = new Date('2026-09-05T00:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('recent', { publishedAt: '2026-09-04T23:00:00.000Z' }),
+          ]),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'recent' }),
+    ]);
+  });
+
+  it('skips catch-up items with no usable published time', async () => {
+    const storage = readyStorage();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const now = new Date('2026-09-05T00:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('missing-time', { publishedAt: '' }),
+            item('unparseable', { publishedAt: 'not-a-date' }),
+            item('usable', { publishedAt: 'Sun, 04 Sep 2026 23:30:00 +0000' }),
+          ]),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'usable' }),
+    ]);
+  });
+
   it('safe-logs an interval tick failure instead of leaking a rejected callback', async () => {
     let interval: (() => void) | undefined;
     const warnings: Array<Record<string, string>> = [];
@@ -691,7 +745,10 @@ function deliveryStore(digestMode = true) {
   };
 }
 
-function item(id: string, extras: { readonly imageUrl?: string } = {}) {
+function item(
+  id: string,
+  extras: { readonly imageUrl?: string; readonly publishedAt?: string } = {},
+) {
   return {
     id,
     title: `Update ${id}`,
