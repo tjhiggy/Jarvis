@@ -25,6 +25,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   credential, not a personal account. Missing or failed issue creation stays
   ephemeral and does not post a public REQUEST.
 
+### Fixed
+
+- `/request` defers the Discord interaction before calling GitHub and bounds
+  the public REQUEST to Discord's 2000-character limit while keeping the issue
+  URL. Long what/why/done fields no longer fail the Discord reply after the
+  GitHub issue already exists.
+
 ## [1.6.0] - 2026-08-24
 
 ### Added
