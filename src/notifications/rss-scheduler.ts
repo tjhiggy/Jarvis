@@ -150,6 +150,11 @@ export interface RssSchedulerPublisher {
   publish(channelId: string, digest: RssRenderedDigest): Promise<void>;
 }
 
+export const rssDigestEntryIsPostable = (entry: RssDigestEntry): boolean =>
+  renderRssDigest({ entries: [entry] }).deliveryKeys.includes(
+    entry.deliveryKey,
+  );
+
 export const renderRssDigest = (digest: RssDigest): RssRenderedDigest => {
   const header = '**RSS update**';
   const entries: RssDigestEntry[] = [];
@@ -270,13 +275,19 @@ export class RssScheduler {
           if (this.storage.isBaselineItem(this.serverId, feed.url, item.id))
             continue;
           const key = `${feed.url}:${item.id}`;
+          const entry = {
+            ...item,
+            sourceLabel: feed.label,
+            deliveryKey: key,
+          };
+          if (!rssDigestEntryIsPostable(entry)) continue;
           if (!rssCatchUpItemIsFresh(item.publishedAt, startedAt)) {
             const health = await this.deliveryStore.deliveryHealth(
               this.serverId,
               'rss',
               key,
             );
-            if (health === undefined || health.status === 'completed') continue;
+            if (health?.errorCategory === undefined) continue;
           }
           const lease = await this.deliveryStore.claimDelivery(
             this.serverId,
@@ -305,7 +316,7 @@ export class RssScheduler {
           claimed.push({
             key,
             lease,
-            entry: { ...item, sourceLabel: feed.label, deliveryKey: key },
+            entry,
           });
         }
         if (claimed.length >= cycleCapacity) break;

@@ -7,7 +7,7 @@
  RUN  v4.1.10 /workspace
 
  ✓ tests/rss-scheduler.test.ts > RssScheduler > polls configured feeds and publishes only newly claimed items 4ms
- ✓ tests/rss-scheduler.test.ts > RssScheduler > baselines a new feed without publishing historical items 11ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > baselines a new feed without publishing historical items 9ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > releases a failed Discord delivery so the next tick retries it 2ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > publishes at most one new entry per tick 2ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > does not start a new tick after stop 1ms
@@ -18,20 +18,22 @@
  ✓ tests/rss-scheduler.test.ts > RssScheduler > refuses to send an RSS payload without a visible title and link 1ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > rejects empty content when SuppressEmbeds would hide the only RSS card 0ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > sends a native Discord card with visible title and link and no SuppressEmbeds 1ms
- ✓ tests/rss-scheduler.test.ts > RssScheduler > keeps every rendered digest entry complete within the payload bound 0ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > keeps every rendered digest entry complete within the payload bound 1ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > reports configured RSS as unavailable until a scheduler exists 0ms
- ✓ tests/rss-scheduler.test.ts > RssScheduler > releases digest claims omitted by rendering instead of completing them 1ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > does not claim an unrenderable digest entry 1ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > skips an unrenderable headline and still publishes the next valid item 1ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > reserves only the one remaining daily RSS delivery slot before posting 3ms
- ✓ tests/rss-scheduler.test.ts > RssScheduler > re-reserves pre-midnight claims against the actual post day before sending 3ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > re-reserves pre-midnight claims against the actual post day before sending 2ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > does not publish catch-up items older than two hours 1ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > publishes a catch-up item that is still within two hours 1ms
  ✓ tests/rss-scheduler.test.ts > RssScheduler > skips catch-up items with no usable published time 1ms
- ✓ tests/rss-scheduler.test.ts > RssScheduler > retries a released Discord failure after the two-hour catch-up window 2ms
- ✓ tests/rss-scheduler.test.ts > RssScheduler > rotates the starting feed each five-minute tick so one feed cannot monopolize 2ms
- ✓ tests/rss-scheduler.test.ts > RssScheduler > safe-logs an interval tick failure instead of leaking a rejected callback 1ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > retries a released Discord failure after the two-hour catch-up window 4ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > does not retry a pending item after two hours unless a delivery error was recorded 1ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > rotates the starting feed each five-minute tick so one feed cannot monopolize 1ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > safe-logs an interval tick failure instead of leaking a rejected callback 3ms
 
  Test Files  1 passed (1)
-      Tests  23 passed (23)
-   Start at  00:51:02
-   Duration  941ms (transform 434ms, setup 0ms, import 788ms, tests 56ms, environment 0ms)
+      Tests  25 passed (25)
+   Start at  00:56:04
+   Duration  918ms (transform 424ms, setup 0ms, import 774ms, tests 58ms, environment 0ms)
 
