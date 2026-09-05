@@ -536,15 +536,13 @@ describe('RssScheduler', () => {
     const scheduler = schedulerFor(
       storage,
       {
-        fetch: vi
-          .fn()
-          .mockResolvedValue(
-            Array.from({ length: 2 }, (_, index) =>
-              item(`midnight-${index}`, {
-                publishedAt: '2026-08-11T23:59:00.000Z',
-              }),
-            ),
+        fetch: vi.fn().mockResolvedValue(
+          Array.from({ length: 2 }, (_, index) =>
+            item(`midnight-${index}`, {
+              publishedAt: '2026-08-11T23:59:00.000Z',
+            }),
           ),
+        ),
       },
       publisher,
       'server',
@@ -569,10 +567,12 @@ describe('RssScheduler', () => {
     const scheduler = schedulerFor(
       storage,
       {
-        fetch: vi.fn().mockResolvedValue([
-          item('stale', { publishedAt: '2026-09-04T21:59:59.000Z' }),
-          item('fresh', { publishedAt: '2026-09-04T22:00:00.000Z' }),
-        ]),
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('stale', { publishedAt: '2026-09-04T21:59:59.000Z' }),
+            item('fresh', { publishedAt: '2026-09-04T22:00:00.000Z' }),
+          ]),
       },
       publisher,
       'server',
@@ -595,9 +595,11 @@ describe('RssScheduler', () => {
     const scheduler = schedulerFor(
       storage,
       {
-        fetch: vi.fn().mockResolvedValue([
-          item('recent', { publishedAt: '2026-09-04T23:00:00.000Z' }),
-        ]),
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('recent', { publishedAt: '2026-09-04T23:00:00.000Z' }),
+          ]),
       },
       publisher,
       'server',
@@ -620,11 +622,13 @@ describe('RssScheduler', () => {
     const scheduler = schedulerFor(
       storage,
       {
-        fetch: vi.fn().mockResolvedValue([
-          item('missing-time', { publishedAt: '' }),
-          item('unparseable', { publishedAt: 'not-a-date' }),
-          item('usable', { publishedAt: 'Sun, 04 Sep 2026 23:30:00 +0000' }),
-        ]),
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('missing-time', { publishedAt: '' }),
+            item('unparseable', { publishedAt: 'not-a-date' }),
+            item('usable', { publishedAt: 'Sun, 04 Sep 2026 23:30:00 +0000' }),
+          ]),
       },
       publisher,
       'server',
