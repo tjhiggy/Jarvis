@@ -223,7 +223,9 @@ administration, deleting or editing other members' content, general GitHub write
 external tool invocation, or autonomous learning. Disabled extension contracts,
 including the read-only MCP context contract, exist as declarations only; they
 do not implement tools or grant authority. The persona cannot grant those
-powers.
+powers. There is no authenticated inbound Caleb or handoff receipt, no local
+handoff request or event store, and no approval gate that can release work from
+an external-agent payload. See [Caleb handoff lifecycle](CALEB_HANDOFF.md).
 
 The only GitHub mutation is administrator `/request` in captains-quarters, which
 creates one issue in the configured repository from the what/why/done fields.

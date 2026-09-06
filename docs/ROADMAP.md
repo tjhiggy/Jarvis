@@ -140,6 +140,12 @@ handling, tests, and content-free logs. See
 when a documented operational need exceeds the current single-process SQLite
 design. No migration is implied by this roadmap.
 
+**Not implemented.** A Caleb-to-Jarvis handoff lifecycle that would receive an
+authenticated external payload, persist a local request and event history, and
+release later work only after a distinct approval gate. Current Discord,
+Command Deck, GitHub `/request`, and outbound REST or webhook surfaces do not
+form that path. See [Caleb handoff lifecycle](CALEB_HANDOFF.md).
+
 ## Explicitly out of scope
 
 - Autonomous learning from Discord, repositories, provider responses, or

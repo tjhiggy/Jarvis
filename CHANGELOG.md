@@ -16,6 +16,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Read-only review of the missing Caleb-to-Jarvis handoff lifecycle:
+  authenticated receipt, durable local request and event persistence, and a
+  distinct approval gate. Documentation and regression tests lock the current
+  fail-closed boundary and do not add an inbound receiver or production path.
 - `/bird-call` posts one public MuthaShip-voice invite so any guild member can
   ask who wants to game now. Optional `game` (max 120) names the activity.
   Role mentions in `game` stay intact with matching `allowedMentions.roles`.
