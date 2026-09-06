@@ -547,6 +547,7 @@ instead of guessing.
 | [GitHub workflow](docs/GITHUB_WORKFLOW.md)                               | Issues, Discussions, Projects, Actions, pull requests, releases, and repository protections |
 | [Discussion workflow](docs/DISCUSSIONS.md)                               | Plain-language admin feedback, triage, and Discussion-to-Issue flow                         |
 | [Extension guide](docs/extensions/README.md)                             | Disabled contracts and requirements for any future integration                              |
+| [Caleb handoff lifecycle](docs/CALEB_HANDOFF.md)                         | Review of the missing inbound receipt, local request or event store, and approval gate      |
 | [Roadmap](docs/ROADMAP.md)                                               | Released, implemented-pending-release, planned, later, and explicitly out-of-scope work     |
 | [Implementation status](docs/IMPLEMENTATION_STATUS.md)                   | Canonical shipped, configured, enabled, foundation, and planned status matrix               |
 | [v1.6.0 verification report](docs/V160_RELEASE_VERIFICATION.md)          | Automated versus operator-owned evidence for the v1.6.0 package                             |

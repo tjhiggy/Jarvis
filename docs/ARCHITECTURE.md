@@ -10,7 +10,7 @@ metadata-only audit sink. Sites reads this projection through a server-side toke
 internals never trust Sites input. The localhost Command Deck remains the
 fallback if Sites is offline.
 
-Jarvis is a single Node.js process. It receives Discord gateway events, applies local request controls, optionally grounds a question with web-search results, calls the selected AI provider, and stores only its own records in SQLite. The optional Command Deck starts an HTTP server bound to loopback only; the application exposes no public listening interface.
+Jarvis is a single Node.js process. It receives Discord gateway events, applies local request controls, optionally grounds a question with web-search results, calls the selected AI provider, and stores only its own records in SQLite. The optional Command Deck starts an HTTP server bound to loopback only; the application exposes no public listening interface. There is no Caleb or other external-agent inbound handoff receiver; see [Caleb handoff lifecycle](CALEB_HANDOFF.md).
 
 ## Components
 
