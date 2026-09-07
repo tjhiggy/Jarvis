@@ -32,6 +32,10 @@ import {
   MemberProfileServiceError,
   type MemberProfileService,
 } from '../engagement/member-profiles.js';
+import type {
+  CalebHandoffRequest,
+  CalebDiscordResult,
+} from './caleb-advisor.js';
 
 export const discordGatewayIntents = Object.freeze([
   GatewayIntentBits.Guilds,
@@ -102,6 +106,9 @@ export interface MessageHandlerDependencies {
       readonly prompt: string;
     }): Promise<ConversationResult>;
   }>;
+  readonly calebAdvisor?: (
+    request: CalebHandoffRequest,
+  ) => Promise<CalebDiscordResult>;
   readonly handleCommand: (interaction: unknown) => Promise<void>;
   readonly pollController?: PollController;
   readonly introductionService?: IntroductionService;
@@ -153,6 +160,33 @@ export const createDiscordHandlers = (
       }
 
       try {
+        if (
+          dependencies.calebAdvisor &&
+          message.channel.isThread?.() === true
+        ) {
+          const threadState = discordThreadState(message);
+          if (threadState !== 'active') {
+            await replyInChunks(message, 'Request denied.');
+            return;
+          }
+          const handoff = await dependencies.calebAdvisor({
+            requestId: normalized.eventId,
+            timestamp: Date.now(),
+            nonce: normalized.eventId,
+            message: normalized.prompt,
+            provenance: {
+              guildId: normalized.guildId,
+              chat_id: normalized.conversationId,
+              channel_id: normalized.channelId,
+              sourceMessageId: normalized.eventId,
+              profileIdentity: 'caleb',
+              threadState,
+            },
+            signature: '',
+          });
+          await replyInChunks(message, handoff.message);
+          return;
+        }
         const result = await dependencies.conversationService.ask(normalized);
         await replyInChunks(message, resultMessage(result));
       } catch {
@@ -193,6 +227,19 @@ export const createDiscordHandlers = (
       }
     },
   };
+};
+
+const discordThreadState = (
+  message: DiscordMessage,
+): 'active' | 'archived' | 'closed' => {
+  if (message.channel.isThread?.() !== true) return 'closed';
+  const channel = message.channel as Readonly<{
+    archived?: boolean;
+    locked?: boolean;
+  }>;
+  if (channel.locked === true) return 'closed';
+  if (channel.archived === true) return 'archived';
+  return 'active';
 };
 
 const handleRoleMenu = async (

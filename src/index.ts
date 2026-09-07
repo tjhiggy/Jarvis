@@ -13,6 +13,8 @@ import {
   type DiscordInteraction,
   type DiscordMessage,
 } from './discord/handlers.js';
+import { createLoopbackCalebHandoffClient } from './discord/caleb-advisor.js';
+import { SQLiteCalebReplayStore } from './discord/caleb-advisor.js';
 import { loadFaqCatalog, type FaqCatalog } from './faq/faq-catalog.js';
 import {
   loadKnowledgeCatalog,
@@ -1811,6 +1813,16 @@ export const createApplication = async (
       botUserId,
       allowedChannelIds: config.security.allowedChannelIds,
       conversationService,
+      ...(config.caleb?.enabled
+        ? {
+            calebAdvisor: createLoopbackCalebHandoffClient({
+              secret: config.caleb.secret,
+              replayStore: new SQLiteCalebReplayStore(
+                config.storage.databasePath,
+              ),
+            }),
+          }
+        : {}),
       handleCommand: (interaction) =>
         handleCommand(interaction as CommandInteraction, {
           config,

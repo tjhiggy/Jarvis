@@ -54,6 +54,10 @@ export interface AppConfig {
     cacheTtlMs: number;
     maxResults: number;
   }>;
+  readonly caleb?: Readonly<{
+    enabled: boolean;
+    secret: string;
+  }>;
   readonly storage: Readonly<{
     databasePath: string;
     maxHistoryMessages: number;
@@ -272,6 +276,7 @@ const baseEnvironmentSchema = z.object({
   OLLAMA_TIMEOUT_MS: integer(120000, 1),
   OLLAMA_MAX_RETRIES: integer(1, 0, 10),
   TAVILY_API_KEY: z.string().trim().default(''),
+  CALEB_SECRET: z.string().trim().default(''),
   WEB_SEARCH_TIMEOUT_MS: integer(10000, 1),
   WEB_SEARCH_CACHE_TTL_MS: integer(3600000, 1),
   WEB_SEARCH_MAX_RESULTS: integer(5, 1, 5),
@@ -449,6 +454,14 @@ const validateEngagementConfiguration = (
 
 const environmentSchema = baseEnvironmentSchema.superRefine(
   (value, context) => {
+    if (value.CALEB_SECRET !== '' && value.CALEB_SECRET.length < 32) {
+      context.addIssue({
+        code: 'custom',
+        path: ['CALEB_SECRET'],
+        message:
+          'CALEB_SECRET must contain at least 32 characters when configured.',
+      });
+    }
     if (value.AI_PROVIDER === 'openai' && value.OPENAI_API_KEY === '') {
       context.addIssue({
         code: 'custom',
@@ -622,6 +635,10 @@ export const loadConfig = (env: NodeJS.ProcessEnv): AppConfig => {
       timeoutMs: parsed.WEB_SEARCH_TIMEOUT_MS,
       cacheTtlMs: parsed.WEB_SEARCH_CACHE_TTL_MS,
       maxResults: parsed.WEB_SEARCH_MAX_RESULTS,
+    }),
+    caleb: Object.freeze({
+      enabled: parsed.CALEB_SECRET !== '',
+      secret: parsed.CALEB_SECRET,
     }),
     storage: Object.freeze({
       databasePath: parsed.DATABASE_PATH,
