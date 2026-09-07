@@ -69,7 +69,7 @@ The table is the complete configuration contract from `.env.example` and `src/co
 | `ENGAGEMENT_ACTIVITY_CHANNEL_ID`          | Optional blank or one 17-to-20 digit Discord channel ID                                           | Empty string                 | Sole destination for the bounded community activity.                                                                                                | `12345678901234567`                    | Access boundary        |
 | `ENGAGEMENT_BIRTHDAY_CHANNEL_ID`          | Optional blank or one 17-to-20 digit Discord channel ID                                           | Empty string                 | Sole destination for privacy-safe birthday announcements.                                                                                           | `12345678901234567`                    | Access boundary        |
 | `ENGAGEMENT_RSS_CHANNEL_ID`               | Optional blank or one 17-to-20 digit Discord channel ID                                           | Empty string                 | Sole destination for approved RSS notifications; blank disables RSS runtime controls.                                                               | `12345678901234567`                    | Access boundary        |
-| `ENGAGEMENT_RSS_ALLOWED_HOSTS`            | Comma-separated exact hostnames; HTTPS only                                                       | Empty string                 | Allowlist for RSS feed URLs. Private, local, and unlisted hosts are rejected. MuthaShip Production uses the catalog below.                          | `news.xbox.com,blog.playstation.com,www.pcgamer.com,store.steampowered.com,www.epicgames.com,www.vg247.com,www.rockpapershotgun.com,www.eurogamer.net,www.videogameschronicle.com` | Security boundary      |
+| `ENGAGEMENT_RSS_ALLOWED_HOSTS`            | Comma-separated exact hostnames; HTTPS only                                                       | Empty string                 | Allowlist for RSS feed URLs. Private, local, and unlisted hosts are rejected.                                                                       | `news.example.com,updates.example.org` | Security boundary      |
 | `ENGAGEMENT_PROACTIVE_CATALOG_PATH`       | Optional path to an operator-controlled JSON array                                                | Empty string                 | Enables approved proactive posts; blank disables the proactive catalog and scheduler.                                                               | `./config/proactive-prompts.json`      | Trusted local content  |
 | `ENGAGEMENT_ROLE_MENU_OPTIONS`            | Optional comma-separated `value:label:roleId` entries                                             | Empty string                 | Safe allowlist for `/roles`; Jarvis only assigns these configured roles and never creates or edits roles.                                           | `fortnite:Fortnite:12345678901234567`  | Access boundary        |
 | `ENGAGEMENT_ADMIN_ROLE_IDS`               | Required when engagement is enabled; comma-separated 17-to-20 digit Discord role IDs              | Empty set                    | Role allowlist for engagement management. It does not grant Discord permissions.                                                                    | `12345678901234567,23456789012345678`  | Access boundary        |
@@ -130,19 +130,19 @@ must use this comma-separated host string (no `www.ign.com`):
 
 `news.xbox.com,blog.playstation.com,www.pcgamer.com,store.steampowered.com,www.epicgames.com,www.vg247.com,www.rockpapershotgun.com,www.eurogamer.net,www.videogameschronicle.com`
 
-| Action | Label | Feed URL | Host |
-| ------ | ----- | -------- | ---- |
-| Keep | XBOX News | https://news.xbox.com/en-us/feed/ | `news.xbox.com` |
-| Keep | PlayStation Blog | https://blog.playstation.com/feed/ | `blog.playstation.com` |
-| Drop | IGN | https://www.ign.com/rss/articles/feed | `www.ign.com` |
-| Keep | PC Gamer | https://www.pcgamer.com/rss/ | `www.pcgamer.com` |
-| Keep | Steam News | https://store.steampowered.com/feeds/news.xml | `store.steampowered.com` |
-| Keep | Epic Games | https://www.epicgames.com/news/rss | `www.epicgames.com` |
-| Keep | ARC Raiders | https://store.steampowered.com/feeds/news/app/1808500 | `store.steampowered.com` |
-| Add | VG247 | https://www.vg247.com/feed | `www.vg247.com` |
-| Add | Rock Paper Shotgun | https://www.rockpapershotgun.com/feed | `www.rockpapershotgun.com` |
-| Add | Eurogamer | https://www.eurogamer.net/feed | `www.eurogamer.net` |
-| Add | Video Games Chronicle | https://www.videogameschronicle.com/feed/ | `www.videogameschronicle.com` |
+| Action | Label                 | Feed URL                                              | Host                          |
+| ------ | --------------------- | ----------------------------------------------------- | ----------------------------- |
+| Keep   | XBOX News             | https://news.xbox.com/en-us/feed/                     | `news.xbox.com`               |
+| Keep   | PlayStation Blog      | https://blog.playstation.com/feed/                    | `blog.playstation.com`        |
+| Drop   | IGN                   | https://www.ign.com/rss/articles/feed                 | `www.ign.com`                 |
+| Keep   | PC Gamer              | https://www.pcgamer.com/rss/                          | `www.pcgamer.com`             |
+| Keep   | Steam News            | https://store.steampowered.com/feeds/news.xml         | `store.steampowered.com`      |
+| Keep   | Epic Games            | https://www.epicgames.com/news/rss                    | `www.epicgames.com`           |
+| Keep   | ARC Raiders           | https://store.steampowered.com/feeds/news/app/1808500 | `store.steampowered.com`      |
+| Add    | VG247                 | https://www.vg247.com/feed                            | `www.vg247.com`               |
+| Add    | Rock Paper Shotgun    | https://www.rockpapershotgun.com/feed                 | `www.rockpapershotgun.com`    |
+| Add    | Eurogamer             | https://www.eurogamer.net/feed                        | `www.eurogamer.net`           |
+| Add    | Video Games Chronicle | https://www.videogameschronicle.com/feed/             | `www.videogameschronicle.com` |
 
 Epic Games and ARC Raiders remain; they were not requested for removal. ARC
 Raiders uses the existing Steam host. Do not add Gematsu or Nintendo Life.
