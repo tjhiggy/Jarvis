@@ -197,6 +197,127 @@ describe('/bird-call', () => {
     expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/bird call/i);
     expect(reply.mock.calls[0]?.[0]?.content).not.toContain('Fortnite');
   });
+
+  it('fails closed in DMs even when game text contains role mentions', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const roleId = '1147945394039435316';
+    await handleBirdCallCommand(
+      interaction({
+        guildId: null,
+        game: `<@&${roleId}>`,
+        reply,
+      }),
+    );
+
+    const payload = reply.mock.calls[0]?.[0] as {
+      content: string;
+      allowedMentions: Record<string, unknown>;
+    };
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringMatching(/server channel/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+    expect(payload.allowedMentions).not.toHaveProperty('roles');
+    expect(payload.allowedMentions).not.toHaveProperty('users');
+    expect(payload.content).not.toMatch(/bird call/i);
+    expect(payload.content).not.toContain(`<@&${roleId}>`);
+  });
+
+  it('deduplicates repeated role IDs in allowedMentions', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const roleId = '1147945394039435316';
+    await handleBirdCallCommand(
+      interaction({
+        guildId: 'guild-1',
+        game: `<@&${roleId}> again <@&${roleId}>`,
+        reply,
+      }),
+    );
+
+    const payload = reply.mock.calls[0]?.[0] as {
+      content: string;
+      allowedMentions: { roles?: readonly string[] };
+    };
+    expect(payload.content).toContain(`<@&${roleId}> again <@&${roleId}>`);
+    expect(payload.allowedMentions).toEqual({
+      parse: [],
+      repliedUser: false,
+      roles: [roleId],
+    });
+  });
+
+  it('does not allow malformed role-like tokens', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    await handleBirdCallCommand(
+      interaction({
+        guildId: 'guild-1',
+        game: '<@&> <@&abc> <@&123 play',
+        reply,
+      }),
+    );
+
+    const payload = reply.mock.calls[0]?.[0] as {
+      allowedMentions: Record<string, unknown>;
+    };
+    expect(payload.allowedMentions).toEqual(safeMentions);
+    expect(payload.allowedMentions).not.toHaveProperty('roles');
+  });
+
+  it('keeps a role token adjacent to a neutralized user mention', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const roleId = '987654321098765432';
+    const userId = '123456789012345678';
+    await handleBirdCallCommand(
+      interaction({
+        guildId: 'guild-1',
+        game: `<@${userId}><@&${roleId}>`,
+        reply,
+      }),
+    );
+
+    const payload = reply.mock.calls[0]?.[0] as {
+      content: string;
+      allowedMentions: Record<string, unknown>;
+    };
+    expect(payload.content).toContain(`<@\u200b${userId}><@&${roleId}>`);
+    expect(payload.content).not.toContain(`<@${userId}>`);
+    expect(payload.allowedMentions).toEqual({
+      parse: [],
+      repliedUser: false,
+      roles: [roleId],
+    });
+    expect(payload.allowedMentions).not.toHaveProperty('users');
+  });
+
+  it('neutralizes case-insensitive mass mentions while keeping a role', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const roleId = '1005112363369889794';
+    await handleBirdCallCommand(
+      interaction({
+        guildId: 'guild-1',
+        game: `@EVERYONE @HERE <@&${roleId}>`,
+        reply,
+      }),
+    );
+
+    const payload = reply.mock.calls[0]?.[0] as {
+      content: string;
+      allowedMentions: { parse?: readonly string[]; roles?: readonly string[] };
+    };
+    expect(payload.content).toContain('@\u200bEVERYONE');
+    expect(payload.content).toContain('@\u200bHERE');
+    expect(payload.content).not.toContain('@EVERYONE');
+    expect(payload.content).not.toContain('@HERE');
+    expect(payload.content).toContain(`<@&${roleId}>`);
+    expect(payload.allowedMentions).toEqual({
+      parse: [],
+      repliedUser: false,
+      roles: [roleId],
+    });
+  });
 });
 
 function interaction(input: {
