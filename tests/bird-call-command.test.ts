@@ -89,10 +89,11 @@ describe('/bird-call', () => {
     });
   });
 
-  it('neutralizes mentions in the optional game text and keeps allowedMentions empty', async () => {
+  it('keeps role mentions in game text and allows exactly those roles', async () => {
     const reply = vi.fn().mockResolvedValue(undefined);
-    const game =
-      'raid with @everyone <@123456789012345678> and <@&987654321098765432>';
+    const consultant = '1147945394039435316';
+    const advisor = '1005112363369889794';
+    const game = `<@&${consultant}> <@&${advisor}>`;
     await handleBirdCallCommand(
       interaction({
         guildId: 'guild-1',
@@ -101,19 +102,79 @@ describe('/bird-call', () => {
       }),
     );
 
-    const content = reply.mock.calls[0]?.[0]?.content as string;
+    expect(reply).toHaveBeenCalledWith({
+      content: `Bird call. Who on the MuthaShip wants to play <@&${consultant}> <@&${advisor}> now?`,
+      ephemeral: false,
+      allowedMentions: {
+        parse: [],
+        repliedUser: false,
+        roles: [consultant, advisor],
+      },
+    });
+  });
+
+  it('neutralizes mass, user, and channel mentions without allowing them', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const game =
+      'raid with @everyone @here <@123456789012345678> <@!234567890123456789> <#345678901234567890>';
+    await handleBirdCallCommand(
+      interaction({
+        guildId: 'guild-1',
+        game,
+        reply,
+      }),
+    );
+
+    const payload = reply.mock.calls[0]?.[0] as {
+      content: string;
+      allowedMentions: Record<string, unknown>;
+    };
     expect(reply).toHaveBeenCalledWith(
       expect.objectContaining({
         ephemeral: false,
         allowedMentions: safeMentions,
       }),
     );
-    expect(content).not.toContain('@everyone');
-    expect(content).not.toContain('<@123456789012345678>');
-    expect(content).not.toContain('<@&987654321098765432>');
-    expect(content).toContain('@\u200beveryone');
-    expect(content).toContain('<@\u200b123456789012345678>');
-    expect(content).toContain('<@\u200b&987654321098765432>');
+    expect(payload.allowedMentions).not.toHaveProperty('roles');
+    expect(payload.allowedMentions).not.toHaveProperty('users');
+    expect(payload.allowedMentions.parse).toEqual([]);
+    expect(payload.content).not.toContain('@everyone');
+    expect(payload.content).not.toContain('@here');
+    expect(payload.content).not.toContain('<@123456789012345678>');
+    expect(payload.content).not.toContain('<@!234567890123456789>');
+    expect(payload.content).not.toContain('<#345678901234567890>');
+    expect(payload.content).toContain('@\u200beveryone');
+    expect(payload.content).toContain('@\u200bhere');
+    expect(payload.content).toContain('<@\u200b123456789012345678>');
+    expect(payload.content).toContain('<@\u200b!234567890123456789>');
+    expect(payload.content).toContain('<#\u200b345678901234567890>');
+  });
+
+  it('keeps role tokens when mixed with blocked mention types', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const roleId = '987654321098765432';
+    const game = `raid with @everyone <@123456789012345678> and <@&${roleId}>`;
+    await handleBirdCallCommand(
+      interaction({
+        guildId: 'guild-1',
+        game,
+        reply,
+      }),
+    );
+
+    const payload = reply.mock.calls[0]?.[0] as {
+      content: string;
+      allowedMentions: { roles?: readonly string[] };
+    };
+    expect(payload.content).toContain(`<@&${roleId}>`);
+    expect(payload.content).not.toContain('<@\u200b&');
+    expect(payload.content).toContain('@\u200beveryone');
+    expect(payload.content).toContain('<@\u200b123456789012345678>');
+    expect(payload.allowedMentions).toEqual({
+      parse: [],
+      repliedUser: false,
+      roles: [roleId],
+    });
   });
 
   it('fails closed in DMs without posting a public bird call', async () => {

@@ -78,6 +78,10 @@ The following are intentionally not claimed as shipped:
 4. Discord support-ticket delivery and moderation workflow.
 5. Additional reminder modes such as shared-reminder expansion, DM fallback, and export.
 6. Optional future provider adapters and worker/storage scaling.
+7. A Caleb-to-Jarvis inbound handoff: authenticated receipt, durable local
+   request and event persistence, and a distinct approval gate before side
+   effects. Current adjacent surfaces stay fail-closed. See
+   [Caleb handoff lifecycle](CALEB_HANDOFF.md).
 
 Each item must receive its own issue, milestone, acceptance criteria, release
 notes, configuration contract, migration/rollback plan, and deployment smoke
