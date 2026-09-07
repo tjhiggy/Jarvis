@@ -35,7 +35,9 @@ production deployment.
 - Discord changes must be least-privilege and narrowly scoped; no server
   deletion, moderation, role, channel, or permission changes are implied.
 - Jarvis remains read-only for Sleeper and has no shell, code execution,
-  arbitrary file access, GitHub-write, or autonomous-learning capability.
+  arbitrary file access, general GitHub-write, or autonomous-learning
+  capability. The only GitHub mutation is administrator `/request` creating
+  one issue in the configured repository.
 
 ## Evidence to retain
 
