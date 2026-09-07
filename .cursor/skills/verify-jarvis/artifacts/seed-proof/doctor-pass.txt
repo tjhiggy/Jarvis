@@ -1,0 +1,10 @@
+doctor: repo=/workspace
+doctor: node=v22.14.0
+doctor: vitest=present
+doctor: PASS
+doctor: surface=ci-harness
+doctor: live-discord=refused
+doctor: register-commands=refused
+doctor: production-env=refused
+doctor: pwsh=absent
+exit=0

@@ -1,0 +1,6 @@
+doctor: repo=/workspace
+doctor: node=v22.14.0
+doctor: vitest=present
+doctor: FAIL closed
+doctor: - forbidden verification intent (live Discord, register-commands, production start, GAMING-BRO, or Sites publish)
+exit=1

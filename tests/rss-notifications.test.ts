@@ -45,11 +45,67 @@ describe('RSS notifications', () => {
         publishedAt: 'Mon, 01 Jan 2026 00:00:00 GMT',
       },
     ]);
+    expect(items[0]).not.toHaveProperty('imageUrl');
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher).toHaveBeenCalledWith(
       'https://news.example.com/feed.xml',
       expect.objectContaining({ redirect: 'error' }),
     );
+  });
+
+  it('parses a public HTTPS article image from the feed and does not fetch the article page', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          `<?xml version="1.0"?><rss xmlns:media="http://search.yahoo.com/mrss/"><channel><item><guid>ign-1</guid><title>IGN headline</title><link>https://news.example.com/ign-1</link><pubDate>Tue, 01 Sep 2026 22:38:27 +0000</pubDate><media:content url="https://cdn.example.com/ign-1.jpg" medium="image" type="image/jpeg" /><enclosure url="https://cdn.example.com/ignored.bin" type="application/octet-stream" /></item></channel></rss>`,
+        ),
+      );
+    const client = new RssNotificationClient(fetcher, 2_000, [
+      'news.example.com',
+    ]);
+
+    const items = await client.fetch('https://news.example.com/feed.xml');
+
+    expect(items).toEqual([
+      {
+        id: 'ign-1',
+        title: 'IGN headline',
+        url: 'https://news.example.com/ign-1',
+        publishedAt: 'Tue, 01 Sep 2026 22:38:27 +0000',
+        imageUrl: 'https://cdn.example.com/ign-1.jpg',
+      },
+    ]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://news.example.com/feed.xml',
+      expect.objectContaining({ redirect: 'error' }),
+    );
+    expect(fetcher.mock.calls[0]?.[0]).not.toBe(
+      'https://news.example.com/ign-1',
+    );
+  });
+
+  it('uses an image enclosure when media:content is absent and omits private or non-image URLs', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          `<rss xmlns:media="http://search.yahoo.com/mrss/"><channel><item><guid>enc-1</guid><title>Enclosure</title><link>https://news.example.com/enc-1</link><pubDate>2026-09-01</pubDate><enclosure url="https://cdn.example.com/hero.png" type="image/png" /></item><item><guid>bad-1</guid><title>Bad image</title><link>https://news.example.com/bad-1</link><pubDate>2026-09-01</pubDate><media:content url="http://cdn.example.com/insecure.jpg" medium="image" /><enclosure url="https://127.0.0.1/local.jpg" type="image/jpeg" /></item></channel></rss>`,
+        ),
+      );
+    const client = new RssNotificationClient(fetcher, 2_000, [
+      'news.example.com',
+    ]);
+
+    const items = await client.fetch('https://news.example.com/feed.xml');
+
+    expect(items[0]).toMatchObject({
+      id: 'enc-1',
+      imageUrl: 'https://cdn.example.com/hero.png',
+    });
+    expect(items[1]).toMatchObject({ id: 'bad-1' });
+    expect(items[1]).not.toHaveProperty('imageUrl');
   });
 
   it.each([

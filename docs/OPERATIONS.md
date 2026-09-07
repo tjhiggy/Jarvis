@@ -17,7 +17,9 @@ read token after suspected exposure.
 
 ## Engagement controls
 
-Configured engagement administrators may run `/engagement status`, `/engagement pause`, and `/engagement resume`. Status is private and reports only configured features, aggregate record counts, scheduler state, and last-run outcome. `/engagement delete` durably queues bot-owned cards, deletes each card first, and removes the corresponding content row only afterward; administrators may provide a member ID. Its private response separates records removed immediately from card-backed records still queued for bounded retry. Pause suppresses scheduled recap, event-reminder, and trivia-result delivery without deleting records and persists until explicit resume.
+Configured engagement administrators may run `/engagement status`, `/engagement pause`, and `/engagement resume`. Status is private and reports only configured features, aggregate record counts, scheduler state, and last-run outcome. `/engagement delete` durably queues bot-owned cards, deletes each card first, and removes the corresponding content row only afterward; administrators may provide a member ID. Its private response separates records removed immediately from card-backed records still queued for bounded retry. Pause suppresses scheduled recap, event-reminder, trivia-result delivery, and quiet-channel nudges without deleting records and persists until explicit resume.
+
+Quiet-channel nudges are optional and configured only through deployment environment keys. Set `ENGAGEMENT_QUIET_NUDGE_EARTHLINGS_CHANNEL_ID` for the main crew channel and `ENGAGEMENT_QUIET_NUDGE_TEST_CHANNEL_ID` for the proof channel. Their windows default to 1,440 and 5 minutes respectively. Jarvis posts at most one model-generated nudge per quiet stretch per channel, ignores bot messages when measuring quiet, and uses empty `allowedMentions`. Blank channel IDs, missing channels, provider failures, or `/engagement pause` all fail closed with no post.
 
 This guide covers routine operation of the deployed Jarvis process. It does
 not authorize Discord administration, repository changes, shell execution, or
@@ -42,10 +44,19 @@ pause remains the broader emergency stop for scheduled engagement delivery.
 
 For RSS, use the Command Deck preview before saving a feed. Preview fetches up
 to five entries and persists nothing. Saving establishes a baseline, so old
-entries are not posted. RSS posts at most five entries in one digest per cycle
-and at most twenty completed items per MuthaShip per UTC day. A Discord failure
-releases the delivery claim for later retry. Do not manually repost a failed
-item: that is how duplicate-notification folklore becomes an incident.
+entries are not posted. The scheduler polls every five minutes and posts at
+most one new headline per tick as a native Discord card (linked title, source
+author, and image when the feed provided one). Each tick rotates the starting
+feed so one allowlisted feed cannot monopolize the single slot. Catch-up items
+older than two hours, or items with no usable published/available timestamp,
+are skipped fail-closed and are not posted. A Discord failure releases the
+unsent delivery claim for later retry when a delivery error was recorded,
+including after the two-hour catch-up window; that window applies to
+first-time catch-up and to pending rows with no recorded failure. Unrenderable
+entries are skipped without claiming a slot. At most twenty completed items
+are delivered per MuthaShip per UTC day.
+Do not manually repost a failed item: that is how duplicate-notification
+folklore becomes an incident.
 
 ## Start and stop checks
 

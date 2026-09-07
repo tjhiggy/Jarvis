@@ -1,0 +1,4 @@
++ npm ci --legacy-peer-deps
+exit=0
+packages=194
+vitest=present

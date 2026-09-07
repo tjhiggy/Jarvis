@@ -36,6 +36,7 @@ describe('engagement configuration', () => {
       maxRecordsPerUser: 5,
       maxParticipants: 100,
       roleMenuChoices: [],
+      quietNudges: { channels: [] },
     });
     expect([...engagement.adminRoleIds]).toEqual([]);
     expect(Object.isFrozen(engagement)).toBe(true);
@@ -78,6 +79,27 @@ describe('engagement configuration', () => {
     expect(engagement.retentionDays).toBe(90);
     expect(engagement.maxRecordsPerUser).toBe(8);
     expect(engagement.maxParticipants).toBe(250);
+  });
+
+  it('loads configured quiet nudge channels with independent windows', () => {
+    const engagement = loadConfig({
+      ...validEnv,
+      ENGAGEMENT_QUIET_NUDGE_EARTHLINGS_CHANNEL_ID: '953011731356086284',
+      ENGAGEMENT_QUIET_NUDGE_TEST_CHANNEL_ID: '1536175231373148181',
+      ENGAGEMENT_QUIET_NUDGE_EARTHLINGS_WINDOW_MINUTES: '1440',
+      ENGAGEMENT_QUIET_NUDGE_TEST_WINDOW_MINUTES: '5',
+    }).engagement;
+
+    expect(engagement.quietNudges.channels).toEqual([
+      {
+        channelId: '953011731356086284',
+        quietWindowMs: 1_440 * 60_000,
+      },
+      {
+        channelId: '1536175231373148181',
+        quietWindowMs: 5 * 60_000,
+      },
+    ]);
   });
 
   it.each([
