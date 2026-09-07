@@ -2,12 +2,126 @@ import { MessageFlags } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 import { formatRssDigest, rssIntegrationHealth } from '../src/index.js';
 import {
+  parseRssItemTimestamp,
   renderRssDigest,
+  rotateRssFeeds,
+  RSS_POLL_INTERVAL_MS,
   rssBroadcastSendPayload,
   rssBroadcastShowsItem,
+  rssCatchUpItemIsFresh,
+  rssDigestEntryIsPostable,
   RssScheduler,
 } from '../src/notifications/rss-scheduler.js';
 import { RssStorage } from '../src/notifications/rss-storage.js';
+
+describe('RSS catch-up and feed-rotation helpers', () => {
+  it('rotates feeds by five-minute wall-clock buckets and wraps', () => {
+    const feeds = ['alpha', 'beta', 'gamma'] as const;
+
+    expect(rotateRssFeeds(feeds, new Date(0))).toEqual([
+      'alpha',
+      'beta',
+      'gamma',
+    ]);
+    expect(rotateRssFeeds(feeds, new Date(RSS_POLL_INTERVAL_MS))).toEqual([
+      'beta',
+      'gamma',
+      'alpha',
+    ]);
+    expect(rotateRssFeeds(feeds, new Date(RSS_POLL_INTERVAL_MS * 2))).toEqual([
+      'gamma',
+      'alpha',
+      'beta',
+    ]);
+    expect(rotateRssFeeds(feeds, new Date(RSS_POLL_INTERVAL_MS * 3))).toEqual([
+      'alpha',
+      'beta',
+      'gamma',
+    ]);
+    expect(rotateRssFeeds(feeds, new Date(RSS_POLL_INTERVAL_MS - 1))).toEqual([
+      'alpha',
+      'beta',
+      'gamma',
+    ]);
+  });
+
+  it('returns a copy for empty and single-feed lists', () => {
+    expect(rotateRssFeeds([], new Date(0))).toEqual([]);
+
+    const single = ['only'];
+    const rotated = rotateRssFeeds(single, new Date(RSS_POLL_INTERVAL_MS));
+    expect(rotated).toEqual(['only']);
+    expect(rotated).not.toBe(single);
+  });
+
+  it('fails closed on missing or unusable published times and treats the two-hour edge as fresh', () => {
+    const now = new Date('2026-09-05T00:00:00.000Z');
+
+    expect(parseRssItemTimestamp(undefined)).toBeUndefined();
+    expect(parseRssItemTimestamp('')).toBeUndefined();
+    expect(parseRssItemTimestamp('   ')).toBeUndefined();
+    expect(parseRssItemTimestamp('not-a-date')).toBeUndefined();
+    expect(parseRssItemTimestamp('2026-09-04T22:00:00.000Z')).toEqual(
+      new Date('2026-09-04T22:00:00.000Z'),
+    );
+    expect(parseRssItemTimestamp('Sun, 04 Sep 2026 23:30:00 +0000')).toEqual(
+      new Date('2026-09-04T23:30:00.000Z'),
+    );
+
+    expect(rssCatchUpItemIsFresh(undefined, now)).toBe(false);
+    expect(rssCatchUpItemIsFresh('   ', now)).toBe(false);
+    expect(rssCatchUpItemIsFresh('not-a-date', now)).toBe(false);
+    expect(rssCatchUpItemIsFresh('2026-09-04T22:00:00.000Z', now)).toBe(true);
+    expect(rssCatchUpItemIsFresh('2026-09-04T21:59:59.999Z', now)).toBe(false);
+    expect(rssCatchUpItemIsFresh('2026-09-05T01:00:00.000Z', now)).toBe(true);
+  });
+
+  it('treats empty, blank, and oversized URLs as unpostable before claim', () => {
+    const prefix = 'https://news.example.com/';
+    const urlAtBound = `${prefix}${'u'.repeat(400 - prefix.length)}`;
+
+    expect(urlAtBound.length).toBe(400);
+    expect(
+      rssDigestEntryIsPostable({
+        ...item('ok'),
+        sourceLabel: 'News',
+        deliveryKey: 'ok',
+      }),
+    ).toBe(true);
+    expect(
+      rssDigestEntryIsPostable({
+        ...item('empty'),
+        url: '',
+        sourceLabel: 'News',
+        deliveryKey: 'empty',
+      }),
+    ).toBe(false);
+    expect(
+      rssDigestEntryIsPostable({
+        ...item('blank'),
+        url: '   ',
+        sourceLabel: 'News',
+        deliveryKey: 'blank',
+      }),
+    ).toBe(false);
+    expect(
+      rssDigestEntryIsPostable({
+        ...item('bound'),
+        url: urlAtBound,
+        sourceLabel: 'News',
+        deliveryKey: 'bound',
+      }),
+    ).toBe(true);
+    expect(
+      rssDigestEntryIsPostable({
+        ...item('over'),
+        url: `${urlAtBound}x`,
+        sourceLabel: 'News',
+        deliveryKey: 'over',
+      }),
+    ).toBe(false);
+  });
+});
 
 describe('RssScheduler', () => {
   it('polls configured feeds and publishes only newly claimed items', async () => {
@@ -779,6 +893,155 @@ describe('RssScheduler', () => {
     ).toEqual(['alpha-1', 'zeta-1']);
   });
 
+  it('gives the slot to the next feed when the rotated-first feed has only stale first-time items', async () => {
+    const storage = twoFeedStorage();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const now = new Date('2026-08-11T12:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockImplementation(async (url: string) => {
+          if (url === 'https://alpha.example.com/feed.xml') {
+            return [
+              item('stale-alpha', { publishedAt: '2026-08-11T09:59:59.000Z' }),
+            ];
+          }
+          return [
+            item('fresh-zeta', { publishedAt: '2026-08-11T11:30:00.000Z' }),
+          ];
+        }),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'fresh-zeta' }),
+    ]);
+  });
+
+  it('baselines a new feed at the rotation front and still publishes the next feed', async () => {
+    const storage = twoFeedStorage(false);
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const now = new Date('2026-08-11T12:05:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockImplementation(async (url: string) => {
+          if (url === 'https://zeta.example.com/feed.xml') {
+            return [
+              item('historical-zeta', {
+                publishedAt: '2026-08-11T12:00:00.000Z',
+              }),
+            ];
+          }
+          return [
+            item('fresh-alpha', { publishedAt: '2026-08-11T12:00:00.000Z' }),
+          ];
+        }),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'fresh-alpha' }),
+    ]);
+    expect(
+      storage
+        .listFeeds('server')
+        .find((feed) => feed.url === 'https://zeta.example.com/feed.xml'),
+    ).toMatchObject({ baselined: true });
+  });
+
+  it('keeps the same starting feed for two ticks in the same five-minute bucket', async () => {
+    const storage = twoFeedStorage();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    let now = new Date('2026-08-11T12:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockImplementation(async (url: string) => {
+          if (url === 'https://alpha.example.com/feed.xml') {
+            return [
+              item('alpha-1', { publishedAt: '2026-08-11T12:00:00.000Z' }),
+              item('alpha-2', { publishedAt: '2026-08-11T12:00:00.000Z' }),
+            ];
+          }
+          return [item('zeta-1', { publishedAt: '2026-08-11T12:00:00.000Z' })];
+        }),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    now = new Date('2026-08-11T12:02:00.000Z');
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(
+      publisher.publish.mock.calls.map((call) => call[1].entries[0].id),
+    ).toEqual(['alpha-1', 'alpha-2']);
+  });
+
+  it('does not retry a policy-denied release after the two-hour catch-up window', async () => {
+    const storage = readyStorage();
+    let denied = false;
+    vi.spyOn(storage, 'rolloverDailyDeliveryReservation').mockImplementation(
+      () => {
+        denied = true;
+        return true;
+      },
+    );
+    const policy = {
+      evaluate: vi.fn().mockImplementation(async () => ({ allowed: !denied })),
+    };
+    const delivery = deliveryStore();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    let now = new Date('2026-09-05T00:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('policy-denied', { publishedAt: '2026-09-04T22:30:00.000Z' }),
+          ]),
+      },
+      publisher,
+      'server',
+      policy,
+      delivery,
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+    denied = false;
+    now = new Date('2026-09-05T01:00:00.000Z');
+    await expect(scheduler.tick()).resolves.toBe(0);
+
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(delivery.claimDelivery).toHaveBeenCalledTimes(1);
+    expect(delivery.releaseDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:policy-denied',
+      'lease:https://news.example.com/feed.xml:policy-denied',
+      expect.any(Date),
+      undefined,
+    );
+  });
+
   it('safe-logs an interval tick failure instead of leaking a rejected callback', async () => {
     let interval: (() => void) | undefined;
     const warnings: Array<Record<string, string>> = [];
@@ -849,6 +1112,21 @@ function readyStorage(): RssStorage {
   const url = 'https://news.example.com/feed.xml';
   storage.addFeed('server', url, 'News');
   storage.establishBaseline('server', url, []);
+  return storage;
+}
+
+function twoFeedStorage(baselineZeta = true): RssStorage {
+  const storage = new RssStorage(':memory:');
+  storage.addFeed('server', 'https://alpha.example.com/feed.xml', 'Alpha');
+  storage.addFeed('server', 'https://zeta.example.com/feed.xml', 'Zeta');
+  storage.establishBaseline('server', 'https://alpha.example.com/feed.xml', []);
+  if (baselineZeta) {
+    storage.establishBaseline(
+      'server',
+      'https://zeta.example.com/feed.xml',
+      [],
+    );
+  }
   return storage;
 }
 
