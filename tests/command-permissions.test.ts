@@ -38,6 +38,7 @@ describe('command permission contract', () => {
 
     expect(member?.command).toContain('/event list');
     expect(member?.command).toContain('/event details');
+    expect(member?.command).toContain('/bird-call');
     expect(administrator?.command).toContain('/event create');
     expect(administrator?.command).toContain('/event cancel');
     expect(administrator?.command).not.toContain('/delegated-post');

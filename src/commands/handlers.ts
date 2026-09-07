@@ -45,6 +45,7 @@ import {
 import { handleEventCommand } from './event.js';
 import { handleGameNightCommand } from './game-night.js';
 import { handleLookingForGroupCommand } from './looking-for-group.js';
+import { handleBirdCallCommand } from './bird-call.js';
 import type { EventService } from '../engagement/events.js';
 import { handleRecapCommand } from './recap.js';
 import type { RecapService } from '../engagement/recap.js';
@@ -72,6 +73,7 @@ import type {
   GitHubReadOnlyService,
   GitHubServiceError,
 } from '../github/github-service.js';
+import type { GitHubIssueCreateService } from '../github/issue-create.js';
 import { formatCommandPermissionRules } from './command-permissions.js';
 import { handleRssCommand } from './rss.js';
 import type { RssStorage } from '../notifications/rss-storage.js';
@@ -80,6 +82,7 @@ import type { FeatureFlagService } from '../engagement/feature-flags.js';
 import { handleMemberProfileCommand } from './member-profile.js';
 import type { MemberProfileService } from '../engagement/member-profiles.js';
 import { handleNotificationCommand } from './notifications.js';
+import { handleRequestCommand } from './request.js';
 import type { BroadcastStore } from '../notifications/broadcast-store.js';
 import type { MemberStatisticsService } from '../community/member-statistics.js';
 import {
@@ -197,7 +200,10 @@ export interface CommandDependencies {
   readonly memberStatistics?: MemberStatisticsService;
   readonly imageGeneration?: ImageGenerationService;
   readonly sleeper?: Readonly<{ leagueId: string; service: SleeperService }>;
-  readonly github?: Readonly<{ service: GitHubReadOnlyService }>;
+  readonly github?: Readonly<{
+    service: GitHubReadOnlyService;
+    issues?: GitHubIssueCreateService;
+  }>;
   readonly rssStorage?: Pick<
     RssStorage,
     'addFeed' | 'listFeeds' | 'removeFeed' | 'setPaused'
@@ -288,6 +294,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
     '/my-stats status, enable, or disable manages your private opt-in command count.',
     '/image generate is an administrator-only image tool in its configured channel.',
     'Project feedback belongs in GitHub Discussions and native issue forms.',
+    '/request what:<text> why:<text> done:<text> posts an administrator REQUEST in captains-quarters and opens one GitHub issue.',
     '/reminder set in:<duration> message:<text> [every:daily|weekly until:<duration>] creates a private personal reminder request.',
     '/reminder list shows your retained reminders in this server.',
     '/reminder cancel id:<id> cancels one of your reminders.',
@@ -308,7 +315,7 @@ const helpMessage = (pollsEnabled: boolean): string =>
           'Members may vote anonymously and change their selection while a poll is open.',
         ]
       : ['Polls: not configured.']),
-    'Safety: Jarvis cannot administer or modify the server, use arbitrary tools, or write to GitHub. History stays scoped to the current channel or thread.',
+    'Safety: Jarvis cannot administer or modify the server or use arbitrary tools. The only GitHub write is one configured-repository issue created by /request. History stays scoped to the current channel or thread.',
   ].join('\n');
 
 const handleCommandInternal = async (
@@ -451,6 +458,9 @@ const handleCommandInternal = async (
         enabled: dependencies.config.engagement?.enabled ?? false,
         channelId: dependencies.config.engagement?.channels.activityId ?? '',
       });
+      return;
+    case 'bird-call':
+      await handleBirdCallCommand(interaction);
       return;
     case 'daily': {
       if (!interaction.guildId || !dependencies.dailyRewardService)
@@ -721,6 +731,14 @@ const handleCommandInternal = async (
         ...(dependencies.broadcastStore === undefined
           ? {}
           : { store: dependencies.broadcastStore }),
+      });
+      return;
+    case 'request':
+      await handleRequestCommand(interaction, {
+        adminRoleIds: dependencies.config.engagement?.adminRoleIds ?? new Set(),
+        ...(dependencies.github?.issues === undefined
+          ? {}
+          : { issues: dependencies.github.issues }),
       });
       return;
     default:

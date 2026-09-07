@@ -308,7 +308,7 @@ export const shippedFeatureCatalog = [
     audience: 'member',
     requiredConfiguration: ['GITHUB_OWNER', 'GITHUB_REPO'],
     permissionBoundary:
-      'Repository, issue, and pull-request reads are fixed to one configured repository; Jarvis has no GitHub write authority.',
+      'Repository, issue, and pull-request reads are fixed to one configured repository; /github does not mutate GitHub state.',
     persistenceBehavior:
       'GitHub response content is not retained by the integration.',
     automatedEvidence: ['tests/github-service.test.ts'],
@@ -343,6 +343,26 @@ export const shippedFeatureCatalog = [
     ],
     manualSmokeCases: [
       'Create and cancel an event, record each RSVP choice, schedule a game night, and post one LFG request in the test channel.',
+    ],
+  },
+  {
+    id: 'bird-call',
+    name: 'Instant bird call',
+    status: 'pass',
+    ownerModule: 'src/commands/bird-call.ts',
+    entryPoints: {
+      discordCommands: ['bird-call'],
+      commandDeckWorkflows: [],
+    },
+    audience: 'member',
+    requiredConfiguration: [],
+    permissionBoundary:
+      'Any guild member can post one public bird call in the current channel. Direct messages fail closed. Role mentions in optional game text stay intact with matching allowedMentions.roles; mass, user, and channel mentions stay neutralized. Default invites keep empty allowedMentions.',
+    persistenceBehavior:
+      'Bird calls create no retained Jarvis record and do not replace /lfg or /game-night.',
+    automatedEvidence: ['tests/bird-call-command.test.ts'],
+    manualSmokeCases: [
+      'Run /bird-call and /bird-call game:<name> in a guild channel, confirm the public invite, then confirm a DM stays ephemeral with no public line.',
     ],
   },
   {
@@ -425,6 +445,34 @@ export const shippedFeatureCatalog = [
     ],
     manualSmokeCases: [
       'Inspect engagement status and metrics, pause and resume scheduling, and verify a non-administrator cannot mutate controls.',
+    ],
+  },
+  {
+    id: 'administrator-requests',
+    name: 'Administrator requests in captains-quarters',
+    status: 'pass',
+    ownerModule: 'src/commands/request.ts',
+    entryPoints: {
+      discordCommands: ['request'],
+      commandDeckWorkflows: [],
+    },
+    audience: 'administrator',
+    requiredConfiguration: [
+      'ENGAGEMENT_ADMIN_ROLE_IDS',
+      'GITHUB_OWNER',
+      'GITHUB_REPO',
+      'GITHUB_TOKEN',
+    ],
+    permissionBoundary:
+      'Only configured administrators can post in captains-quarters; other channels and non-admins fail closed with no public request and no GitHub issue. Issue creation uses the configured repository token, not a personal GitHub identity.',
+    persistenceBehavior:
+      'Successful requests create one GitHub issue in the configured repository. Discord REQUEST posts are not retained by Jarvis. Failed issue creation stays ephemeral and does not claim an issue exists.',
+    automatedEvidence: [
+      'tests/request-command.test.ts',
+      'tests/github-issue-create.test.ts',
+    ],
+    manualSmokeCases: [
+      'Post one /request in captains-quarters as an administrator and verify the public REQUEST includes the created issue URL, then verify non-admins, other channels, and GitHub failures stay ephemeral without a public REQUEST.',
     ],
   },
   {

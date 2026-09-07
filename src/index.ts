@@ -106,6 +106,12 @@ import {
   ProactiveEngagementService,
   type ProactiveScheduler,
 } from './engagement/proactive.js';
+import {
+  DurableQuietChannelNudgeScheduler,
+  QuietChannelNudgeService,
+  type QuietChannelNudgeScheduler,
+  type QuietNudgeStore,
+} from './engagement/quiet-channel-nudge.js';
 import { DelegatedPostService } from './engagement/delegated-posts.js';
 import {
   DailyRewardService,
@@ -143,6 +149,7 @@ import type {
 } from './notifications/broadcast-store.js';
 import { SqliteBroadcastStore } from './notifications/sqlite-broadcast-store.js';
 import { HttpGitHubReadOnlyService } from './github/github-service.js';
+import { HttpGitHubIssueCreateService } from './github/issue-create.js';
 import {
   createCommandDeckRuntimeMutationApi,
   startAdminConsole as startAdminConsoleRuntime,
@@ -193,6 +200,51 @@ interface SuggestionChannel {
 interface EventChannel {
   send(payload: unknown): Promise<Readonly<{ id: string }>>;
 }
+interface QuietNudgeChannel extends EventChannel {
+  messages: Readonly<{
+    fetch(options: { limit: number }): Promise<
+      ReadonlyMap<
+        string,
+        Readonly<{
+          author: Readonly<{ bot: boolean }>;
+          createdTimestamp: number;
+        }>
+      >
+    >;
+  }>;
+}
+const isQuietNudgeChannel = (value: unknown): value is QuietNudgeChannel =>
+  isEventChannel(value) &&
+  typeof value === 'object' &&
+  value !== null &&
+  'messages' in value &&
+  typeof value.messages === 'object' &&
+  value.messages !== null &&
+  'fetch' in value.messages &&
+  typeof value.messages.fetch === 'function';
+
+const quietNudgeStoreFromRepository = (repository: {
+  getQuietNudgeState(
+    guildId: string,
+    channelId: string,
+  ): Promise<
+    | {
+        readonly lastHumanAt?: Date;
+        readonly lastNudgeAt?: Date;
+      }
+    | undefined
+  >;
+  recordQuietNudgeHumanMessage(
+    guildId: string,
+    channelId: string,
+    at: Date,
+  ): Promise<void>;
+  recordQuietNudge(guildId: string, channelId: string, at: Date): Promise<void>;
+}): QuietNudgeStore => ({
+  get: repository.getQuietNudgeState.bind(repository),
+  recordHumanMessage: repository.recordQuietNudgeHumanMessage.bind(repository),
+  recordNudge: repository.recordQuietNudge.bind(repository),
+});
 const createDefaultEventGateway = (
   client: RuntimeDiscordClient,
 ): EventGateway => ({
@@ -540,6 +592,8 @@ export const createApplication = async (
   let birthdayScheduler: BirthdayScheduler | undefined;
   let proactiveScheduler: ProactiveScheduler | undefined;
   let proactiveService: ProactiveEngagementService | undefined;
+  let quietNudgeService: QuietChannelNudgeService | undefined;
+  let quietNudgeScheduler: QuietChannelNudgeScheduler | undefined;
   let memberProfileService: MemberProfileService | undefined;
   let dailyRewardService: DailyRewardService | undefined;
   let participationStreakService: ParticipationStreakService | undefined;
@@ -631,6 +685,16 @@ export const createApplication = async (
           logger?.warn(
             projectOperationalError(error, 'proactive_scheduler_shutdown'),
             'Proactive scheduler stop failed during shutdown.',
+          );
+        }
+      }
+      if (quietNudgeScheduler !== undefined) {
+        try {
+          await quietNudgeScheduler.stop();
+        } catch (error) {
+          logger?.warn(
+            projectOperationalError(error, 'quiet_nudge_scheduler_shutdown'),
+            'Quiet channel nudge scheduler stop failed during shutdown.',
           );
         }
       }
@@ -943,9 +1007,11 @@ export const createApplication = async (
               typeof sendable.send !== 'function'
             )
               throw new Error('Configured RSS channel is unavailable.');
-            await runBroadcastDelivery('rss', () =>
-              sendable.send(rssBroadcastSendPayload(digest)),
-            );
+            for (const entry of digest.entries) {
+              await runBroadcastDelivery('rss', () =>
+                sendable.send(rssBroadcastSendPayload(entry)),
+              );
+            }
           },
         },
         config.discord.guildId,
@@ -1269,7 +1335,30 @@ export const createApplication = async (
     const handlerState: {
       handlers: ReturnType<typeof createDiscordHandlers> | undefined;
     } = { handlers: undefined };
+    const quietNudgeState: {
+      service: QuietChannelNudgeService | undefined;
+    } = { service: undefined };
     client.on('messageCreate', (message) => {
+      if (acceptingWork && quietNudgeState.service !== undefined) {
+        const discordMessage = message as DiscordMessage & {
+          createdTimestamp?: number;
+        };
+        void trackWork(
+          quietNudgeState.service
+            .recordMessageSnapshot(discordMessage.channelId, {
+              authorIsBot: discordMessage.author.bot === true,
+              createdAt: new Date(
+                discordMessage.createdTimestamp ?? Date.now(),
+              ),
+            })
+            .catch((error: unknown) => {
+              logger?.warn(
+                projectOperationalError(error, 'quiet_nudge_message'),
+                'Quiet channel nudge message observation failed.',
+              );
+            }),
+        );
+      }
       if (acceptingWork && handlerState.handlers !== undefined) {
         void trackWork(
           handlerState.handlers
@@ -1735,6 +1824,16 @@ export const createApplication = async (
                     config.github.token,
                     config.github.timeoutMs,
                   ),
+                  ...(config.github.token.trim() === ''
+                    ? {}
+                    : {
+                        issues: new HttpGitHubIssueCreateService(
+                          config.github.owner,
+                          config.github.repo,
+                          config.github.token,
+                          config.github.timeoutMs,
+                        ),
+                      }),
                 },
               }
             : {}),
@@ -2021,6 +2120,64 @@ export const createApplication = async (
       });
     }
 
+    if (
+      engagementRepository !== undefined &&
+      config.engagement.quietNudges.channels.length > 0
+    ) {
+      const quietNudgeClient = client;
+      quietNudgeService = new QuietChannelNudgeService({
+        store: quietNudgeStoreFromRepository(
+          engagementRepository as Required<
+            Pick<
+              EngagementRepository,
+              | 'getQuietNudgeState'
+              | 'recordQuietNudgeHumanMessage'
+              | 'recordQuietNudge'
+            >
+          >,
+        ),
+        ai,
+        guildId: config.discord.guildId,
+        channels: config.engagement.quietNudges.channels,
+        isGloballyPaused: (guildId) =>
+          engagementRepository!.engagementPaused!(guildId),
+        history: {
+          latestHumanMessageAt: async (channelId) => {
+            const channel = await quietNudgeClient.channels?.fetch(channelId);
+            if (!isQuietNudgeChannel(channel)) return undefined;
+            const messages = await channel.messages.fetch({ limit: 50 });
+            const latest = [...messages.values()]
+              .filter((entry) => !entry.author.bot)
+              .sort(
+                (left, right) => right.createdTimestamp - left.createdTimestamp,
+              )[0];
+            return latest === undefined
+              ? undefined
+              : new Date(latest.createdTimestamp);
+          },
+        },
+        gateway: {
+          channelAvailable: async (channelId) => {
+            const channel = await quietNudgeClient.channels?.fetch(channelId);
+            return isQuietNudgeChannel(channel);
+          },
+          post: async ({ channelId, content, allowedMentions }) => {
+            const channel = await quietNudgeClient.channels?.fetch(channelId);
+            if (!isQuietNudgeChannel(channel))
+              throw new Error('Configured quiet nudge channel is unavailable.');
+            await channel.send({ content, allowedMentions });
+          },
+        },
+        logger,
+      });
+      quietNudgeState.service = quietNudgeService;
+      quietNudgeScheduler = new DurableQuietChannelNudgeScheduler(
+        quietNudgeService,
+        60_000,
+        logger,
+      );
+    }
+
     pollScheduler?.start();
     reminderScheduler.start();
     eventScheduler?.start();
@@ -2033,6 +2190,7 @@ export const createApplication = async (
         new DurableProactiveScheduler(proactiveService, 60_000, logger);
       proactiveScheduler.start();
     }
+    quietNudgeScheduler?.start();
 
     cleanupTimer = timers.setInterval(() => {
       void trackWork(cleanup());

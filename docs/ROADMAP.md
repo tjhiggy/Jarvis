@@ -140,6 +140,12 @@ handling, tests, and content-free logs. See
 when a documented operational need exceeds the current single-process SQLite
 design. No migration is implied by this roadmap.
 
+**Not implemented.** A Caleb-to-Jarvis handoff lifecycle that would receive an
+authenticated external payload, persist a local request and event history, and
+release later work only after a distinct approval gate. Current Discord,
+Command Deck, GitHub `/request`, and outbound REST or webhook surfaces do not
+form that path. See [Caleb handoff lifecycle](CALEB_HANDOFF.md).
+
 ## Explicitly out of scope
 
 - Autonomous learning from Discord, repositories, provider responses, or
@@ -147,9 +153,10 @@ design. No migration is implied by this roadmap.
 - Arbitrary code execution, shell access, or arbitrary file access.
 - Discord moderation, administration, role or channel changes, or mutation of
   content owned by others.
-- GitHub writes, merge actions, issue mutation, or pull-request changes by
-  Jarvis. Feedback and feature intake use native GitHub Discussions and issue
-  forms.
+- General GitHub writes, merge actions, issue edits, or pull-request changes by
+  Jarvis. The only implemented GitHub write is administrator `/request`
+  creating one issue in the configured repository. Other feedback and feature
+  intake use native GitHub Discussions and issue forms.
 - Unrestricted external-tool access, secret disclosure, or using untrusted
   content as instructions.
 

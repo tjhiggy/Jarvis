@@ -5,6 +5,7 @@ export interface AllowedMentions {
   readonly parse: readonly string[];
   readonly repliedUser: false;
   readonly users?: readonly string[];
+  readonly roles?: readonly string[];
 }
 
 export interface ReplyPayload {

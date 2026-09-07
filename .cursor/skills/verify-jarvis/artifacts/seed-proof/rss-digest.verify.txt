@@ -1,0 +1,30 @@
++ npm test -- tests/rss-scheduler.test.ts --reporter=verbose
+
+> jarvis-discord-bot@1.6.0 test
+> vitest run tests/rss-scheduler.test.ts --reporter=verbose
+
+
+ RUN  v4.1.10 /workspace
+
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > polls configured feeds and publishes only newly claimed items 4ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > baselines a new feed without publishing historical items 9ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > releases a failed Discord delivery so the next tick retries it 2ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > publishes at most five new entries in one source-labelled digest 2ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > does not start a new tick after stop 1ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > suppresses entries after twenty completed RSS items on a UTC day 5ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > completes each non-digest post before a later delivery fails and retries only the unposted item 2ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > rechecks policy after non-digest reservation rollover before posting 2ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > rechecks policy after digest reservation rollover and rendering before posting 1ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > sends RSS digest URLs with SuppressEmbeds so Discord does not unfurl a second headline card 1ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > keeps every rendered digest entry complete within the payload bound 0ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > reports configured RSS as unavailable until a scheduler exists 0ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > releases digest claims omitted by rendering instead of completing them 1ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > reserves only the two remaining daily RSS delivery slots before posting 3ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > re-reserves pre-midnight claims against the actual post day before sending 3ms
+ ✓ tests/rss-scheduler.test.ts > RssScheduler > safe-logs an interval tick failure instead of leaking a rejected callback 1ms
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  22:16:24
+   Duration  891ms (transform 401ms, setup 0ms, import 752ms, tests 38ms, environment 0ms)
+
