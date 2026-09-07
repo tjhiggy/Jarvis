@@ -119,6 +119,9 @@ invalid content fails closed with a sanitized error that names
 - **Mass-mention protection.** Replies set Discord `allowedMentions` to an
   empty parse list with `repliedUser: false`, and text is neutralized before
   delivery. Jarvis cannot turn an answer into an `@everyone` incident.
+  `/bird-call` is the narrow exception that preserves role mention tokens from
+  optional `game` text and lists exactly those role IDs in
+  `allowedMentions.roles`.
 - **Approved FAQ boundary.** `/faq` selects content from the active approved
   catalog configured by `FAQ_CATALOG_PATH`; `config/faq.json` is only the
   default. The catalog is immutable in process and read-only to Discord.
@@ -220,12 +223,18 @@ administration, deleting or editing other members' content, general GitHub write
 external tool invocation, or autonomous learning. Disabled extension contracts,
 including the read-only MCP context contract, exist as declarations only; they
 do not implement tools or grant authority. The persona cannot grant those
-powers.
+powers. There is no authenticated inbound Caleb or handoff receipt, no local
+handoff request or event store, and no approval gate that can release work from
+an external-agent payload. See [Caleb handoff lifecycle](CALEB_HANDOFF.md).
 
-Jarvis has no GitHub write boundary. The fixed-repository `/github` integration
-is read-only, and feedback or feature intake uses native GitHub Discussions and
-issue forms outside the bot runtime. Any optional fine-grained token must grant
-metadata read only.
+The only GitHub mutation is administrator `/request` in captains-quarters, which
+creates one issue in the configured repository from the what/why/done fields.
+It cannot edit or close issues, manage pull requests, change repository
+settings, or select another repository. `/github` remains read-only. The token
+must be a repository-scoped GitHub App or fine-grained bot credential, not a
+personal account token. Missing or failed issue creation stays ephemeral and
+does not post a public REQUEST that claims an issue exists. Native GitHub
+Discussions and issue forms remain available for other intake.
 
 The unsupported-action classifier improves clarity and avoids wasting provider
 calls on obvious requests Jarvis cannot perform. It must never be treated as a
