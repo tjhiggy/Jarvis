@@ -235,7 +235,7 @@
 
 - Status: **pass**
 - Owner: `src/notifications/rss-notifications.ts`
-- Configuration: `ENGAGEMENT_RSS_CHANNEL_ID`, `ENGAGEMENT_RSS_ALLOWED_HOSTS`, `ENGAGEMENT_ADMIN_ROLE_IDS`. MuthaShip Production hosts and URLs are the catalog in [Configuration](CONFIGURATION.md#muthaship-production-rss-catalog); IGN is not on that allowlist.
+- Configuration: `ENGAGEMENT_RSS_CHANNEL_ID`, `ENGAGEMENT_RSS_ALLOWED_HOSTS`, `ENGAGEMENT_ADMIN_ROLE_IDS`
 - Permissions: RSS management requires configured administrators and allowlisted HTTPS hosts; notification preferences are member private.
 - Persistence: Feed baselines and delivery deduplication are retained; personal preferences contain no message content.
 - Automated: `tests/rss-command.test.ts`, `tests/rss-scheduler.test.ts`, `tests/rss-notifications.test.ts`, `tests/notification-command.test.ts`
