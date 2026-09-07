@@ -17,7 +17,7 @@ SuppressEmbeds-plus-empty-content payload is a blank post and must stay rejected
 - `rss-digest-one-per-tick` publishes at most one headline per five-minute tick.
 - `rss-digest-catch-up-window` skips first-time items older than two hours, and skips items with no usable published/available timestamp.
 - `rss-digest-retry-past-window` still retries a released Discord failure after the two-hour catch-up window when a delivery error was recorded.
-- `rss-digest-unrenderable` skips permanently unrenderable entries before claiming so they cannot consume the single slot.
+- `rss-digest-unrenderable` skips permanently unrenderable entries (oversized URLs and empty or whitespace-only titles) before claiming so they cannot consume the single slot.
 - `rss-digest-feed-rotation` rotates the starting feed each five-minute tick so one feed cannot monopolize the single slot.
 
 ## How to get to it (user POV)
@@ -42,7 +42,7 @@ Preconditions:
 - **One per tick.** The test `publishes at most one new entry per tick` expects one `publish` call on the first tick and a second call only on the next tick.
 - **Catch-up window.** The tests `does not publish catch-up items older than two hours`, `publishes a catch-up item that is still within two hours`, and `skips catch-up items with no usable published time` must pass.
 - **Retry past window.** The test `retries a released Discord failure after the two-hour catch-up window` expects the second tick to publish the same item after a Discord failure, even once it is older than two hours. The test `does not retry a pending item after two hours unless a delivery error was recorded` expects a bare pending row to stay skipped.
-- **Unrenderable skip.** The tests `does not claim an unrenderable digest entry` and `skips an unrenderable headline and still publishes the next valid item` expect the oversized URL never to be claimed and the next valid headline to take the slot.
+- **Unrenderable skip.** The tests `does not claim an unrenderable digest entry` and `skips an unrenderable headline and still publishes the next valid item` expect the oversized URL never to be claimed and the next valid headline to take the slot. The test `skips a blank-title headline and still publishes the next valid item` expects a whitespace-only title never to be claimed so it cannot monopolize the slot as a fake network retry.
 - **Feed rotation.** The test `rotates the starting feed each five-minute tick so one feed cannot monopolize` expects `alpha-1` then `zeta-1`, not a second Alpha headline.
 - **Driver.** Equivalent one-shot: `.cursor/skills/verify-jarvis/scripts/drive-feature.sh rss-digest`.
 - **Proof.** Exit code `0`. Artifact `.cursor/skills/verify-jarvis/artifacts/rss-digest/verify.txt` contains the native-card and blank-post reject test names and a passing Vitest summary.

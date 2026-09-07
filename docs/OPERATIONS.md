@@ -53,8 +53,9 @@ are skipped fail-closed and are not posted. A Discord failure releases the
 unsent delivery claim for later retry when a delivery error was recorded,
 including after the two-hour catch-up window; that window applies to
 first-time catch-up and to pending rows with no recorded failure. Unrenderable
-entries are skipped without claiming a slot. At most twenty completed items
-are delivered per MuthaShip per UTC day.
+entries, including empty titles and oversized URLs, are skipped without
+claiming a slot. At most twenty completed items are delivered per MuthaShip
+per UTC day.
 Do not manually repost a failed item: that is how duplicate-notification
 folklore becomes an incident.
 

@@ -90,6 +90,22 @@ describe('RSS catch-up and feed-rotation helpers', () => {
     ).toBe(true);
     expect(
       rssDigestEntryIsPostable({
+        ...item('empty-title'),
+        title: '',
+        sourceLabel: 'News',
+        deliveryKey: 'empty-title',
+      }),
+    ).toBe(false);
+    expect(
+      rssDigestEntryIsPostable({
+        ...item('blank-title'),
+        title: '   ',
+        sourceLabel: 'News',
+        deliveryKey: 'blank-title',
+      }),
+    ).toBe(false);
+    expect(
+      rssDigestEntryIsPostable({
         ...item('empty'),
         url: '',
         sourceLabel: 'News',
@@ -404,6 +420,13 @@ describe('RssScheduler', () => {
         sourceLabel: 'IGN',
       }),
     ).toThrow('RSS payload has no visible title and link.');
+    expect(() =>
+      rssBroadcastSendPayload({
+        title: '   ',
+        url: 'https://news.example.com/blank',
+        sourceLabel: 'IGN',
+      }),
+    ).toThrow('RSS payload has no visible title and link.');
   });
 
   it('rejects empty content when SuppressEmbeds would hide the only RSS card', () => {
@@ -613,6 +636,40 @@ describe('RssScheduler', () => {
       'https://news.example.com/feed.xml:usable',
       expect.any(Date),
     );
+  });
+
+  it('skips a blank-title headline and still publishes the next valid item', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            { ...item('blank-title'), title: '   ' },
+            item('usable'),
+          ]),
+      },
+      publisher,
+      'server',
+      undefined,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'usable' }),
+    ]);
+    expect(delivery.claimDelivery).toHaveBeenCalledTimes(1);
+    expect(delivery.claimDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:usable',
+      expect.any(Date),
+    );
+    expect(delivery.releaseDelivery).not.toHaveBeenCalled();
   });
 
   it('reserves only the one remaining daily RSS delivery slot before posting', async () => {

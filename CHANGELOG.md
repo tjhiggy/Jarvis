@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- RSS skips empty or whitespace-only headlines before claiming the one-per-tick
+  slot. A blank `<title>` with a valid URL used to pass fetch and rendering,
+  then throw in `rssBroadcastSendPayload`. The scheduler treated that throw as a
+  Discord network failure, released the item for retry, and after the two-hour
+  window kept retrying it forever — one malformed headline could silence RSS.
+  Fetch drops those items, digest rendering omits them like oversized URLs, and
+  the send-payload refusal stays as a last-line check.
+
 - `/bird-call` renders role mentions from the optional `game` field as normal
   Discord role chips. The public reply keeps those `<@&id>` tokens and sets
   `allowedMentions.roles` to exactly those role IDs. `@everyone`, `@here`,

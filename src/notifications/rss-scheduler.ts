@@ -497,7 +497,8 @@ export class RssScheduler {
 }
 
 const renderRssDigestEntry = (entry: RssDigestEntry): string | undefined => {
+  const title = boundedRssText(entry.title, 180);
   const url = entry.url.trim();
-  if (url === '' || url.length > 400) return undefined;
+  if (title === '' || url === '' || url.length > 400) return undefined;
   return formatRssBroadcastContent(entry);
 };

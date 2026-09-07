@@ -173,4 +173,29 @@ describe('RSS notifications', () => {
     expect(items).toHaveLength(5);
     expect(items[0]).toMatchObject({ url: 'https://news.example.com/post/0' });
   });
+
+  it('drops items with empty or whitespace-only titles before they can be claimed', async () => {
+    const client = new RssNotificationClient(
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            `<rss><channel><item><guid>blank-1</guid><title>   </title><link>https://news.example.com/blank</link><pubDate>2026-09-07</pubDate></item><item><guid>empty-1</guid><title></title><link>https://news.example.com/empty</link><pubDate>2026-09-07</pubDate></item><item><guid>ok-1</guid><title>Visible headline</title><link>https://news.example.com/ok</link><pubDate>2026-09-07</pubDate></item></channel></rss>`,
+          ),
+        ),
+      2_000,
+      ['news.example.com'],
+    );
+
+    const items = await client.fetch('https://news.example.com/feed.xml');
+
+    expect(items).toEqual([
+      {
+        id: 'ok-1',
+        title: 'Visible headline',
+        url: 'https://news.example.com/ok',
+        publishedAt: '2026-09-07',
+      },
+    ]);
+  });
 });
