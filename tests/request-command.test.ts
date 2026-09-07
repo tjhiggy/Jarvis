@@ -167,6 +167,106 @@ describe('/request', () => {
     expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/github\.com/i);
   });
 
+  it('fails closed in a DM without creating an issue or posting a REQUEST', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const createIssue = vi.fn();
+    await handleRequestCommand(
+      interaction({
+        guildId: null,
+        channelId: CAPTAINS_QUARTERS_CHANNEL_ID,
+        admin: true,
+        what: 'Refresh the FAQ',
+        why: 'Members keep asking the same onboarding questions.',
+        done: 'FAQ answers match the current ship rules.',
+        reply,
+      }),
+      {
+        adminRoleIds: new Set(['admin-role']),
+        issues: { createIssue },
+      },
+    );
+
+    expect(createIssue).not.toHaveBeenCalled();
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringMatching(/server channel/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+    expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/^REQUEST/m);
+    expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/github\.com/i);
+  });
+
+  it.each(['what', 'why', 'done'] as const)(
+    'fails closed when %s is missing without creating an issue',
+    async (missing) => {
+      const reply = vi.fn().mockResolvedValue(undefined);
+      const createIssue = vi.fn();
+      await handleRequestCommand(
+        interaction({
+          channelId: CAPTAINS_QUARTERS_CHANNEL_ID,
+          admin: true,
+          what: missing === 'what' ? '   ' : 'Refresh the FAQ',
+          why:
+            missing === 'why'
+              ? ''
+              : 'Members keep asking the same onboarding questions.',
+          done:
+            missing === 'done'
+              ? null
+              : 'FAQ answers match the current ship rules.',
+          reply,
+        }),
+        {
+          adminRoleIds: new Set(['admin-role']),
+          issues: { createIssue },
+        },
+      );
+
+      expect(createIssue).not.toHaveBeenCalled();
+      expect(reply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringMatching(/what, why, and done/i),
+          ephemeral: true,
+        }),
+      );
+      expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/^REQUEST/m);
+    },
+  );
+
+  it('keeps a blank created issue URL ephemeral without a public REQUEST', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const createIssue = vi.fn().mockResolvedValue({
+      number: 401,
+      url: '   ',
+    });
+    await handleRequestCommand(
+      interaction({
+        channelId: CAPTAINS_QUARTERS_CHANNEL_ID,
+        admin: true,
+        what: 'Refresh the FAQ',
+        why: 'Members keep asking the same onboarding questions.',
+        done: 'FAQ answers match the current ship rules.',
+        reply,
+      }),
+      {
+        adminRoleIds: new Set(['admin-role']),
+        issues: { createIssue },
+      },
+    );
+
+    expect(createIssue).toHaveBeenCalledOnce();
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringMatching(/could not be created/i),
+        ephemeral: true,
+      }),
+    );
+    expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/^REQUEST/m);
+    expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/github\.com/i);
+  });
+
   it('keeps allowedMentions empty and mentions neutralized on the public REQUEST', async () => {
     const reply = vi.fn().mockResolvedValue(undefined);
     const createIssue = vi.fn().mockResolvedValue({
@@ -213,15 +313,16 @@ describe('/request', () => {
 });
 
 function interaction(input: {
+  guildId?: string | null;
   channelId: string;
   admin: boolean;
   what: string;
   why: string;
-  done: string;
+  done: string | null;
   reply: (payload: unknown) => Promise<unknown>;
 }) {
   return {
-    guildId: 'guild-1',
+    guildId: input.guildId === undefined ? 'guild-1' : input.guildId,
     channelId: input.channelId,
     member: {
       roles: {

@@ -63,4 +63,51 @@ describe('reminder recurrence', () => {
       ),
     ).toBeUndefined();
   });
+
+  it('includes a slot that lands exactly on the until bound', () => {
+    expect(
+      nextReminderDueAt(
+        due,
+        'daily',
+        new Date('2026-08-30T12:00:00.000Z'),
+        due,
+      ),
+    ).toEqual(new Date('2026-08-30T12:00:00.000Z'));
+  });
+
+  it('skips a slot equal to the delivery time', () => {
+    expect(
+      nextReminderDueAt(
+        due,
+        'daily',
+        new Date('2026-09-05T12:00:00.000Z'),
+        new Date('2026-08-30T12:00:00.000Z'),
+      ),
+    ).toEqual(new Date('2026-08-31T12:00:00.000Z'));
+  });
+
+  it('skips missed weekly slots until the next fire is after delivery', () => {
+    expect(
+      nextReminderDueAt(
+        due,
+        'weekly',
+        new Date('2026-09-26T12:00:00.000Z'),
+        new Date('2026-09-12T12:00:00.000Z'),
+      ),
+    ).toEqual(new Date('2026-09-19T12:00:00.000Z'));
+  });
+
+  it('returns undefined for non-finite dates', () => {
+    expect(
+      nextReminderDueAt(
+        new Date(Number.NaN),
+        'daily',
+        new Date('2026-09-05T12:00:00.000Z'),
+        due,
+      ),
+    ).toBeUndefined();
+    expect(
+      nextReminderDueAt(due, 'daily', new Date(Number.POSITIVE_INFINITY), due),
+    ).toBeUndefined();
+  });
 });

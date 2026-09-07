@@ -177,6 +177,27 @@ describe('/bird-call', () => {
     });
   });
 
+  it('fails closed when guild id is whitespace-only', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    await handleBirdCallCommand(
+      interaction({
+        guildId: '   ',
+        game: 'Fortnite',
+        reply,
+      }),
+    );
+
+    expect(reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringMatching(/server channel/i),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+    expect(reply.mock.calls[0]?.[0]?.content).not.toMatch(/bird call/i);
+    expect(reply.mock.calls[0]?.[0]?.content).not.toContain('Fortnite');
+  });
+
   it('fails closed in DMs without posting a public bird call', async () => {
     const reply = vi.fn().mockResolvedValue(undefined);
     await handleBirdCallCommand(
