@@ -138,7 +138,10 @@ Discord permissions, and the expected local timezone. Configure an approved
 proactive catalog only through `ENGAGEMENT_PROACTIVE_CATALOG_PATH`; its text is
 validated before login and cannot contain mass or role mentions. Use preview
 first for RSS and proactive posts. RSS saving establishes a no-history
-baseline, while proactive preview never posts.
+baseline, while proactive preview never posts. MuthaShip Production hosts,
+URLs, and Fixer post-merge steps are in
+[Configuration](CONFIGURATION.md#muthaship-production-rss-catalog) and
+[Operations](OPERATIONS.md#muthaship-production-rss-fixer-steps).
 
 Crew controls are intentionally narrow: event reminders and birthday mentions
 require a durable `/notifications enable` preference in addition to the
