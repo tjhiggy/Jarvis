@@ -4,6 +4,7 @@ import { formatRssDigest, rssIntegrationHealth } from '../src/index.js';
 import {
   renderRssDigest,
   rssBroadcastSendPayload,
+  rssBroadcastShowsItem,
   RssScheduler,
 } from '../src/notifications/rss-scheduler.js';
 import { RssStorage } from '../src/notifications/rss-storage.js';
@@ -87,7 +88,7 @@ describe('RssScheduler', () => {
     expect(publisher.publish).toHaveBeenCalledTimes(2);
   });
 
-  it('publishes at most five new entries in one source-labelled digest', async () => {
+  it('publishes at most one new entry per tick', async () => {
     const storage = readyStorage();
     const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
     const scheduler = schedulerFor(
@@ -103,44 +104,26 @@ describe('RssScheduler', () => {
       'server',
     );
 
-    await expect(scheduler.tick()).resolves.toBe(5);
-    expect(publisher.publish).toHaveBeenCalledTimes(5);
-    expect(publisher.publish.mock.calls.map((call) => call[1].entries)).toEqual(
-      [
-        [
-          expect.objectContaining({
-            sourceLabel: 'News',
-            title: 'Update item-0',
-            url: 'https://news.example.com/item-0',
-            publishedAt: '2026-08-11T12:00:00Z',
-          }),
-        ],
-        [
-          expect.objectContaining({
-            sourceLabel: 'News',
-            title: 'Update item-1',
-          }),
-        ],
-        [
-          expect.objectContaining({
-            sourceLabel: 'News',
-            title: 'Update item-2',
-          }),
-        ],
-        [
-          expect.objectContaining({
-            sourceLabel: 'News',
-            title: 'Update item-3',
-          }),
-        ],
-        [
-          expect.objectContaining({
-            sourceLabel: 'News',
-            title: 'Update item-4',
-          }),
-        ],
-      ],
-    );
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({
+        sourceLabel: 'News',
+        title: 'Update item-0',
+        url: 'https://news.example.com/item-0',
+        publishedAt: '2026-08-11T12:00:00Z',
+      }),
+    ]);
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    expect(publisher.publish.mock.calls[1]?.[1].entries).toEqual([
+      expect.objectContaining({
+        sourceLabel: 'News',
+        title: 'Update item-1',
+        url: 'https://news.example.com/item-1',
+      }),
+    ]);
   });
 
   it('does not start a new tick after stop', async () => {
@@ -174,10 +157,9 @@ describe('RssScheduler', () => {
       'server',
     );
 
-    await expect(scheduler.tick()).resolves.toBe(5);
-    await expect(scheduler.tick()).resolves.toBe(5);
-    await expect(scheduler.tick()).resolves.toBe(5);
-    await expect(scheduler.tick()).resolves.toBe(5);
+    for (let index = 0; index < 20; index += 1) {
+      await expect(scheduler.tick()).resolves.toBe(1);
+    }
     await expect(scheduler.tick()).resolves.toBe(0);
     expect(publisher.publish).toHaveBeenCalledTimes(20);
   });
@@ -203,6 +185,7 @@ describe('RssScheduler', () => {
     );
 
     await expect(scheduler.tick()).resolves.toBe(1);
+    await expect(scheduler.tick()).resolves.toBe(0);
     await expect(scheduler.tick()).resolves.toBe(1);
 
     expect(publisher.publish).toHaveBeenCalledTimes(3);
@@ -224,7 +207,7 @@ describe('RssScheduler', () => {
       expect.any(Date),
       'network',
     );
-    expect(policy.evaluate).toHaveBeenCalledTimes(5);
+    expect(policy.evaluate).toHaveBeenCalledTimes(6);
   });
 
   it('rechecks policy after non-digest reservation rollover before posting', async () => {
@@ -299,7 +282,52 @@ describe('RssScheduler', () => {
     );
   });
 
-  it('sends one native Discord card per headline with SuppressEmbeds so Discord does not unfurl a second card', () => {
+  it('refuses to send an RSS payload without a visible title and link', () => {
+    expect(() =>
+      rssBroadcastSendPayload({
+        title: '   ',
+        url: '',
+        sourceLabel: 'IGN',
+      }),
+    ).toThrow('RSS payload has no visible title and link.');
+  });
+
+  it('rejects empty content when SuppressEmbeds would hide the only RSS card', () => {
+    const item = {
+      title: 'Update gta-apartment',
+      url: 'https://news.example.com/gta-apartment',
+    };
+    const blankCard = {
+      embeds: [
+        {
+          title: item.title,
+          url: item.url,
+          author: { name: 'IGN' },
+        },
+      ],
+      allowedMentions: { parse: [], repliedUser: false },
+      flags: MessageFlags.SuppressEmbeds,
+    };
+
+    expect(rssBroadcastShowsItem(blankCard, item)).toBe(false);
+    expect(rssBroadcastShowsItem({ ...blankCard, content: '' }, item)).toBe(
+      false,
+    );
+    expect(
+      rssBroadcastShowsItem(
+        { content: item.title, flags: MessageFlags.SuppressEmbeds },
+        item,
+      ),
+    ).toBe(false);
+    expect(
+      rssBroadcastShowsItem(
+        { embeds: [{ title: item.title, url: item.url }] },
+        item,
+      ),
+    ).toBe(true);
+  });
+
+  it('sends a native Discord card with visible title and link and no SuppressEmbeds', () => {
     const digest = renderRssDigest({
       entries: [
         {
@@ -323,6 +351,7 @@ describe('RssScheduler', () => {
 
     expect(payloads).toHaveLength(2);
     expect(payloads[0]).toEqual({
+      content: '',
       embeds: [
         {
           title: 'Update gta-apartment',
@@ -332,9 +361,9 @@ describe('RssScheduler', () => {
         },
       ],
       allowedMentions: { parse: [], repliedUser: false },
-      flags: MessageFlags.SuppressEmbeds,
     });
     expect(payloads[1]).toEqual({
+      content: '',
       embeds: [
         {
           title: 'Update elden-ring',
@@ -343,13 +372,25 @@ describe('RssScheduler', () => {
         },
       ],
       allowedMentions: { parse: [], repliedUser: false },
-      flags: MessageFlags.SuppressEmbeds,
     });
+    expect(payloads[0]).not.toHaveProperty('flags');
+    expect(payloads[1]).not.toHaveProperty('flags');
     expect(payloads[1]!.embeds[0]).not.toHaveProperty('image');
-    expect(payloads[0]).not.toHaveProperty('content');
-    expect(JSON.stringify(payloads[0])).not.toContain(
-      '**IGN** · Update gta-apartment',
+    expect(JSON.stringify(payloads)).not.toContain(
+      String(MessageFlags.SuppressEmbeds),
     );
+    expect(
+      rssBroadcastShowsItem(payloads[0]!, {
+        title: 'Update gta-apartment',
+        url: 'https://news.example.com/gta-apartment',
+      }),
+    ).toBe(true);
+    expect(
+      rssBroadcastShowsItem(payloads[1]!, {
+        title: 'Update elden-ring',
+        url: 'https://news.example.com/elden-ring',
+      }),
+    ).toBe(true);
   });
 
   it('keeps every rendered digest entry complete within the payload bound', () => {
@@ -373,6 +414,7 @@ describe('RssScheduler', () => {
     expect(digest.entries.map((entry) => entry.id)).toEqual(['retained']);
     expect(payloads).toHaveLength(1);
     expect(payloads[0]).toMatchObject({
+      content: '',
       embeds: [
         {
           title: 'Update retained',
@@ -380,8 +422,14 @@ describe('RssScheduler', () => {
           author: { name: 'News' },
         },
       ],
-      flags: MessageFlags.SuppressEmbeds,
     });
+    expect(payloads[0]).not.toHaveProperty('flags');
+    expect(
+      rssBroadcastShowsItem(payloads[0]!, {
+        title: 'Update retained',
+        url: 'https://news.example.com/retained',
+      }),
+    ).toBe(true);
     expect(JSON.stringify(payloads)).not.toContain('u'.repeat(500));
     expect(formatRssDigest(digest)).not.toContain('u'.repeat(500));
   });
@@ -392,7 +440,7 @@ describe('RssScheduler', () => {
     expect(rssIntegrationHealth('channel-1', true)).toBe('ready');
   });
 
-  it('releases digest claims omitted by rendering instead of completing them', async () => {
+  it('does not claim an unrenderable digest entry', async () => {
     const storage = readyStorage();
     const delivery = deliveryStore(true);
     const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
@@ -400,7 +448,6 @@ describe('RssScheduler', () => {
       storage,
       {
         fetch: vi.fn().mockResolvedValue([
-          item('delivered'),
           {
             ...item('too-large'),
             url: `https://news.example.com/${'u'.repeat(500)}`,
@@ -413,36 +460,51 @@ describe('RssScheduler', () => {
       delivery,
     );
 
-    await expect(scheduler.tick()).resolves.toBe(1);
+    await expect(scheduler.tick()).resolves.toBe(0);
 
-    expect(delivery.completeDelivery).toHaveBeenCalledWith(
+    expect(delivery.claimDelivery).not.toHaveBeenCalled();
+    expect(delivery.completeDelivery).not.toHaveBeenCalled();
+    expect(delivery.releaseDelivery).not.toHaveBeenCalled();
+  });
+
+  it('skips an unrenderable headline and still publishes the next valid item', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockResolvedValue([
+          {
+            ...item('too-large'),
+            url: `https://news.example.com/${'u'.repeat(500)}`,
+          },
+          item('usable'),
+        ]),
+      },
+      publisher,
       'server',
-      'rss',
-      'https://news.example.com/feed.xml:delivered',
-      'lease:https://news.example.com/feed.xml:delivered',
-      expect.any(Date),
-    );
-    expect(delivery.completeDelivery).not.toHaveBeenCalledWith(
-      'server',
-      'rss',
-      'https://news.example.com/feed.xml:too-large',
-      expect.anything(),
-      expect.any(Date),
-    );
-    expect(delivery.releaseDelivery).toHaveBeenCalledWith(
-      'server',
-      'rss',
-      'https://news.example.com/feed.xml:too-large',
-      'lease:https://news.example.com/feed.xml:too-large',
-      expect.any(Date),
       undefined,
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'usable' }),
+    ]);
+    expect(delivery.claimDelivery).toHaveBeenCalledTimes(1);
+    expect(delivery.claimDelivery).toHaveBeenCalledWith(
+      'server',
+      'rss',
+      'https://news.example.com/feed.xml:usable',
+      expect.any(Date),
     );
   });
 
-  it('reserves only the two remaining daily RSS delivery slots before posting', async () => {
+  it('reserves only the one remaining daily RSS delivery slot before posting', async () => {
     const storage = readyStorage();
     const now = new Date('2026-08-11T12:00:00Z');
-    for (let index = 0; index < 18; index += 1) {
+    for (let index = 0; index < 19; index += 1) {
       expect(
         storage.recordCompletedItem('server', `completed-${index}`, now),
       ).toBe(true);
@@ -462,15 +524,15 @@ describe('RssScheduler', () => {
       delivery,
     );
 
-    await expect(scheduler.tick()).resolves.toBe(2);
+    await expect(scheduler.tick()).resolves.toBe(1);
 
-    expect(delivery.claimDelivery).toHaveBeenCalledTimes(2);
-    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    expect(delivery.claimDelivery).toHaveBeenCalledTimes(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
     expect(
       publisher.publish.mock.calls.map((call) =>
         call[1].entries.map((entry: { id: string }) => entry.id),
       ),
-    ).toEqual([['slot-1'], ['slot-2']]);
+    ).toEqual([['slot-1']]);
   });
 
   it('re-reserves pre-midnight claims against the actual post day before sending', async () => {
@@ -502,11 +564,13 @@ describe('RssScheduler', () => {
     const scheduler = schedulerFor(
       storage,
       {
-        fetch: vi
-          .fn()
-          .mockResolvedValue(
-            Array.from({ length: 5 }, (_, index) => item(`midnight-${index}`)),
+        fetch: vi.fn().mockResolvedValue(
+          Array.from({ length: 2 }, (_, index) =>
+            item(`midnight-${index}`, {
+              publishedAt: '2026-08-11T23:59:00.000Z',
+            }),
           ),
+        ),
       },
       publisher,
       'server',
@@ -522,8 +586,199 @@ describe('RssScheduler', () => {
 
     expect(publisher.publish).not.toHaveBeenCalled();
     expect(delivery.completeDelivery).not.toHaveBeenCalled();
-    expect(delivery.releaseDelivery).toHaveBeenCalledTimes(5);
+    expect(delivery.releaseDelivery).toHaveBeenCalledTimes(1);
   });
+  it('does not publish catch-up items older than two hours', async () => {
+    const storage = readyStorage();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const now = new Date('2026-09-05T00:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('stale', { publishedAt: '2026-09-04T21:59:59.000Z' }),
+            item('fresh', { publishedAt: '2026-09-04T22:00:00.000Z' }),
+          ]),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'fresh' }),
+    ]);
+  });
+
+  it('publishes a catch-up item that is still within two hours', async () => {
+    const storage = readyStorage();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const now = new Date('2026-09-05T00:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('recent', { publishedAt: '2026-09-04T23:00:00.000Z' }),
+          ]),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'recent' }),
+    ]);
+  });
+
+  it('skips catch-up items with no usable published time', async () => {
+    const storage = readyStorage();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const now = new Date('2026-09-05T00:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('missing-time', { publishedAt: '' }),
+            item('unparseable', { publishedAt: 'not-a-date' }),
+            item('usable', { publishedAt: 'Sun, 04 Sep 2026 23:30:00 +0000' }),
+          ]),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(publisher.publish.mock.calls[0]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'usable' }),
+    ]);
+  });
+
+  it('retries a released Discord failure after the two-hour catch-up window', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore();
+    const publisher = {
+      publish: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('gateway'))
+        .mockResolvedValue(undefined),
+    };
+    let now = new Date('2026-09-05T00:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('near-cutoff', { publishedAt: '2026-09-04T22:01:00.000Z' }),
+          ]),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      delivery,
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+    now = new Date('2026-09-05T00:02:00.000Z');
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    expect(publisher.publish.mock.calls[1]?.[1].entries).toEqual([
+      expect.objectContaining({ id: 'near-cutoff' }),
+    ]);
+  });
+
+  it('does not retry a pending item after two hours unless a delivery error was recorded', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const now = new Date('2026-09-05T00:00:00.000Z');
+    const key = 'https://news.example.com/feed.xml:omitted';
+    await delivery.releaseDelivery('server', 'rss', key, `lease:${key}`, now);
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi
+          .fn()
+          .mockResolvedValue([
+            item('omitted', { publishedAt: '2026-09-04T21:00:00.000Z' }),
+          ]),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      delivery,
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(delivery.claimDelivery).not.toHaveBeenCalled();
+  });
+
+  it('rotates the starting feed each five-minute tick so one feed cannot monopolize', async () => {
+    const storage = new RssStorage(':memory:');
+    storage.addFeed('server', 'https://alpha.example.com/feed.xml', 'Alpha');
+    storage.addFeed('server', 'https://zeta.example.com/feed.xml', 'Zeta');
+    storage.establishBaseline(
+      'server',
+      'https://alpha.example.com/feed.xml',
+      [],
+    );
+    storage.establishBaseline(
+      'server',
+      'https://zeta.example.com/feed.xml',
+      [],
+    );
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    let now = new Date('2026-08-11T12:00:00.000Z');
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockImplementation(async (url: string) => {
+          if (url === 'https://alpha.example.com/feed.xml') {
+            return [
+              item('alpha-1', { publishedAt: '2026-08-11T12:00:00.000Z' }),
+              item('alpha-2', { publishedAt: '2026-08-11T12:00:00.000Z' }),
+            ];
+          }
+          return [item('zeta-1', { publishedAt: '2026-08-11T12:00:00.000Z' })];
+        }),
+      },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      deliveryStore(),
+      () => now,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    now = new Date('2026-08-11T12:05:00.000Z');
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(
+      publisher.publish.mock.calls.map((call) => call[1].entries[0].id),
+    ).toEqual(['alpha-1', 'zeta-1']);
+  });
+
   it('safe-logs an interval tick failure instead of leaking a rejected callback', async () => {
     let interval: (() => void) | undefined;
     const warnings: Array<Record<string, string>> = [];
@@ -600,12 +855,28 @@ function readyStorage(): RssStorage {
 function deliveryStore(digestMode = true) {
   const completed = new Set<string>();
   const claimed = new Set<string>();
+  const pending = new Map<string, string | undefined>();
   return {
     getPolicy: vi.fn().mockResolvedValue({ digestMode }),
+    deliveryHealth: vi
+      .fn()
+      .mockImplementation(async (_server, _category, key) => {
+        if (completed.has(key)) return { status: 'completed' };
+        if (claimed.has(key)) return { status: 'claimed' };
+        if (pending.has(key)) {
+          const errorCategory = pending.get(key);
+          return {
+            status: 'pending',
+            ...(errorCategory === undefined ? {} : { errorCategory }),
+          };
+        }
+        return undefined;
+      }),
     claimDelivery: vi
       .fn()
       .mockImplementation(async (_server, _category, key) => {
         if (completed.has(key) || claimed.has(key)) return undefined;
+        pending.delete(key);
         claimed.add(key);
         return `lease:${key}`;
       }),
@@ -613,19 +884,33 @@ function deliveryStore(digestMode = true) {
       .fn()
       .mockImplementation(async (_server, _category, key) => {
         claimed.delete(key);
+        pending.delete(key);
         completed.add(key);
         return true;
       }),
     releaseDelivery: vi
       .fn()
-      .mockImplementation(async (_server, _category, key) => {
-        claimed.delete(key);
-        return true;
-      }),
+      .mockImplementation(
+        async (
+          _server,
+          _category,
+          key,
+          _lease,
+          _now,
+          errorCategory?: string,
+        ) => {
+          claimed.delete(key);
+          pending.set(key, errorCategory);
+          return true;
+        },
+      ),
   };
 }
 
-function item(id: string, extras: { readonly imageUrl?: string } = {}) {
+function item(
+  id: string,
+  extras: { readonly imageUrl?: string; readonly publishedAt?: string } = {},
+) {
   return {
     id,
     title: `Update ${id}`,

@@ -32,37 +32,128 @@ export interface RssBroadcastEmbed {
 }
 
 export interface RssBroadcastSendPayload {
+  readonly content: string;
   readonly embeds: readonly [RssBroadcastEmbed];
   readonly allowedMentions: {
     readonly parse: readonly [];
     readonly repliedUser: false;
   };
-  readonly flags: typeof MessageFlags.SuppressEmbeds;
 }
+
+export interface RssBroadcastVisibilityItem {
+  readonly title: string;
+  readonly url: string;
+}
+
+export interface RssBroadcastVisibilityPayload {
+  readonly content?: string;
+  readonly embeds?: readonly {
+    readonly title?: string;
+    readonly url?: string;
+  }[];
+  readonly flags?: number;
+}
+
+const RSS_CYCLE_CAPACITY = 1;
+const RSS_CATCH_UP_MAX_AGE_MS = 2 * 60 * 60 * 1_000;
+export const RSS_POLL_INTERVAL_MS = 300_000;
+
+export const rotateRssFeeds = <T>(feeds: readonly T[], now: Date): T[] => {
+  if (feeds.length <= 1) return [...feeds];
+  const offset =
+    Math.floor(now.getTime() / RSS_POLL_INTERVAL_MS) % feeds.length;
+  return [...feeds.slice(offset), ...feeds.slice(0, offset)];
+};
+
+const boundedRssText = (value: string, limit: number): string =>
+  value.replace(/\s+/g, ' ').trim().slice(0, limit);
+
+export const parseRssItemTimestamp = (
+  value: string | undefined,
+): Date | undefined => {
+  const raw = value?.trim() ?? '';
+  if (raw === '') return undefined;
+  const parsed = Date.parse(raw);
+  if (Number.isNaN(parsed)) return undefined;
+  return new Date(parsed);
+};
+
+export const rssCatchUpItemIsFresh = (
+  publishedAt: string | undefined,
+  now: Date,
+  maxAgeMs = RSS_CATCH_UP_MAX_AGE_MS,
+): boolean => {
+  const availableAt = parseRssItemTimestamp(publishedAt);
+  if (availableAt === undefined) return false;
+  return now.getTime() - availableAt.getTime() <= maxAgeMs;
+};
+
+export const formatRssBroadcastContent = (
+  entry: Pick<RssDigestEntry, 'title' | 'url' | 'sourceLabel'> & {
+    readonly publishedAt?: string;
+  },
+): string => {
+  const source = boundedRssText(entry.sourceLabel, 64);
+  const title = boundedRssText(entry.title, 180);
+  const url = entry.url.trim();
+  const publishedAt = boundedRssText(entry.publishedAt ?? '', 64);
+  return publishedAt === ''
+    ? `**${source}** · ${title}\n${url}`
+    : `**${source}** · ${title}\n${url}\n${publishedAt}`;
+};
+
+export const rssBroadcastShowsItem = (
+  payload: RssBroadcastVisibilityPayload,
+  item: RssBroadcastVisibilityItem,
+): boolean => {
+  const title = boundedRssText(item.title, 180);
+  const url = item.url.trim();
+  if (title === '' || url === '') return false;
+  const content = payload.content?.trim() ?? '';
+  if (content.includes(title) && content.includes(url)) return true;
+  const embedsSuppressed =
+    (Number(payload.flags ?? 0) & MessageFlags.SuppressEmbeds) ===
+    MessageFlags.SuppressEmbeds;
+  if (embedsSuppressed) return false;
+  const embed = payload.embeds?.[0];
+  return embed?.title === title && embed.url === url;
+};
 
 export const rssBroadcastSendPayload = (
   entry: Pick<RssDigestEntry, 'title' | 'url' | 'sourceLabel'> & {
     readonly imageUrl?: string;
+    readonly publishedAt?: string;
   },
 ): RssBroadcastSendPayload => {
+  const title = boundedRssText(entry.title, 180);
+  const url = entry.url.trim();
   const imageUrl = sanitizeRssImageUrl(entry.imageUrl);
-  return {
+  const payload: RssBroadcastSendPayload = {
+    content: '',
     embeds: [
       {
-        title: boundedRssText(entry.title, 180),
-        url: entry.url.trim(),
+        title,
+        url,
         author: { name: boundedRssText(entry.sourceLabel, 64) },
         ...(imageUrl === undefined ? {} : { image: { url: imageUrl } }),
       },
     ],
     allowedMentions: { parse: [], repliedUser: false },
-    flags: MessageFlags.SuppressEmbeds,
   };
+  if (!rssBroadcastShowsItem(payload, { title, url })) {
+    throw new Error('RSS payload has no visible title and link.');
+  }
+  return payload;
 };
 
 export interface RssSchedulerPublisher {
   publish(channelId: string, digest: RssRenderedDigest): Promise<void>;
 }
+
+export const rssDigestEntryIsPostable = (entry: RssDigestEntry): boolean =>
+  renderRssDigest({ entries: [entry] }).deliveryKeys.includes(
+    entry.deliveryKey,
+  );
 
 export const renderRssDigest = (digest: RssDigest): RssRenderedDigest => {
   const header = '**RSS update**';
@@ -113,7 +204,11 @@ export class RssScheduler {
     private readonly policy: Pick<BroadcastPolicyService, 'evaluate'>,
     private readonly deliveryStore: Pick<
       BroadcastStore,
-      'getPolicy' | 'claimDelivery' | 'completeDelivery' | 'releaseDelivery'
+      | 'getPolicy'
+      | 'claimDelivery'
+      | 'completeDelivery'
+      | 'releaseDelivery'
+      | 'deliveryHealth'
     >,
     private readonly now: () => Date = () => new Date(),
     private readonly logger?: {
@@ -144,7 +239,7 @@ export class RssScheduler {
         (await this.deliveryStore.getPolicy(this.serverId, 'rss'))
           ?.digestMode ?? true;
       const cycleCapacity = Math.min(
-        5,
+        RSS_CYCLE_CAPACITY,
         this.storage.remainingDailyDeliveryCapacity(this.serverId, startedAt),
       );
       if (cycleCapacity === 0) return 0;
@@ -153,10 +248,13 @@ export class RssScheduler {
         readonly lease: string;
         readonly entry: RssDigestEntry;
       }> = [];
-      const feeds = this.storage
-        .listFeeds(this.serverId)
-        .filter((feed: RssFeedRecord) => !feed.paused)
-        .slice(0, 20);
+      const feeds = rotateRssFeeds(
+        this.storage
+          .listFeeds(this.serverId)
+          .filter((feed: RssFeedRecord) => !feed.paused)
+          .slice(0, 20),
+        startedAt,
+      );
       for (const feed of feeds) {
         let items: readonly RssNotification[];
         try {
@@ -177,6 +275,20 @@ export class RssScheduler {
           if (this.storage.isBaselineItem(this.serverId, feed.url, item.id))
             continue;
           const key = `${feed.url}:${item.id}`;
+          const entry = {
+            ...item,
+            sourceLabel: feed.label,
+            deliveryKey: key,
+          };
+          if (!rssDigestEntryIsPostable(entry)) continue;
+          if (!rssCatchUpItemIsFresh(item.publishedAt, startedAt)) {
+            const health = await this.deliveryStore.deliveryHealth(
+              this.serverId,
+              'rss',
+              key,
+            );
+            if (health?.errorCategory === undefined) continue;
+          }
           const lease = await this.deliveryStore.claimDelivery(
             this.serverId,
             'rss',
@@ -204,7 +316,7 @@ export class RssScheduler {
           claimed.push({
             key,
             lease,
-            entry: { ...item, sourceLabel: feed.label, deliveryKey: key },
+            entry,
           });
         }
         if (claimed.length >= cycleCapacity) break;
@@ -360,7 +472,7 @@ export class RssScheduler {
       return published;
     })();
   }
-  start(intervalMs = 300_000): void {
+  start(intervalMs = RSS_POLL_INTERVAL_MS): void {
     if (this.timer !== undefined) return;
     this.acceptingTicks = true;
     this.timer = setInterval(() => {
@@ -384,11 +496,8 @@ export class RssScheduler {
   }
 }
 
-const boundedRssText = (value: string, limit: number): string =>
-  value.replace(/\s+/g, ' ').trim().slice(0, limit);
-
 const renderRssDigestEntry = (entry: RssDigestEntry): string | undefined => {
   const url = entry.url.trim();
   if (url === '' || url.length > 400) return undefined;
-  return `**${boundedRssText(entry.sourceLabel, 64)}** · ${boundedRssText(entry.title, 180)}\n${url}\n${boundedRssText(entry.publishedAt, 64)}`;
+  return formatRssBroadcastContent(entry);
 };

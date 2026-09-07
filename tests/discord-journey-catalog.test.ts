@@ -21,8 +21,8 @@ const registered = createCommandDefinitions(
 ).map((definition) => definition.name);
 
 describe('canonical Discord journey catalog', () => {
-  it('owns the actual 37-command registration surface exactly once', () => {
-    expect(registered).toHaveLength(37);
+  it('owns the actual 38-command registration surface exactly once', () => {
+    expect(registered).toHaveLength(38);
     expect(publishedDiscordCommandNames).toEqual(registered);
     expect(() =>
       validateDiscordJourneys(discordJourneyCatalog, registered, root),
@@ -59,7 +59,7 @@ describe('canonical Discord journey catalog', () => {
       (journey) => journey.kind === 'command',
     );
 
-    expect(commands).toHaveLength(37);
+    expect(commands).toHaveLength(38);
     expect(
       commands.every((journey) => journey.outcome !== 'verified-automated'),
     ).toBe(true);

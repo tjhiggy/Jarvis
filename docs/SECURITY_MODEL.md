@@ -119,6 +119,9 @@ invalid content fails closed with a sanitized error that names
 - **Mass-mention protection.** Replies set Discord `allowedMentions` to an
   empty parse list with `repliedUser: false`, and text is neutralized before
   delivery. Jarvis cannot turn an answer into an `@everyone` incident.
+  `/bird-call` is the narrow exception that preserves role mention tokens from
+  optional `game` text and lists exactly those role IDs in
+  `allowedMentions.roles`.
 - **Approved FAQ boundary.** `/faq` selects content from the active approved
   catalog configured by `FAQ_CATALOG_PATH`; `config/faq.json` is only the
   default. The catalog is immutable in process and read-only to Discord.
@@ -220,7 +223,9 @@ administration, deleting or editing other members' content, general GitHub write
 external tool invocation, or autonomous learning. Disabled extension contracts,
 including the read-only MCP context contract, exist as declarations only; they
 do not implement tools or grant authority. The persona cannot grant those
-powers.
+powers. There is no authenticated inbound Caleb or handoff receipt, no local
+handoff request or event store, and no approval gate that can release work from
+an external-agent payload. See [Caleb handoff lifecycle](CALEB_HANDOFF.md).
 
 The only GitHub mutation is administrator `/request` in captains-quarters, which
 creates one issue in the configured repository from the what/why/done fields.

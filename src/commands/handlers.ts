@@ -45,6 +45,7 @@ import {
 import { handleEventCommand } from './event.js';
 import { handleGameNightCommand } from './game-night.js';
 import { handleLookingForGroupCommand } from './looking-for-group.js';
+import { handleBirdCallCommand } from './bird-call.js';
 import type { EventService } from '../engagement/events.js';
 import { handleRecapCommand } from './recap.js';
 import type { RecapService } from '../engagement/recap.js';
@@ -457,6 +458,9 @@ const handleCommandInternal = async (
         enabled: dependencies.config.engagement?.enabled ?? false,
         channelId: dependencies.config.engagement?.channels.activityId ?? '',
       });
+      return;
+    case 'bird-call':
+      await handleBirdCallCommand(interaction);
       return;
     case 'daily': {
       if (!interaction.guildId || !dependencies.dailyRewardService)

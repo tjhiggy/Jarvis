@@ -44,9 +44,17 @@ pause remains the broader emergency stop for scheduled engagement delivery.
 
 For RSS, use the Command Deck preview before saving a feed. Preview fetches up
 to five entries and persists nothing. Saving establishes a baseline, so old
-entries are not posted. RSS posts at most five new entries per cycle, each as
-one native Discord card, and at most twenty completed items per MuthaShip per
-UTC day. A Discord failure releases the unsent delivery claim for later retry.
+entries are not posted. The scheduler polls every five minutes and posts at
+most one new headline per tick as a native Discord card (linked title, source
+author, and image when the feed provided one). Each tick rotates the starting
+feed so one allowlisted feed cannot monopolize the single slot. Catch-up items
+older than two hours, or items with no usable published/available timestamp,
+are skipped fail-closed and are not posted. A Discord failure releases the
+unsent delivery claim for later retry when a delivery error was recorded,
+including after the two-hour catch-up window; that window applies to
+first-time catch-up and to pending rows with no recorded failure. Unrenderable
+entries are skipped without claiming a slot. At most twenty completed items
+are delivered per MuthaShip per UTC day.
 Do not manually repost a failed item: that is how duplicate-notification
 folklore becomes an incident.
 

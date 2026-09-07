@@ -390,6 +390,7 @@ export interface CommandDefinition {
     | 'event'
     | 'game-night'
     | 'lfg'
+    | 'bird-call'
     | 'recap'
     | 'trivia'
     | 'engagement'
@@ -1253,6 +1254,20 @@ export const createCommandDefinitions = (
           description: 'Optional platform, mode, or seat details.',
           required: false,
           max_length: 500,
+        },
+      ],
+    },
+    {
+      type: 1,
+      name: 'bird-call',
+      description: 'Invite the crew to game now.',
+      options: [
+        {
+          type: 3,
+          name: 'game',
+          description: 'Optional game or activity name.',
+          required: false,
+          max_length: 120,
         },
       ],
     },
