@@ -122,6 +122,37 @@ RSS feed URLs still require HTTPS and an exact configured host. Restart after
 any `.env` change; then run command registration when command definitions have
 changed.
 
+### MuthaShip production RSS catalog
+
+Feeds are stored in SQLite at runtime. `ENGAGEMENT_RSS_ALLOWED_HOSTS` only
+admits HTTPS URLs whose host is an exact lowercase match. Production `.env`
+must use this comma-separated host string (no `www.ign.com`):
+
+`news.xbox.com,blog.playstation.com,www.pcgamer.com,store.steampowered.com,www.epicgames.com,www.vg247.com,www.rockpapershotgun.com,www.eurogamer.net,www.videogameschronicle.com`
+
+| Action | Label                 | Feed URL                                              | Host                          |
+| ------ | --------------------- | ----------------------------------------------------- | ----------------------------- |
+| Keep   | XBOX News             | https://news.xbox.com/en-us/feed/                     | `news.xbox.com`               |
+| Keep   | PlayStation Blog      | https://blog.playstation.com/feed/                    | `blog.playstation.com`        |
+| Drop   | IGN                   | https://www.ign.com/rss/articles/feed                 | `www.ign.com`                 |
+| Keep   | PC Gamer              | https://www.pcgamer.com/rss/                          | `www.pcgamer.com`             |
+| Keep   | Steam News            | https://store.steampowered.com/feeds/news.xml         | `store.steampowered.com`      |
+| Keep   | Epic Games            | https://www.epicgames.com/news/rss                    | `www.epicgames.com`           |
+| Keep   | ARC Raiders           | https://store.steampowered.com/feeds/news/app/1808500 | `store.steampowered.com`      |
+| Add    | VG247                 | https://www.vg247.com/feed                            | `www.vg247.com`               |
+| Add    | Rock Paper Shotgun    | https://www.rockpapershotgun.com/feed                 | `www.rockpapershotgun.com`    |
+| Add    | Eurogamer             | https://www.eurogamer.net/feed                        | `www.eurogamer.net`           |
+| Add    | Video Games Chronicle | https://www.videogameschronicle.com/feed/             | `www.videogameschronicle.com` |
+
+Epic Games and ARC Raiders remain; they were not requested for removal. ARC
+Raiders uses the existing Steam host. Do not add Gematsu or Nintendo Life.
+Adding a feed already baselines (existing `/rss add` behavior), so historical
+items must not dump. `/rss remove` and Command Deck RSS remove also require
+the live allowlist, so IGN must be removed before Production restarts onto
+the new host string. Fixer applies the Production `.env` and feed mutations
+after merge; see [Operations](OPERATIONS.md#muthaship-production-rss-fixer-steps).
+This documentation change does not deploy Jarvis.
+
 ## Sleeper behavior
 
 When `SLEEPER_LEAGUE_ID` is blank, `/fantasy standings` reports that the league

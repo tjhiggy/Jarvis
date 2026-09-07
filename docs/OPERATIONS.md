@@ -58,6 +58,55 @@ are delivered per MuthaShip per UTC day.
 Do not manually repost a failed item: that is how duplicate-notification
 folklore becomes an incident.
 
+### MuthaShip production RSS catalog
+
+The live Production allowlist and SQLite feed rows are operator state, not
+startup-seeded from the repo. Documented MuthaShip Production hosts and URLs
+live in
+[Configuration](CONFIGURATION.md#muthaship-production-rss-catalog).
+Keep XBOX News, PlayStation Blog, PC Gamer, Steam News, Epic Games, and ARC
+Raiders. Drop IGN. Add VG247, Rock Paper Shotgun, Eurogamer, and Video Games
+Chronicle. Do not add Gematsu or Nintendo Life.
+
+### MuthaShip production RSS Fixer steps
+
+Alfred assigns Fixer after merge. This documentation change does not deploy
+Jarvis and does not mutate Production `.env` or SQLite.
+
+`/rss remove` and Command Deck RSS remove reject a URL whose host is not on
+the **running** allowlist. Adding the four new feeds also fails until the
+process has loaded the new hosts. Use this order:
+
+1. Edit Production `.env` so `ENGAGEMENT_RSS_ALLOWED_HOSTS` is exactly
+   `news.xbox.com,blog.playstation.com,www.pcgamer.com,store.steampowered.com,www.epicgames.com,www.vg247.com,www.rockpapershotgun.com,www.eurogamer.net,www.videogameschronicle.com`.
+   The running process still has the previous allowlist, including
+   `www.ign.com`.
+2. Remove IGN **before** restart, while `www.ign.com` is still allowlisted:
+   `/rss remove` with
+   `url:https://www.ign.com/rss/articles/feed` (or the Command Deck RSS
+   remove for that URL). Confirm `/rss list` no longer shows IGN.
+3. Restart the single Jarvis process so the new host string loads and
+   `www.ign.com` is no longer admitted.
+4. Add the four new feeds with `/rss add` (or Command Deck preview then
+   save). Each add already baselines; historical items must not dump.
+   Confirm the private add reply says saving establishes a baseline.
+   - VG247 — `url:https://www.vg247.com/feed` `label:VG247`
+   - Rock Paper Shotgun — `url:https://www.rockpapershotgun.com/feed`
+     `label:Rock Paper Shotgun`
+   - Eurogamer — `url:https://www.eurogamer.net/feed` `label:Eurogamer`
+   - Video Games Chronicle —
+     `url:https://www.videogameschronicle.com/feed/`
+     `label:Video Games Chronicle`
+5. `/rss list` should show the six keepers plus the four new feeds, and
+   must not show IGN. Do not re-add keepers. Do not add Gematsu or
+   Nintendo Life.
+
+If IGN is still in SQLite after a restart onto the new allowlist, `/rss
+remove` and the Command Deck will refuse the IGN URL. Restore
+`www.ign.com` on the running allowlist only long enough to remove that
+row, then return to the documented host string and restart once. Do not
+edit SQLite by hand.
+
 ## Start and stop checks
 
 Before starting, select exactly one deployment path: native Windows or Docker.

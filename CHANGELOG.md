@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Documented the MuthaShip Production RSS host allowlist and feed catalog:
+  drop IGN, keep Xbox, PlayStation, PC Gamer, Steam News, Epic Games, and
+  ARC Raiders, and add VG247, Rock Paper Shotgun, Eurogamer, and Video
+  Games Chronicle. Fixer post-merge steps are in Operations. Adding a feed
+  still baselines; this change does not deploy Jarvis.
+
 ### Fixed
 
 - `/bird-call` renders role mentions from the optional `game` field as normal
