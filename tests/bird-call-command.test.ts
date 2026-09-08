@@ -249,6 +249,54 @@ describe('/bird-call', () => {
     });
   });
 
+  it('does not ping @everyone via the guild-id role token', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const guildId = '123456789012345678';
+    const gameRole = '987654321098765432';
+    await handleBirdCallCommand(
+      interaction({
+        guildId,
+        game: `<@&${guildId}> with <@&${gameRole}>`,
+        reply,
+      }),
+    );
+
+    const payload = reply.mock.calls[0]?.[0] as {
+      content: string;
+      allowedMentions: { parse?: readonly string[]; roles?: readonly string[] };
+    };
+    expect(payload.content).not.toContain(`<@&${guildId}>`);
+    expect(payload.content).toContain(`<@&\u200b${guildId}>`);
+    expect(payload.content).toContain(`<@&${gameRole}>`);
+    expect(payload.allowedMentions).toEqual({
+      parse: [],
+      repliedUser: false,
+      roles: [gameRole],
+    });
+    expect(payload.allowedMentions.roles).not.toContain(guildId);
+  });
+
+  it('keeps empty allowedMentions when game is only the @everyone role', async () => {
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const guildId = '123456789012345678';
+    await handleBirdCallCommand(
+      interaction({
+        guildId,
+        game: `<@&${guildId}>`,
+        reply,
+      }),
+    );
+
+    const payload = reply.mock.calls[0]?.[0] as {
+      content: string;
+      allowedMentions: Record<string, unknown>;
+    };
+    expect(payload.content).not.toContain(`<@&${guildId}>`);
+    expect(payload.content).toContain(`<@&\u200b${guildId}>`);
+    expect(payload.allowedMentions).toEqual(safeMentions);
+    expect(payload.allowedMentions).not.toHaveProperty('roles');
+  });
+
   it('does not allow malformed role-like tokens', async () => {
     const reply = vi.fn().mockResolvedValue(undefined);
     await handleBirdCallCommand(
