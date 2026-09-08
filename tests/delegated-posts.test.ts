@@ -197,6 +197,209 @@ describe('delegated posts', () => {
       service.confirm({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
     ).rejects.toThrow();
   });
+
+  it('restores the draft after a Discord gateway failure so the owner can retry', async () => {
+    const now = new Date('2026-08-30T12:00:00.000Z');
+    let attempts = 0;
+    const sent: unknown[] = [];
+    const service = new DelegatedPostService({
+      createId: () => 'draft-1',
+      adminRoleIds: new Set(['admin']),
+      now: () => now,
+      gateway: {
+        post: async (_channel, card) => {
+          attempts += 1;
+          if (attempts === 1) throw new Error('gateway');
+          sent.push(card);
+          return { id: 'msg-2' };
+        },
+      },
+    });
+    const input = {
+      guildId: 'g',
+      ownerUserId: 'u',
+      ownerName: 'U',
+      ownerRoleIds: new Set(['admin']),
+      channelId: 'c',
+      content: 'hello crew',
+    };
+    const draft = service.preview(input);
+
+    await expect(
+      service.confirm({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
+    ).rejects.toThrow('gateway');
+    expect(sent).toEqual([]);
+
+    await expect(
+      service.confirm({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
+    ).resolves.toEqual({ id: 'msg-2' });
+    expect(sent).toHaveLength(1);
+  });
+
+  it('cancels only the owner-scoped draft and refuses a foreign cancel', () => {
+    const { service } = setup();
+    const draft = service.preview({
+      guildId: 'g',
+      ownerUserId: 'u',
+      ownerName: 'U',
+      ownerRoleIds: new Set(['admin']),
+      channelId: 'c',
+      content: 'hello crew',
+    });
+
+    expect(
+      service.cancel({ guildId: 'g', ownerUserId: 'other', draftId: draft.id }),
+    ).toBe(false);
+    expect(
+      service.cancel({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
+    ).toBe(true);
+    expect(
+      service.cancel({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
+    ).toBe(false);
+  });
+
+  it('blocks confirm after the fifteen-minute TTL', async () => {
+    let now = new Date('2026-08-30T12:00:00.000Z');
+    const sent: unknown[] = [];
+    const service = new DelegatedPostService({
+      createId: () => 'draft-1',
+      adminRoleIds: new Set(['admin']),
+      now: () => now,
+      gateway: {
+        post: async (_channel, card) => {
+          sent.push(card);
+          return { id: 'msg-1' };
+        },
+      },
+    });
+    const draft = service.preview({
+      guildId: 'g',
+      ownerUserId: 'u',
+      ownerName: 'U',
+      ownerRoleIds: new Set(['admin']),
+      channelId: 'c',
+      content: 'hello crew',
+    });
+
+    now = new Date(now.getTime() + 15 * 60 * 1_000);
+    await expect(
+      service.confirm({ guildId: 'g', ownerUserId: 'u', draftId: draft.id }),
+    ).rejects.toThrowError(new DelegatedPostError('not-found'));
+    expect(sent).toEqual([]);
+  });
+
+  it('maps cancel of an owned draft vs a missing draft without sending a transmission', async () => {
+    const { service, sent } = setup(new Set(['admin-role']));
+    const preview = postInteraction({
+      guildId: 'guild-1',
+      roleIds: ['admin-role'],
+    });
+    await handleCommand(
+      preview.interaction,
+      commandDependencies({
+        service,
+        activityId: 'activity-channel',
+        adminRoleIds: new Set(['admin-role']),
+        engagementEnabled: false,
+      }),
+    );
+
+    const owned = postInteraction({
+      guildId: 'guild-1',
+      roleIds: ['admin-role'],
+      subcommand: 'cancel',
+      values: { draft_id: 'draft-1' },
+    });
+    await handleCommand(
+      owned.interaction,
+      commandDependencies({
+        service,
+        activityId: 'activity-channel',
+        adminRoleIds: new Set(['admin-role']),
+        engagementEnabled: false,
+      }),
+    );
+    expect(owned.replies[0]).toMatchObject({
+      ephemeral: true,
+      content: expect.stringMatching(/cancelled/i),
+    });
+
+    const missing = postInteraction({
+      guildId: 'guild-1',
+      roleIds: ['admin-role'],
+      subcommand: 'cancel',
+      values: { draft_id: 'draft-1' },
+    });
+    await handleCommand(
+      missing.interaction,
+      commandDependencies({
+        service,
+        activityId: 'activity-channel',
+        adminRoleIds: new Set(['admin-role']),
+        engagementEnabled: false,
+      }),
+    );
+    expect(missing.replies[0]).toMatchObject({
+      ephemeral: true,
+      content: expect.stringMatching(/not found or is not yours/i),
+    });
+    expect(sent).toEqual([]);
+  });
+
+  it.each([
+    [
+      'missing guild',
+      { guildId: null as string | null, roleIds: ['admin-role'] },
+    ],
+    ['non-admin member', { guildId: 'guild-1' as string | null, roleIds: [] }],
+  ] as const)(
+    'fails closed for %s without sending a transmission',
+    async (_name, overrides) => {
+      const { service, sent } = setup(new Set(['admin-role']));
+      const preview = postInteraction({
+        guildId: overrides.guildId,
+        roleIds: [...overrides.roleIds],
+      });
+      await handleCommand(
+        preview.interaction,
+        commandDependencies({
+          service,
+          activityId: 'activity-channel',
+          adminRoleIds: new Set(['admin-role']),
+          configuredGuildId: overrides.guildId === null ? '' : 'guild-1',
+          engagementEnabled: false,
+        }),
+      );
+      expect(sent).toEqual([]);
+      expect(preview.replies[0]).toMatchObject({ ephemeral: true });
+      expect(preview.replies[0]?.content).not.toMatch(
+        /nothing has been posted/i,
+      );
+    },
+  );
+
+  it('maps invalid content without sending a transmission', async () => {
+    const { service, sent } = setup(new Set(['admin-role']));
+    const preview = postInteraction({
+      guildId: 'guild-1',
+      roleIds: ['admin-role'],
+      values: { content: '   ' },
+    });
+    await handleCommand(
+      preview.interaction,
+      commandDependencies({
+        service,
+        activityId: 'activity-channel',
+        adminRoleIds: new Set(['admin-role']),
+        engagementEnabled: false,
+      }),
+    );
+    expect(sent).toEqual([]);
+    expect(preview.replies[0]).toMatchObject({
+      ephemeral: true,
+      content: expect.stringMatching(/1 and 1,500 characters/i),
+    });
+  });
 });
 
 function setup(adminRoleIds: ReadonlySet<string> = new Set(['admin'])) {

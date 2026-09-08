@@ -3,6 +3,7 @@ import {
   RssNotificationClient,
   createPublicRssLookup,
   isAllowedRssUrl,
+  sanitizeRssImageUrl,
 } from '../src/notifications/rss-notifications.js';
 
 describe('RSS notifications', () => {
@@ -20,6 +21,16 @@ describe('RSS notifications', () => {
     );
     expect(
       isAllowedRssUrl('https://evil.example.com/feed.xml', [
+        'news.example.com',
+      ]),
+    ).toBe(false);
+    expect(
+      isAllowedRssUrl('https://user@news.example.com/feed.xml', [
+        'news.example.com',
+      ]),
+    ).toBe(false);
+    expect(
+      isAllowedRssUrl('https://user:pass@news.example.com/feed.xml', [
         'news.example.com',
       ]),
     ).toBe(false);
@@ -172,5 +183,86 @@ describe('RSS notifications', () => {
 
     expect(items).toHaveLength(5);
     expect(items[0]).toMatchObject({ url: 'https://news.example.com/post/0' });
+  });
+
+  it('throws before network when the feed URL is off the allowlist', async () => {
+    const fetcher = vi.fn();
+    const client = new RssNotificationClient(fetcher, 2_000, [
+      'news.example.com',
+    ]);
+
+    await expect(
+      client.fetch('https://evil.example.com/feed.xml'),
+    ).rejects.toThrow('RSS feed is not allowlisted.');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('throws when the feed HTTP response is not OK', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response('nope', { status: 503 }));
+    const client = new RssNotificationClient(fetcher, 2_000, [
+      'news.example.com',
+    ]);
+
+    await expect(
+      client.fetch('https://news.example.com/feed.xml'),
+    ).rejects.toThrow('RSS feed unavailable.');
+  });
+
+  it('drops items with no id or no canonical URL', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          `<rss><channel><item><title>No identity</title></item><item><guid>ok-1</guid><title>Kept</title><link>https://news.example.com/ok-1</link></item><item><guid></guid><title>Blank guid</title><link>not-a-url</link></item></channel></rss>`,
+        ),
+      );
+    const client = new RssNotificationClient(fetcher, 2_000, [
+      'news.example.com',
+    ]);
+
+    await expect(
+      client.fetch('https://news.example.com/feed.xml'),
+    ).resolves.toEqual([
+      {
+        id: 'ok-1',
+        title: 'Kept',
+        url: 'https://news.example.com/ok-1',
+        publishedAt: '',
+      },
+    ]);
+  });
+
+  it.each([
+    ['credentialed', 'https://user:pass@cdn.example.com/hero.jpg'],
+    ['username-only userinfo', 'https://user@cdn.example.com/hero.jpg'],
+    ['http', 'http://cdn.example.com/hero.jpg'],
+    ['loopback', 'https://127.0.0.1/hero.jpg'],
+    ['private', 'https://10.1.2.3/hero.jpg'],
+    ['unparseable', 'not a url'],
+    ['oversized', `https://cdn.example.com/${'a'.repeat(2_100)}.jpg`],
+  ])('omits a %s article image URL', (_name, imageUrl) => {
+    expect(sanitizeRssImageUrl(imageUrl)).toBeUndefined();
+  });
+
+  it('keeps a public HTTPS article image URL', () => {
+    expect(sanitizeRssImageUrl('https://cdn.example.com/hero.jpg')).toBe(
+      'https://cdn.example.com/hero.jpg',
+    );
+  });
+
+  it('rejects an allowlisted hostname resolving to IPv4-mapped loopback', async () => {
+    const lookup = createPublicRssLookup(async () => [
+      { address: '::ffff:127.0.0.1', family: 6 },
+    ]);
+
+    await expect(
+      new Promise((resolve, reject) =>
+        lookup('feeds.example.com', { all: true }, (error, addresses) =>
+          error === null ? resolve(addresses) : reject(error),
+        ),
+      ),
+    ).rejects.toThrow('RSS host did not resolve to a public address.');
   });
 });
