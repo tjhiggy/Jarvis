@@ -388,4 +388,54 @@ describe('Command Deck mutation service', () => {
       ok: true,
     });
   });
+
+  it.each([
+    [
+      'HTTP scheme',
+      {
+        type: 'rss_feed' as const,
+        operation: 'add' as const,
+        url: 'http://news.example.test/feed.xml',
+        label: 'Official feed',
+      },
+    ],
+    [
+      'credentialed URL',
+      {
+        type: 'rss_feed' as const,
+        operation: 'add' as const,
+        url: 'https://user:pass@news.example.test/feed.xml',
+        label: 'Official feed',
+      },
+    ],
+    [
+      'off-allowlist host',
+      {
+        type: 'rss_feed' as const,
+        operation: 'add' as const,
+        url: 'https://evil.example.test/feed.xml',
+        label: 'Official feed',
+      },
+    ],
+    [
+      'malformed feed ID',
+      {
+        type: 'rss_feed' as const,
+        operation: 'remove' as const,
+        feedId: 'rss_not-a-hex-id',
+      },
+    ],
+  ])(
+    'rejects a %s RSS mutation without applying a write',
+    async (_name, action) => {
+      const adapter = new InMemoryMutationAdapter();
+      const service = createCommandDeckMutationService({ adapter });
+
+      await expect(service.preview(action)).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'INVALID_ACTION' },
+      });
+      expect(adapter.attempts).toEqual([]);
+    },
+  );
 });

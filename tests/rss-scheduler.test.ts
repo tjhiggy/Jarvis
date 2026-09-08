@@ -165,6 +165,156 @@ describe('RssScheduler', () => {
     );
   });
 
+  it('shares one in-flight poll when overlapping ticks start together', async () => {
+    let releaseFetch!: () => void;
+    const fetchGate = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    let started!: () => void;
+    const fetchStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const storage = {
+      listFeeds: () => [
+        {
+          serverId: 's',
+          url: 'https://news.example.com/feed.xml',
+          label: 'News',
+          paused: false,
+          baselined: true,
+        },
+      ],
+      isPaused: () => false,
+      establishBaseline: vi.fn(),
+      isBaselineItem: () => false,
+      remainingDailyDeliveryCapacity: () => 20,
+      reserveDailyDelivery: () => true,
+      completeDailyDelivery: () => true,
+      releaseDailyDelivery: vi.fn(),
+      rolloverDailyDeliveryReservation: () => true,
+    };
+    const client = {
+      fetch: vi.fn(async () => {
+        started();
+        await fetchGate;
+        return [
+          {
+            id: 'shared',
+            title: 'Update shared',
+            url: 'https://news.example.com/shared',
+            publishedAt: '2026-08-11T12:00:00Z',
+          },
+        ];
+      }),
+    };
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(storage, client, publisher, 's');
+
+    const first = scheduler.tick();
+    await fetchStarted;
+    const second = scheduler.tick();
+    releaseFetch();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([1, 1]);
+    expect(client.fetch).toHaveBeenCalledTimes(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the delivery lease when the daily reservation is refused', async () => {
+    const storage = {
+      listFeeds: () => [
+        {
+          serverId: 's',
+          url: 'https://news.example.com/feed.xml',
+          label: 'News',
+          paused: false,
+          baselined: true,
+        },
+      ],
+      isPaused: () => false,
+      establishBaseline: vi.fn(),
+      isBaselineItem: () => false,
+      remainingDailyDeliveryCapacity: () => 20,
+      reserveDailyDelivery: () => false,
+      completeDailyDelivery: vi.fn(),
+      releaseDailyDelivery: vi.fn(),
+      rolloverDailyDeliveryReservation: () => true,
+    };
+    const delivery = deliveryStore();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn().mockResolvedValue([
+          {
+            id: 'refused',
+            title: 'Update refused',
+            url: 'https://news.example.com/refused',
+            publishedAt: '2026-08-11T12:00:00Z',
+          },
+        ]),
+      },
+      publisher,
+      's',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(delivery.releaseDelivery).toHaveBeenCalledWith(
+      's',
+      'rss',
+      'https://news.example.com/feed.xml:refused',
+      'lease:https://news.example.com/feed.xml:refused',
+      expect.any(Date),
+    );
+    expect(storage.completeDailyDelivery).not.toHaveBeenCalled();
+  });
+
+  it('does not increment the published count when completeDelivery returns false', async () => {
+    const storage = readyStorage();
+    const delivery = deliveryStore();
+    delivery.completeDelivery.mockResolvedValue(false);
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      { fetch: vi.fn().mockResolvedValue([item('partial')]) },
+      publisher,
+      'server',
+      { evaluate: vi.fn().mockResolvedValue({ allowed: true }) },
+      delivery,
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(0);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(delivery.completeDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  it('continues to the next feed when the first fetch throws', async () => {
+    const storage = twoFeedStorage();
+    const publisher = { publish: vi.fn().mockResolvedValue(undefined) };
+    const scheduler = schedulerFor(
+      storage,
+      {
+        fetch: vi.fn(async (url: string) => {
+          if (url.includes('alpha')) throw new Error('timeout');
+          return [item('zeta-ok')];
+        }),
+      },
+      publisher,
+      'server',
+    );
+
+    await expect(scheduler.tick()).resolves.toBe(1);
+    expect(publisher.publish).toHaveBeenCalledWith(
+      'channel-1',
+      expect.objectContaining({
+        entries: [expect.objectContaining({ id: 'zeta-ok' })],
+      }),
+    );
+  });
+
   it('baselines a new feed without publishing historical items', async () => {
     const storage = new RssStorage(':memory:');
     const url = 'https://news.example.com/feed.xml';
@@ -404,6 +554,28 @@ describe('RssScheduler', () => {
         sourceLabel: 'IGN',
       }),
     ).toThrow('RSS payload has no visible title and link.');
+  });
+
+  it('omits credentialed, private, and non-HTTPS images from the native card', () => {
+    const payload = rssBroadcastSendPayload({
+      title: 'Update gta-apartment',
+      url: 'https://news.example.com/gta-apartment',
+      sourceLabel: 'IGN',
+      imageUrl: 'https://user:token@cdn.example.com/hero.jpg',
+    });
+
+    expect(payload.embeds[0]).not.toHaveProperty('image');
+    expect(JSON.stringify(payload)).not.toContain('user:token');
+    expect(JSON.stringify(payload)).not.toContain('cdn.example.com');
+
+    expect(
+      rssBroadcastSendPayload({
+        title: 'Update gta-apartment',
+        url: 'https://news.example.com/gta-apartment',
+        sourceLabel: 'IGN',
+        imageUrl: 'http://cdn.example.com/hero.jpg',
+      }).embeds[0],
+    ).not.toHaveProperty('image');
   });
 
   it('rejects empty content when SuppressEmbeds would hide the only RSS card', () => {

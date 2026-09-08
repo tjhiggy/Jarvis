@@ -417,9 +417,61 @@ describe('isAllowedChannel', () => {
       isAllowedChannel('thread-7', 'channel-1', new Set(['channel-1'])),
     ).toBe(true);
   });
+
+  it('allows every channel when the allowlist is empty', () => {
+    expect(isAllowedChannel('any-channel', null, new Set())).toBe(true);
+    expect(isAllowedChannel('thread-9', 'unknown-parent', new Set())).toBe(
+      true,
+    );
+  });
+
+  it('accepts a direct channel match', () => {
+    expect(isAllowedChannel('channel-1', null, new Set(['channel-1']))).toBe(
+      true,
+    );
+  });
+
+  it('denies an unknown channel whose parent is not listed', () => {
+    expect(
+      isAllowedChannel('thread-9', 'other-parent', new Set(['channel-1'])),
+    ).toBe(false);
+    expect(isAllowedChannel('channel-9', null, new Set(['channel-1']))).toBe(
+      false,
+    );
+    expect(
+      isAllowedChannel('thread-9', undefined, new Set(['channel-1'])),
+    ).toBe(false);
+  });
 });
 
 describe('handleCommand', () => {
+  it('routes /bird-call to the public invite and fails closed from a DM', async () => {
+    const publicCall = interaction({
+      commandName: 'bird-call',
+      values: { game: 'Fortnite' },
+    });
+    await handleCommand(publicCall.interaction, dependencies());
+    expect(publicCall.replies[0]).toMatchObject({
+      ephemeral: false,
+      content: expect.stringMatching(/bird call.*fortnite/i),
+      allowedMentions: safeMentions,
+    });
+
+    const dm = interaction({
+      commandName: 'bird-call',
+      guildId: null,
+      values: { game: 'Fortnite' },
+    });
+    await handleCommand(dm.interaction, dependencies());
+    expect(dm.replies[0]).toMatchObject({
+      ephemeral: true,
+      content: expect.stringMatching(/server channel/i),
+      allowedMentions: safeMentions,
+    });
+    expect(dm.replies[0]?.content).not.toMatch(/bird call/i);
+    expect(dm.replies[0]?.content).not.toContain('Fortnite');
+  });
+
   it.each(['set', 'list', 'cancel'] as const)(
     'rejects /reminder %s in DMs and disallowed channels ephemerally',
     async (subcommand) => {
