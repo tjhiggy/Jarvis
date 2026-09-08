@@ -14,33 +14,54 @@ export interface BirdCallInteraction extends ReplyTarget {
 
 const dmMessage = 'This command is available only in a server channel.';
 
-/** Neutralize mass, user, and channel mentions while leaving role tokens intact. */
-const neutralizeBirdCallGame = (content: string): string =>
-  content
+/** Discord's @everyone role id is the guild id; `<@&guildId>` is a mass ping. */
+const neutralizeEveryoneRoleMention = (
+  content: string,
+  guildId: string,
+): string => {
+  const everyoneRoleId = guildId.trim();
+  if (!everyoneRoleId) {
+    return content;
+  }
+
+  const token = `<@&${everyoneRoleId}>`;
+  return content.split(token).join(`<@&\u200b${everyoneRoleId}>`);
+};
+
+/** Neutralize mass, user, and channel mentions while leaving other role tokens intact. */
+const neutralizeBirdCallGame = (content: string, guildId = ''): string =>
+  neutralizeEveryoneRoleMention(content, guildId)
     .replace(/@(?=everyone\b|here\b)/gi, '@\u200b')
     .replace(/<@(?=!\d+>)/g, '<@\u200b')
     .replace(/<@(?=\d+>)/g, '<@\u200b')
     .replace(/<#(?=\d+>)/g, '<#\u200b');
 
-const extractBirdCallRoleIds = (content: string): readonly string[] => {
+const extractBirdCallRoleIds = (
+  content: string,
+  everyoneRoleId = '',
+): readonly string[] => {
+  const blocked = everyoneRoleId.trim();
   const roles: string[] = [];
   const seen = new Set<string>();
   for (const match of content.matchAll(/<@&(\d+)>/g)) {
     const roleId = match[1];
-    if (!roleId || seen.has(roleId)) continue;
+    if (!roleId || seen.has(roleId) || roleId === blocked) continue;
     seen.add(roleId);
     roles.push(roleId);
   }
   return roles;
 };
 
-const birdCallAllowedMentions = (game: string): AllowedMentions => {
-  const roles = extractBirdCallRoleIds(game);
+const birdCallAllowedMentions = (
+  game: string,
+  guildId = '',
+): AllowedMentions => {
+  const roles = extractBirdCallRoleIds(game, guildId);
   return roles.length === 0 ? allowedMentions : { ...allowedMentions, roles };
 };
 
-export const formatBirdCallMessage = (game = ''): string => {
-  const safeGame = neutralizeBirdCallGame(game).trim();
+export const formatBirdCallMessage = (game = '', guildId = ''): string => {
+  const safeGame = neutralizeBirdCallGame(game, guildId).trim();
   return safeGame
     ? `Bird call. Who on the MuthaShip wants to play ${safeGame} now?`
     : 'Bird call. Who on the MuthaShip wants to game now?';
@@ -50,10 +71,12 @@ const replyPublicBirdCall = async (
   interaction: BirdCallInteraction,
   game: string,
 ): Promise<void> => {
+  const guildId = interaction.guildId?.trim() ?? '';
+  const safeGame = neutralizeBirdCallGame(game, guildId);
   await interaction.reply({
-    content: formatBirdCallMessage(game),
+    content: formatBirdCallMessage(game, guildId),
     ephemeral: false,
-    allowedMentions: birdCallAllowedMentions(game),
+    allowedMentions: birdCallAllowedMentions(safeGame, guildId),
   });
 };
 
