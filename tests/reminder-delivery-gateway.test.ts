@@ -91,6 +91,23 @@ describe('DiscordReminderDeliveryGateway', () => {
     ).resolves.toEqual({ kind: 'permanent-failure', category: 'permission' });
   });
 
+  it('refuses a thread when the reminder has no stored parent', async () => {
+    const sent: unknown[] = [];
+    const gateway = gatewayFor(
+      channel({
+        id: 'thread-1',
+        parentId: 'parent-1',
+        send: async (payload) => void sent.push(payload),
+      }),
+      new Set(['parent-1']),
+    );
+
+    await expect(
+      gateway.deliver(reminder({ channelId: 'thread-1' }), now),
+    ).resolves.toEqual({ kind: 'permanent-failure', category: 'permission' });
+    expect(sent).toEqual([]);
+  });
+
   it('delivers exactly once to an allowed channel with an owner-only payload', async () => {
     const sent: unknown[] = [];
     const gateway = gatewayFor(

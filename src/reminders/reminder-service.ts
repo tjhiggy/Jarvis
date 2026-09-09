@@ -149,11 +149,12 @@ export class ReminderService {
   }
 
   async sharedSet(request: {
-    guildId: string;
-    channelId: string;
-    ownerUserId: string;
-    duration: string;
-    message: string;
+    readonly guildId: string;
+    readonly channelId: string;
+    readonly parentChannelId?: string;
+    readonly ownerUserId: string;
+    readonly duration: string;
+    readonly message: string;
   }): Promise<ReminderView> {
     return this.set({
       guildId: request.guildId,
@@ -161,6 +162,9 @@ export class ReminderService {
       ownerUserId: request.ownerUserId,
       duration: request.duration,
       message: request.message,
+      ...(request.parentChannelId === undefined
+        ? {}
+        : { parentChannelId: request.parentChannelId }),
     });
   }
   async sharedList(request: {

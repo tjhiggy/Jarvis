@@ -102,6 +102,25 @@ describe('ReminderService', () => {
     expect(store.created[0]).not.toHaveProperty('untilAt');
   });
 
+  it('forwards shared-set thread parent identity so delivery can match the live channel', async () => {
+    const { service, store } = fixture();
+
+    await expect(
+      service.sharedSet({
+        ...request(),
+        channelId: 'thread-1',
+        parentChannelId: 'channel-1',
+      }),
+    ).resolves.toMatchObject({
+      channelId: 'thread-1',
+      parentChannelId: 'channel-1',
+    });
+    expect(store.created[0]).toMatchObject({
+      channelId: 'thread-1',
+      parentChannelId: 'channel-1',
+    });
+  });
+
   it.each(['', 'x'.repeat(501)])(
     'rejects messages outside the allowed range',
     async (message) => {
