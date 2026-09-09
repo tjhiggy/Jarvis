@@ -1112,6 +1112,9 @@ const handleReminder = async (
             ownerUserId: interaction.user.id,
             duration: interaction.options.getString('in') ?? '',
             message: interaction.options.getString('message') ?? '',
+            ...(scope.parentChannelId === undefined
+              ? {}
+              : { parentChannelId: scope.parentChannelId }),
           });
           await editDeferredReplySafely(
             interaction,

@@ -614,6 +614,71 @@ describe('handleCommand', () => {
     expect(fake.edits[0]?.content).not.toMatch(/repeats/i);
   });
 
+  it('passes the thread parent on administrator shared-set', async () => {
+    const fake = interaction({
+      commandName: 'reminder',
+      subcommand: 'shared-set',
+      roleIds: ['admin-role'],
+      channelId: 'thread-1',
+      parentId: 'allowed-parent',
+      isThread: true,
+      values: {
+        in: '2 hours',
+        message: 'Crew sync',
+      },
+    });
+    const setRequests: unknown[] = [];
+    const base = dependencies({
+      allowedChannelIds: new Set(['allowed-parent']),
+      reminderService: {
+        ...inertReminderService(),
+        sharedSet: async (request) => {
+          setRequests.push(request);
+          return reminder({
+            channelId: 'thread-1',
+            parentChannelId: 'allowed-parent',
+            message: 'Crew sync',
+          });
+        },
+      },
+    });
+    const commandDependencies = {
+      ...base,
+      config: {
+        ...base.config,
+        engagement: {
+          enabled: true,
+          channels: {
+            introductionId: '',
+            suggestionId: '',
+            eventId: '',
+            recapId: '',
+            activityId: '',
+            birthdayId: '',
+            rssId: '',
+          },
+          rssAllowedHosts: [],
+          recapSchedule: '',
+          retentionDays: 30,
+          adminRoleIds: new Set(['admin-role']),
+        },
+      },
+    } as CommandDependencies;
+
+    await handleCommand(fake.interaction, commandDependencies);
+
+    expect(setRequests).toEqual([
+      {
+        guildId: 'guild-1',
+        channelId: 'thread-1',
+        parentChannelId: 'allowed-parent',
+        ownerUserId: 'user-1',
+        duration: '2 hours',
+        message: 'Crew sync',
+      },
+    ]);
+  });
+
   it('defers /reminder list and cancel privately with guild-and-owner scoping', async () => {
     const list = interaction({
       commandName: 'reminder',
