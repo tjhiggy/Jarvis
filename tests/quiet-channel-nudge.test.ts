@@ -119,6 +119,46 @@ describe('quiet channel nudge evaluation', () => {
       }).action,
     ).toBe('nudge');
   });
+
+  it('skips when no human baseline exists in state or history', () => {
+    expect(
+      evaluateQuietNudge({
+        now,
+        quietWindowMs: fiveMinutesMs,
+        state: {},
+        paused: false,
+        channelConfigured: true,
+        channelAvailable: true,
+      }),
+    ).toEqual({ action: 'skip', reason: 'no_human_baseline' });
+  });
+
+  it('uses the later of stored and history human timestamps', () => {
+    const staleStoreHuman = new Date(now.getTime() - 2 * 60 * 1_000);
+    const quietHistoryHuman = new Date(now.getTime() - 10 * 60 * 1_000);
+    expect(
+      evaluateQuietNudge({
+        now,
+        quietWindowMs: fiveMinutesMs,
+        state: { lastHumanAt: staleStoreHuman },
+        latestHumanAt: quietHistoryHuman,
+        paused: false,
+        channelConfigured: true,
+        channelAvailable: true,
+      }),
+    ).toEqual({ action: 'skip', reason: 'channel_active' });
+    expect(
+      evaluateQuietNudge({
+        now,
+        quietWindowMs: fiveMinutesMs,
+        state: { lastHumanAt: quietHistoryHuman },
+        latestHumanAt: new Date(now.getTime() - 6 * 60 * 1_000),
+        paused: false,
+        channelConfigured: true,
+        channelAvailable: true,
+      }).action,
+    ).toBe('nudge');
+  });
 });
 
 describe('quiet channel nudge service', () => {
@@ -172,7 +212,8 @@ describe('quiet channel nudge service', () => {
         respond:
           options?.aiRespond ??
           (async () => ({
-            text: options?.aiText ?? 'The MuthaShip channel is quiet. Say hello.',
+            text:
+              options?.aiText ?? 'The MuthaShip channel is quiet. Say hello.',
           })),
       },
       guildId: 'guild-1',
@@ -331,5 +372,92 @@ describe('quiet channel nudge service', () => {
     await new Promise((resolve) => setTimeout(resolve, 25));
     await scheduler.stop();
     expect(tick).toHaveBeenCalled();
+  });
+
+  it('neutralizes mention tokens from AI copy before posting', async () => {
+    const { service, posts } = setup({
+      latestHumanAt: new Date('2026-09-02T11:00:00.000Z'),
+      channels: [{ channelId: testChannel, quietWindowMs: fiveMinutesMs }],
+      aiText: '@everyone @here ping <@123> <#456>',
+    });
+    expect(await service.tick()).toBe(true);
+    expect(posts).toEqual([
+      {
+        channelId: testChannel,
+        content: '@\u200beveryone @\u200bhere ping <@\u200b123> <#\u200b456>',
+        allowedMentions: { parse: [], repliedUser: false },
+      },
+    ]);
+  });
+
+  it('posts the fallback when AI returns blank or mention-only whitespace', async () => {
+    const blank = setup({
+      latestHumanAt: new Date('2026-09-02T11:00:00.000Z'),
+      channels: [{ channelId: testChannel, quietWindowMs: fiveMinutesMs }],
+      aiText: '   ',
+    });
+    expect(await blank.service.tick()).toBe(true);
+    expect(blank.posts[0]?.content).toBe(fallbackNudge);
+    expect(blank.posts[0]?.allowedMentions).toEqual({
+      parse: [],
+      repliedUser: false,
+    });
+  });
+
+  it('does not record a nudge when delivery throws so the next tick can retry', async () => {
+    const posts: string[] = [];
+    const state = new Map<string, { lastHumanAt?: Date; lastNudgeAt?: Date }>([
+      [testChannel, { lastHumanAt: new Date('2026-09-02T11:00:00.000Z') }],
+    ]);
+    let failDelivery = true;
+    const service = new QuietChannelNudgeService({
+      store: {
+        get: async (_guildId, channelId) => state.get(channelId),
+        recordHumanMessage: async () => undefined,
+        recordNudge: async (_guildId, channelId, at) => {
+          state.set(channelId, {
+            ...(state.get(channelId) ?? {}),
+            lastNudgeAt: at,
+          });
+        },
+      },
+      gateway: {
+        channelAvailable: async () => true,
+        post: async (payload) => {
+          if (failDelivery) {
+            failDelivery = false;
+            throw new Error('gateway unavailable');
+          }
+          posts.push(payload.content);
+        },
+      },
+      ai: {
+        respond: async () => ({ text: 'Quiet on the MuthaShip.' }),
+      },
+      guildId: 'guild-1',
+      channels: [{ channelId: testChannel, quietWindowMs: fiveMinutesMs }],
+      isGloballyPaused: async () => false,
+      now: () => new Date('2026-09-02T12:00:00.000Z'),
+    });
+
+    expect(await service.tick()).toBe(false);
+    expect(state.get(testChannel)?.lastNudgeAt).toBeUndefined();
+    expect(await service.tick()).toBe(true);
+    expect(posts).toEqual(['Quiet on the MuthaShip.']);
+    expect(state.get(testChannel)?.lastNudgeAt?.toISOString()).toBe(
+      '2026-09-02T12:00:00.000Z',
+    );
+  });
+
+  it('skips blank channel ids and non-positive quiet windows', async () => {
+    const { service, posts } = setup({
+      latestHumanAt: new Date('2026-09-02T11:00:00.000Z'),
+      channels: [
+        { channelId: '   ', quietWindowMs: fiveMinutesMs },
+        { channelId: testChannel, quietWindowMs: 0 },
+      ],
+    });
+    expect(await service.tick()).toBe(false);
+    expect(posts).toHaveLength(0);
   });
 });
