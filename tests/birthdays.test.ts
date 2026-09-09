@@ -67,4 +67,156 @@ describe('birthdays', () => {
       }),
     );
   });
+
+  it('does not claim a birthday lease when delivery is globally paused', async () => {
+    const claimDelivery = vi.fn(async () => 'broadcast-lease');
+    const announce = vi.fn();
+    const scheduler = new BirthdayScheduler({
+      store: {
+        due: vi.fn(async () => [dueBirthday()]),
+        claimAnnouncement: vi.fn(),
+      } as never,
+      gateway: { announce },
+      guildId: 'g',
+      channelId: 'c',
+      timezone: 'UTC',
+      policy: {
+        evaluate: async (input) =>
+          input.globallyPaused === true
+            ? { allowed: false as const, reason: 'globally_paused' as const }
+            : { allowed: true as const },
+      },
+      broadcastStore: {
+        claimDelivery,
+        completeDelivery: async () => true,
+        releaseDelivery: async () => true,
+      },
+      isGloballyPaused: async () => true,
+      now: () => new Date('2026-07-04T12:00:00Z'),
+    });
+    await scheduler.tick();
+    expect(claimDelivery).not.toHaveBeenCalled();
+    expect(announce).not.toHaveBeenCalled();
+  });
+
+  it('releases the broadcast lease when the per-member announcement claim loses', async () => {
+    const releaseDelivery = vi.fn(async () => true);
+    const announce = vi.fn();
+    const scheduler = new BirthdayScheduler({
+      store: {
+        due: vi.fn(async () => [dueBirthday()]),
+        claimAnnouncement: vi.fn(async () => false),
+      } as never,
+      gateway: { announce },
+      guildId: 'g',
+      channelId: 'c',
+      timezone: 'UTC',
+      policy: { evaluate: async () => ({ allowed: true as const }) },
+      broadcastStore: {
+        claimDelivery: async () => 'broadcast-lease',
+        completeDelivery: async () => true,
+        releaseDelivery,
+      },
+      now: () => new Date('2026-07-04T12:00:00Z'),
+    });
+    await scheduler.tick();
+    expect(announce).not.toHaveBeenCalled();
+    expect(releaseDelivery).toHaveBeenCalledWith(
+      'g',
+      'birthday',
+      'birthday:2026:7:4:u',
+      'broadcast-lease',
+      new Date('2026-07-04T12:00:00Z'),
+    );
+  });
+
+  it('releases the broadcast lease when Discord announce throws', async () => {
+    const releaseDelivery = vi.fn(async () => true);
+    const completeDelivery = vi.fn(async () => true);
+    const scheduler = new BirthdayScheduler({
+      store: {
+        due: vi.fn(async () => [dueBirthday()]),
+        claimAnnouncement: vi.fn(async () => true),
+      } as never,
+      gateway: {
+        announce: async () => {
+          throw new Error('gateway unavailable');
+        },
+      },
+      guildId: 'g',
+      channelId: 'c',
+      timezone: 'UTC',
+      policy: { evaluate: async () => ({ allowed: true as const }) },
+      broadcastStore: {
+        claimDelivery: async () => 'broadcast-lease',
+        completeDelivery,
+        releaseDelivery,
+      },
+      now: () => new Date('2026-07-04T12:00:00Z'),
+    });
+    await scheduler.tick();
+    expect(completeDelivery).not.toHaveBeenCalled();
+    expect(releaseDelivery).toHaveBeenCalledWith(
+      'g',
+      'birthday',
+      'birthday:2026:7:4:u',
+      'broadcast-lease',
+      new Date('2026-07-04T12:00:00Z'),
+    );
+    expect(scheduler.lastRun).toMatchObject({ status: 'error' });
+  });
+
+  it('shares one in-flight tick so overlapping runs cannot double-announce', async () => {
+    let releaseDue: (() => void) | undefined;
+    let markDueStarted: () => void = () => undefined;
+    const dueGate = new Promise<void>((resolve) => {
+      markDueStarted = resolve;
+    });
+    const dueWait = new Promise<void>((resolve) => {
+      releaseDue = resolve;
+    });
+    const announce = vi.fn();
+    const claimDelivery = vi.fn(async () => 'broadcast-lease');
+    const scheduler = new BirthdayScheduler({
+      store: {
+        due: async () => {
+          markDueStarted();
+          await dueWait;
+          return [dueBirthday()];
+        },
+        claimAnnouncement: async () => true,
+      } as never,
+      gateway: { announce },
+      guildId: 'g',
+      channelId: 'c',
+      timezone: 'UTC',
+      policy: { evaluate: async () => ({ allowed: true as const }) },
+      broadcastStore: {
+        claimDelivery,
+        completeDelivery: async () => true,
+        releaseDelivery: async () => true,
+      },
+      now: () => new Date('2026-07-04T12:00:00Z'),
+    });
+
+    const first = scheduler.tick();
+    await dueGate;
+    const second = scheduler.tick();
+    releaseDue?.();
+    await Promise.all([first, second]);
+    expect(claimDelivery).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledTimes(1);
+  });
 });
+
+function dueBirthday() {
+  return {
+    guildId: 'g',
+    userId: 'u',
+    month: 7,
+    day: 4,
+    timezone: 'UTC',
+    enabled: true,
+    updatedAt: new Date(),
+  };
+}
