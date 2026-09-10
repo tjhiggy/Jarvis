@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DiscordReminderDeliveryGateway,
+  toReminderDeliveryChannel,
   type ReminderDeliveryChannel,
 } from '../src/reminders/reminder-delivery-gateway.js';
 import { renderReminderMessage } from '../src/reminders/reminder-renderer.js';
@@ -78,6 +79,24 @@ describe('DiscordReminderDeliveryGateway', () => {
     },
   );
 
+  it('refuses a thread when the reminder has no stored parent', async () => {
+    const sent: unknown[] = [];
+    const gateway = gatewayFor(
+      channel({
+        id: 'thread-1',
+        parentId: 'parent-1',
+        isThread: true,
+        send: async (payload) => void sent.push(payload),
+      }),
+      new Set(['parent-1']),
+    );
+
+    await expect(
+      gateway.deliver(reminder({ channelId: 'thread-1' }), now),
+    ).resolves.toEqual({ kind: 'permanent-failure', category: 'permission' });
+    expect(sent).toEqual([]);
+  });
+
   it('refuses a thread whose live parent differs from its stored parent', async () => {
     const gateway = gatewayFor(
       channel({ id: 'thread-1', parentId: 'parent-2' }),
@@ -89,6 +108,23 @@ describe('DiscordReminderDeliveryGateway', () => {
         now,
       ),
     ).resolves.toEqual({ kind: 'permanent-failure', category: 'permission' });
+  });
+
+  it('delivers to an allowed regular channel that sits in a Discord category', async () => {
+    const sent: unknown[] = [];
+    const gateway = gatewayFor(
+      channel({
+        parentId: 'category-1',
+        isThread: false,
+        send: async (payload) => void sent.push(payload),
+      }),
+      new Set(['channel-1']),
+    );
+
+    await expect(gateway.deliver(reminder(), now)).resolves.toEqual({
+      kind: 'delivered',
+    });
+    expect(sent).toHaveLength(1);
   });
 
   it('delivers exactly once to an allowed channel with an owner-only payload', async () => {
@@ -234,6 +270,40 @@ describe('DiscordReminderDeliveryGateway', () => {
       });
     },
   );
+
+  it('maps a categorized text channel without treating the category as a thread parent', () => {
+    const mapped = toReminderDeliveryChannel({
+      id: 'channel-1',
+      guildId: 'guild-1',
+      parentId: 'category-1',
+      isThread: () => false,
+      send: async () => undefined,
+    });
+
+    expect(mapped).toMatchObject({
+      id: 'channel-1',
+      guildId: 'guild-1',
+      isThread: false,
+    });
+    expect(mapped).not.toHaveProperty('parentId');
+  });
+
+  it('maps a thread parent so delivery can still refuse a moved thread', () => {
+    const mapped = toReminderDeliveryChannel({
+      id: 'thread-1',
+      guildId: 'guild-1',
+      parentId: 'parent-1',
+      isThread: () => true,
+      send: async () => undefined,
+    });
+
+    expect(mapped).toMatchObject({
+      id: 'thread-1',
+      guildId: 'guild-1',
+      parentId: 'parent-1',
+      isThread: true,
+    });
+  });
 
   it('marks an ambiguous send rejection as uncertain instead of risking a duplicate', async () => {
     const gateway = gatewayFor(

@@ -47,9 +47,8 @@ import type { PollStore } from './polls/poll-store.js';
 import { SQLitePollStore } from './polls/sqlite-poll-store.js';
 import {
   DiscordReminderDeliveryGateway,
-  type ReminderDeliveryChannel,
+  toReminderDeliveryChannel,
   type ReminderDeliveryGateway,
-  type ReminderMessagePayload,
 } from './reminders/reminder-delivery-gateway.js';
 import {
   ReminderScheduler,
@@ -492,38 +491,6 @@ const createDefaultReminderGateway = (dependencies: {
         await dependencies.client.channels?.fetch(channelId),
       ),
   });
-
-const toReminderDeliveryChannel = (
-  value: unknown,
-): ReminderDeliveryChannel | undefined => {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    !('id' in value) ||
-    typeof value.id !== 'string' ||
-    !('guildId' in value) ||
-    typeof value.guildId !== 'string' ||
-    !('send' in value) ||
-    typeof value.send !== 'function'
-  ) {
-    return undefined;
-  }
-  const parentId =
-    'parentId' in value &&
-    typeof value.parentId === 'string' &&
-    value.parentId.trim() !== ''
-      ? value.parentId
-      : undefined;
-  const send = value.send as (
-    payload: ReminderMessagePayload,
-  ) => Promise<unknown>;
-  return {
-    id: value.id,
-    guildId: value.guildId,
-    ...(parentId === undefined ? {} : { parentId }),
-    send: (payload) => send.call(value, payload),
-  };
-};
 
 const registerProcessSignal = (
   signal: NodeJS.Signals,

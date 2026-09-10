@@ -12,6 +12,7 @@ export interface ReminderDeliveryChannel {
   readonly id: string;
   readonly guildId: string;
   readonly parentId?: string;
+  readonly isThread?: boolean;
   send(payload: ReminderMessagePayload): Promise<unknown>;
 }
 
@@ -64,7 +65,7 @@ export class DiscordReminderDeliveryGateway implements ReminderDeliveryGateway {
     if (
       channel.id !== reminder.channelId ||
       channel.guildId !== reminder.guildId ||
-      channel.parentId !== reminder.parentChannelId ||
+      threadParentMismatch(channel, reminder) ||
       !isAllowedChannel(channel.id, channel.parentId, this.allowedChannelIds)
     ) {
       return permanentFailure('permission');
@@ -83,6 +84,55 @@ export class DiscordReminderDeliveryGateway implements ReminderDeliveryGateway {
     }
   }
 }
+
+export const toReminderDeliveryChannel = (
+  value: unknown,
+): ReminderDeliveryChannel | undefined => {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('id' in value) ||
+    typeof value.id !== 'string' ||
+    !('guildId' in value) ||
+    typeof value.guildId !== 'string' ||
+    !('send' in value) ||
+    typeof value.send !== 'function'
+  ) {
+    return undefined;
+  }
+
+  const isThread =
+    'isThread' in value &&
+    typeof value.isThread === 'function' &&
+    value.isThread() === true;
+  const parentId =
+    isThread &&
+    'parentId' in value &&
+    typeof value.parentId === 'string' &&
+    value.parentId.trim() !== ''
+      ? value.parentId
+      : undefined;
+  const send = value.send as (
+    payload: ReminderMessagePayload,
+  ) => Promise<unknown>;
+  return {
+    id: value.id,
+    guildId: value.guildId,
+    isThread,
+    ...(parentId === undefined ? {} : { parentId }),
+    send: (payload) => send.call(value, payload),
+  };
+};
+
+const threadParentMismatch = (
+  channel: ReminderDeliveryChannel,
+  reminder: ReminderView,
+): boolean => {
+  if (channel.isThread === false) {
+    return false;
+  }
+  return channel.parentId !== reminder.parentChannelId;
+};
 
 const failureOutcome = (
   category: ReminderFailureCategory,
