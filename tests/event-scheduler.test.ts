@@ -219,6 +219,218 @@ describe('event scheduler', () => {
     }
   });
 
+  it('releases the reminder claim when delivery is globally paused', async () => {
+    const releaseEventReminder = vi.fn();
+    const claimDelivery = vi.fn();
+    const deliver = vi.fn();
+    await new EventScheduler({
+      repository: {
+        claimDueEventReminders: async () => [dueReminder()],
+        engagementPaused: async () => true,
+        releaseEventReminder,
+        markEventReminderDelivered: async () => true,
+        markEventReminderFailed: async () => true,
+      } as any,
+      gateway: { deliver },
+      policy: allowPolicy(),
+      broadcastStore: {
+        claimDelivery,
+        completeDelivery: async () => true,
+        releaseDelivery: async () => true,
+      },
+    }).tick();
+    expect(deliver).not.toHaveBeenCalled();
+    expect(claimDelivery).not.toHaveBeenCalled();
+    expect(releaseEventReminder).toHaveBeenCalledWith(
+      'event-1',
+      'guild-1',
+      'user-1',
+      'lease-1',
+      expect.any(Date),
+    );
+  });
+
+  it('releases the reminder claim when broadcast policy denies delivery', async () => {
+    const releaseEventReminder = vi.fn();
+    const claimDelivery = vi.fn();
+    await new EventScheduler({
+      repository: {
+        claimDueEventReminders: async () => [dueReminder()],
+        engagementPaused: async () => false,
+        releaseEventReminder,
+        markEventReminderDelivered: async () => true,
+        markEventReminderFailed: async () => true,
+      } as any,
+      gateway: { deliver: vi.fn() },
+      policy: {
+        evaluate: async () => ({
+          allowed: false as const,
+          reason: 'globally_paused' as const,
+        }),
+      },
+      broadcastStore: {
+        claimDelivery,
+        completeDelivery: async () => true,
+        releaseDelivery: async () => true,
+      },
+    }).tick();
+    expect(claimDelivery).not.toHaveBeenCalled();
+    expect(releaseEventReminder).toHaveBeenCalledOnce();
+  });
+
+  it('releases both leases when policy flips to deny after the broadcast claim', async () => {
+    const releaseEventReminder = vi.fn();
+    const releaseDelivery = vi.fn();
+    const deliver = vi.fn();
+    let evaluations = 0;
+    await new EventScheduler({
+      repository: {
+        claimDueEventReminders: async () => [dueReminder()],
+        engagementPaused: async () => false,
+        releaseEventReminder,
+        markEventReminderDelivered: async () => true,
+        markEventReminderFailed: async () => true,
+      } as any,
+      gateway: { deliver },
+      policy: {
+        evaluate: async () => {
+          evaluations += 1;
+          return evaluations === 1
+            ? { allowed: true as const }
+            : {
+                allowed: false as const,
+                reason: 'globally_paused' as const,
+              };
+        },
+      },
+      broadcastStore: {
+        claimDelivery: async () => 'broadcast-lease',
+        completeDelivery: async () => true,
+        releaseDelivery,
+      },
+    }).tick();
+    expect(deliver).not.toHaveBeenCalled();
+    expect(releaseDelivery).toHaveBeenCalledWith(
+      'guild-1',
+      'event_reminder',
+      'event_reminder:event-1:user-1',
+      'broadcast-lease',
+      expect.any(Date),
+    );
+    expect(releaseEventReminder).toHaveBeenCalledOnce();
+  });
+
+  it('releases the reminder claim when the broadcast delivery lease is lost', async () => {
+    const releaseEventReminder = vi.fn();
+    const deliver = vi.fn();
+    await new EventScheduler({
+      repository: {
+        claimDueEventReminders: async () => [dueReminder()],
+        engagementPaused: async () => false,
+        releaseEventReminder,
+        markEventReminderDelivered: async () => true,
+        markEventReminderFailed: async () => true,
+      } as any,
+      gateway: { deliver },
+      policy: allowPolicy(),
+      broadcastStore: {
+        claimDelivery: async () => undefined,
+        completeDelivery: async () => true,
+        releaseDelivery: async () => true,
+      },
+    }).tick();
+    expect(deliver).not.toHaveBeenCalled();
+    expect(releaseEventReminder).toHaveBeenCalledOnce();
+  });
+
+  it('marks a reminder failed without delivering after the retry grace window', async () => {
+    const scheduledAt = new Date('2026-08-08T11:44:00.000Z');
+    const tickAt = new Date('2026-08-08T12:00:00.000Z');
+    const releaseDelivery = vi.fn();
+    const markEventReminderFailed = vi.fn();
+    const deliver = vi.fn();
+    await new EventScheduler({
+      repository: {
+        claimDueEventReminders: async () => [dueReminder({ scheduledAt })],
+        engagementPaused: async () => false,
+        markEventReminderDelivered: async () => true,
+        markEventReminderFailed,
+      } as any,
+      gateway: { deliver },
+      policy: allowPolicy(),
+      broadcastStore: {
+        claimDelivery: async () => 'broadcast-lease',
+        completeDelivery: async () => true,
+        releaseDelivery,
+      },
+      now: () => tickAt,
+    }).tick();
+    expect(deliver).not.toHaveBeenCalled();
+    expect(releaseDelivery).toHaveBeenCalledOnce();
+    expect(markEventReminderFailed).toHaveBeenCalledWith(
+      'event-1',
+      'guild-1',
+      'user-1',
+      'lease-1',
+      tickAt,
+    );
+  });
+
+  it('does not mark delivered when completeDelivery returns false', async () => {
+    const markEventReminderDelivered = vi.fn();
+    const releaseEventReminder = vi.fn();
+    const releaseDelivery = vi.fn();
+    await new EventScheduler({
+      repository: {
+        claimDueEventReminders: async () => [dueReminder()],
+        engagementPaused: async () => false,
+        releaseEventReminder,
+        markEventReminderDelivered,
+        markEventReminderFailed: async () => true,
+      } as any,
+      gateway: { deliver: async () => undefined },
+      policy: allowPolicy(),
+      broadcastStore: {
+        claimDelivery: async () => 'broadcast-lease',
+        completeDelivery: async () => false,
+        releaseDelivery,
+      },
+      now: () => new Date('2026-08-08T12:00:00.000Z'),
+    }).tick();
+    expect(markEventReminderDelivered).not.toHaveBeenCalled();
+    expect(releaseDelivery).toHaveBeenCalledOnce();
+    expect(releaseEventReminder).toHaveBeenCalledOnce();
+  });
+
+  it('shares one in-flight tick so overlapping runs cannot double-claim', async () => {
+    let releaseHold: () => void = () => undefined;
+    const hold = new Promise<void>((resolve) => {
+      releaseHold = resolve;
+    });
+    let claims = 0;
+    const scheduler = new EventScheduler({
+      repository: {
+        claimDueEventReminders: async () => {
+          claims += 1;
+          await hold;
+          return [];
+        },
+        markEventReminderDelivered: async () => true,
+        markEventReminderFailed: async () => true,
+      } as any,
+      gateway: { deliver: async () => undefined },
+      policy: allowPolicy(),
+      broadcastStore: deliveryStore(),
+    });
+    const first = scheduler.tick();
+    const second = scheduler.tick();
+    await Promise.resolve();
+    expect(claims).toBe(1);
+    releaseHold();
+    await Promise.all([first, second]);
+    expect(claims).toBe(1);
+  });
+
   it('closes due events after reminder processing so they become cleanup-eligible', async () => {
     const calls: string[] = [];
     await new EventScheduler({
@@ -239,6 +451,29 @@ describe('event scheduler', () => {
     expect(calls).toEqual(['close']);
   });
 });
+
+function dueReminder(
+  overrides: Partial<{
+    eventId: string;
+    guildId: string;
+    channelId: string;
+    userId: string;
+    title: string;
+    scheduledAt: Date;
+    leaseToken: string;
+  }> = {},
+) {
+  return {
+    eventId: 'event-1',
+    guildId: 'guild-1',
+    channelId: 'events',
+    userId: 'user-1',
+    title: 'Raid',
+    scheduledAt: new Date('2026-08-08T12:00:00.000Z'),
+    leaseToken: 'lease-1',
+    ...overrides,
+  };
+}
 
 const allowPolicy = () => ({
   evaluate: async () => ({ allowed: true as const }),

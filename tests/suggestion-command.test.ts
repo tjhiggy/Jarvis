@@ -1,10 +1,60 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   handleSuggestionCommand,
   handleSuggestionDeletionCommand,
 } from '../src/commands/suggestion.js';
 
 describe('suggestion commands', () => {
+  it('fails closed from a DM without previewing or posting', async () => {
+    const preview = vi.fn();
+    const missing = interaction(
+      'preview',
+      {
+        title: 'Movie night',
+        description: 'Weekly crew movie.',
+      },
+      null,
+    );
+    await handleSuggestionCommand(missing, {
+      enabled: true,
+      channelId: 'suggestions',
+      service: { preview } as any,
+    });
+    expect(preview).not.toHaveBeenCalled();
+    expect(missing.replies[0]).toMatchObject({
+      ephemeral: true,
+      content: expect.stringMatching(/server channel/i),
+    });
+  });
+
+  it('cancels only an owned draft and reports a missing draft without posting', async () => {
+    const cancel = vi.fn(
+      (input: { draftId: string }) => input.draftId === 'draft-1',
+    );
+    const owned = interaction('cancel', { draft_id: 'draft-1' });
+    await handleSuggestionCommand(owned, {
+      enabled: true,
+      channelId: 'suggestions',
+      service: { cancel } as any,
+    });
+    expect(owned.replies[0]).toMatchObject({
+      ephemeral: true,
+      content: expect.stringMatching(/nothing was saved or posted/i),
+    });
+
+    const missing = interaction('cancel', { draft_id: 'draft-2' });
+    await handleSuggestionCommand(missing, {
+      enabled: true,
+      channelId: 'suggestions',
+      service: { cancel } as any,
+    });
+    expect(missing.replies[0]).toMatchObject({
+      ephemeral: true,
+      content: expect.stringMatching(/not found or is not yours/i),
+    });
+    expect(cancel).toHaveBeenCalledTimes(2);
+  });
+
   it('shows a private preview and confirms it only for the draft owner', async () => {
     const calls: unknown[] = [];
     const service = {
@@ -89,10 +139,14 @@ describe('suggestion commands', () => {
   });
 });
 
-function interaction(subcommand: string, strings: Record<string, string>) {
+function interaction(
+  subcommand: string,
+  strings: Record<string, string>,
+  guildId: string | null = 'guild-1',
+) {
   const replies: any[] = [];
   return {
-    guildId: 'guild-1',
+    guildId,
     user: { id: 'user-1' },
     options: {
       getSubcommand: () => subcommand,

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  StreamNotificationError,
   StreamNotificationService,
   type StreamNotificationClient,
   type StreamNotificationStore,
@@ -66,6 +67,53 @@ describe('StreamNotificationService', () => {
     ).toBe(0);
     expect(publisher.publish).not.toHaveBeenCalled();
   });
+  it('continues to later feeds when one fetch throws or is not configured', async () => {
+    const client: StreamNotificationClient = {
+      fetch: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new StreamNotificationError(
+            'not-configured',
+            'Twitch notifications require optional API credentials.',
+          ),
+        )
+        .mockRejectedValueOnce(new Error('YouTube timeout'))
+        .mockResolvedValueOnce([
+          {
+            id: 'live-1',
+            provider: 'youtube' as const,
+            title: 'Later feed',
+            url: 'https://youtube.com/watch?v=live-1',
+            publishedAt: '2026-08-09T00:00:00Z',
+          },
+        ]),
+    };
+    const keys = new Set<string>();
+    const publisher: StreamNotificationPublisher = {
+      publish: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new StreamNotificationService(
+      client,
+      {
+        seen: async (key) => keys.has(key),
+        markSeen: async (key) => {
+          keys.add(key);
+        },
+      },
+      publisher,
+      'channel',
+    );
+    expect(
+      await service.poll([
+        { provider: 'twitch', id: 'crew', label: 'Crew' },
+        { provider: 'youtube', id: 'broken', label: 'Broken' },
+        { provider: 'youtube', id: 'ok', label: 'OK' },
+      ]),
+    ).toBe(1);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(client.fetch).toHaveBeenCalledTimes(3);
+  });
+
   it('bounds feeds and items per poll', async () => {
     const { service, client } = setup([]);
     await service.poll(
