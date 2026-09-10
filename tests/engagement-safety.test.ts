@@ -55,6 +55,61 @@ describe('engagement safety', () => {
     expect(claims).toBe(0);
   });
 
+  it.each([
+    ['blank guild', { guildId: null }],
+    ['whitespace guild', { guildId: '   ' }],
+    ['empty channel', { channelId: '' }],
+    ['empty user', { userId: '' }],
+    ['empty interaction id', { id: '' }],
+  ])(
+    'rejects a %s before claiming idempotency',
+    async (_name, interactionPatch) => {
+      let claims = 0;
+
+      const result = await verifyEngagementComponentAction({
+        interaction: { ...interaction(), ...interactionPatch },
+        record: record(),
+        allowedChannelIds: new Set(['channel-1']),
+        repository: {
+          claimIdempotencyKey: async () => {
+            claims += 1;
+            return true;
+          },
+        },
+        now: new Date('2026-08-08T12:00:00Z'),
+      });
+
+      expect(result).toEqual({
+        authorized: false,
+        reason: 'This control is unavailable here.',
+      });
+      expect(claims).toBe(0);
+    },
+  );
+
+  it('rejects a channel that is not on the allowlist, even when a parent id is listed', async () => {
+    let claims = 0;
+
+    const result = await verifyEngagementComponentAction({
+      interaction: interaction(),
+      record: record(),
+      allowedChannelIds: new Set(['parent-1']),
+      repository: {
+        claimIdempotencyKey: async () => {
+          claims += 1;
+          return true;
+        },
+      },
+      now: new Date('2026-08-08T12:00:00Z'),
+    });
+
+    expect(result).toEqual({
+      authorized: false,
+      reason: 'This control is unavailable here.',
+    });
+    expect(claims).toBe(0);
+  });
+
   it('allows the first owned, current component callback and blocks a duplicate', async () => {
     const claimed = new Set<string>();
     const repository = {
