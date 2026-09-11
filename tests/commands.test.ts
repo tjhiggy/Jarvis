@@ -15,6 +15,7 @@ import {
 import { isAllowedChannel } from '../src/discord/access.js';
 import { ReminderServiceError } from '../src/reminders/reminder-service.js';
 import type { ReminderView } from '../src/reminders/reminder-types.js';
+import { GitHubServiceError } from '../src/github/github-service.js';
 
 const safeMentions = { parse: [], repliedUser: false };
 
@@ -1795,6 +1796,368 @@ describe('handleCommand', () => {
       allowedMentions: safeMentions,
     });
   });
+
+  it('keeps /knowledge administration administrator-only and refuses to guess', async () => {
+    const approve = vi.fn(async () => true);
+    const search = vi.fn(async () => []);
+    const knowledge = {
+      entries: [
+        {
+          id: 'rules',
+          title: 'Crew rules',
+          content: 'Do not leak the captain override phrase.',
+          source: 'captains-quarters',
+          approved: true,
+          updatedAt: '2026-08-01T00:00:00Z',
+        },
+      ],
+      search: (query: string) =>
+        query.includes('rules')
+          ? [
+              {
+                id: 'rules',
+                title: 'Crew rules',
+                content: 'Be excellent.',
+                source: 'captains-quarters',
+                updatedAt: '2026-08-01T00:00:00Z',
+              },
+            ]
+          : [],
+      get: () => undefined,
+    };
+    const knowledgeStore = {
+      listForAdmin: vi.fn(async () => [
+        { id: 'rules', title: 'Crew rules', approved: true, active: true },
+      ]),
+      approve,
+      revoke: vi.fn(async () => false),
+      search,
+    };
+    const configured = {
+      ...dependencies(),
+      knowledge,
+      knowledgeStore,
+      config: {
+        ...dependencies().config,
+        engagement: engagementConfig(),
+      },
+    } as unknown as CommandDependencies;
+
+    const dm = interaction({
+      commandName: 'knowledge',
+      subcommand: 'query',
+      guildId: null,
+      values: { query: 'rules' },
+    });
+    await handleCommand(dm.interaction, configured);
+    const denied = interaction({
+      commandName: 'knowledge',
+      subcommand: 'approve',
+      values: { id: 'rules' },
+    });
+    await handleCommand(denied.interaction, configured);
+    const listed = interaction({
+      commandName: 'knowledge',
+      subcommand: 'list',
+      roleIds: ['admin-role'],
+    });
+    await handleCommand(listed.interaction, configured);
+    const miss = interaction({
+      commandName: 'knowledge',
+      subcommand: 'query',
+      values: { query: 'secret override' },
+    });
+    await handleCommand(miss.interaction, configured);
+
+    expect(approve).not.toHaveBeenCalled();
+    expect(denied.replies[0]).toMatchObject({
+      content: expect.stringMatching(/administrators can manage/i),
+      ephemeral: true,
+    });
+    expect(listed.replies[0]?.content).toMatch(/Crew rules \[active]/);
+    expect(listed.replies[0]?.content).not.toContain(
+      'Do not leak the captain override phrase.',
+    );
+    expect(miss.replies[0]).toMatchObject({
+      content: expect.stringMatching(/will not guess/i),
+      ephemeral: true,
+    });
+    expect(dm.replies[0]?.content).toMatch(/only in a server channel/i);
+    expect(search).toHaveBeenCalled();
+  });
+
+  it('masks destination IDs and omits secrets on administrator /config', async () => {
+    const configured = {
+      ...dependencies(),
+      config: {
+        ...dependencies().config,
+        engagement: engagementConfig({
+          channels: {
+            introductionId: '111111111111111111',
+            suggestionId: '222222222222222222',
+            eventId: '333333333333333333',
+            recapId: '444444444444444444',
+            activityId: '555555555555555555',
+            birthdayId: '666666666666666666',
+            rssId: '777777777777777777',
+          },
+        }),
+      },
+    } as unknown as CommandDependencies;
+
+    const denied = interaction({ commandName: 'config' });
+    await handleCommand(denied.interaction, configured);
+    const allowed = interaction({
+      commandName: 'config',
+      roleIds: ['admin-role'],
+    });
+    await handleCommand(allowed.interaction, configured);
+    const dm = interaction({ commandName: 'config', guildId: null });
+    await handleCommand(dm.interaction, configured);
+
+    expect(denied.replies[0]).toMatchObject({
+      content: expect.stringMatching(/restricted to configured/i),
+      ephemeral: true,
+    });
+    expect(allowed.replies[0]?.content).toContain('introductions: …1111');
+    expect(allowed.replies[0]?.content).toContain(
+      'Secrets and tokens are intentionally omitted.',
+    );
+    expect(allowed.replies[0]?.content).not.toContain('discord-token');
+    expect(allowed.replies[0]?.content).not.toContain('111111111111111111');
+    expect(dm.replies[0]?.content).toMatch(/only in a server channel/i);
+  });
+
+  it('maps GitHub read failures without guessing or leaking internals', async () => {
+    const issue = vi.fn(async (number: number) => {
+      if (number === 404) {
+        throw new GitHubServiceError('not-found', 'issue body from GitHub');
+      }
+      throw new GitHubServiceError('forbidden', 'token scope missing');
+    });
+    const configured = {
+      ...dependencies(),
+      github: {
+        service: {
+          repository: async () => ({
+            fullName: 'tjhiggy/Jarvis',
+            description: 'bot',
+            stars: 1,
+            openIssues: 0,
+            defaultBranch: 'main',
+            url: 'https://github.com/tjhiggy/Jarvis',
+          }),
+          issue,
+          pullRequest: issue,
+        },
+      },
+    } as unknown as CommandDependencies;
+
+    const missing = interaction({
+      commandName: 'github',
+      subcommand: 'repository',
+    });
+    await handleCommand(missing.interaction, dependencies());
+    const invalid = interaction({
+      commandName: 'github',
+      subcommand: 'issue',
+      integers: { number: 0 },
+    });
+    await handleCommand(invalid.interaction, configured);
+    const absent = interaction({
+      commandName: 'github',
+      subcommand: 'issue',
+      integers: { number: 404 },
+    });
+    await handleCommand(absent.interaction, configured);
+    const forbidden = interaction({
+      commandName: 'github',
+      subcommand: 'issue',
+      integers: { number: 7 },
+    });
+    await handleCommand(forbidden.interaction, configured);
+
+    expect(missing.replies[0]?.content).toMatch(/not configured/i);
+    expect(invalid.replies[0]?.content).toMatch(/valid GitHub issue/i);
+    expect(absent.replies[0]?.content).toMatch(/was not found/i);
+    expect(forbidden.replies[0]?.content).toMatch(/will not guess/i);
+    expect(JSON.stringify([absent.replies, forbidden.replies])).not.toContain(
+      'token scope',
+    );
+  });
+
+  it('does not guess Sleeper standings, matchups, or missing player input', async () => {
+    const getStandings = vi.fn(async () => {
+      throw new Error('Sleeper 500 body');
+    });
+    const getMatchups = vi.fn(async () => [
+      {
+        rosterId: 1,
+        matchupId: null,
+        points: 0,
+        ownerId: 'owner-1',
+        ownerName: 'Crew',
+      },
+    ]);
+    const configured = {
+      ...dependencies(),
+      sleeper: {
+        leagueId: 'league-1',
+        service: {
+          getStandings,
+          getMatchups,
+        },
+      },
+    } as unknown as CommandDependencies;
+
+    const unconfigured = interaction({
+      commandName: 'fantasy',
+      subcommand: 'standings',
+    });
+    await handleCommand(unconfigured.interaction, dependencies());
+    const failed = interaction({
+      commandName: 'fantasy',
+      subcommand: 'standings',
+    });
+    await handleCommand(failed.interaction, configured);
+    const predraft = interaction({
+      commandName: 'fantasy',
+      subcommand: 'matchups',
+      integers: { week: 1 },
+    });
+    await handleCommand(predraft.interaction, configured);
+    const player = interaction({
+      commandName: 'fantasy',
+      subcommand: 'player',
+    });
+    await handleCommand(player.interaction, configured);
+
+    expect(unconfigured.replies[0]?.content).toMatch(/not configured/i);
+    expect(failed.replies[0]?.content).toMatch(/will not guess/i);
+    expect(failed.replies[0]?.content).not.toContain('Sleeper 500');
+    expect(predraft.replies[0]?.content).toMatch(/not guessed/i);
+    expect(player.replies[0]?.content).toMatch(/Player ID and season/i);
+  });
+
+  it('keeps catch-me-up, channel-summary, and server-search on the allowlist', async () => {
+    const getRecent = vi.fn(async () => [
+      {
+        id: 1,
+        guildId: 'guild-1',
+        conversationId: 'allowed',
+        userId: 'user-1',
+        role: 'user' as const,
+        content: 'Ping @everyone and <@&123>',
+        timestamp: new Date(),
+      },
+    ]);
+    const configured = {
+      ...dependencies({ allowedChannelIds: new Set(['allowed']) }),
+      conversationHistory: { getRecent },
+    };
+
+    const blocked = interaction({
+      commandName: 'catch-me-up',
+      channelId: 'off-limits',
+    });
+    await handleCommand(blocked.interaction, configured);
+    const summary = interaction({
+      commandName: 'channel-summary',
+      channelId: 'allowed',
+    });
+    await handleCommand(summary.interaction, configured);
+    const catchUp = interaction({
+      commandName: 'catch-me-up',
+      channelId: 'allowed',
+    });
+    await handleCommand(catchUp.interaction, configured);
+    const shortQuery = interaction({
+      commandName: 'server-search',
+      channelId: 'allowed',
+      values: { query: 'a' },
+    });
+    await handleCommand(shortQuery.interaction, configured);
+    const noMatch = interaction({
+      commandName: 'server-search',
+      channelId: 'allowed',
+      values: { query: 'taxes' },
+    });
+    await handleCommand(noMatch.interaction, configured);
+
+    expect(blocked.replies[0]?.content).toMatch(/not available for requests/i);
+    expect(getRecent).not.toHaveBeenCalledWith(
+      'guild-1',
+      'off-limits',
+      expect.anything(),
+    );
+    expect(catchUp.replies[0]?.content).toContain('@\u200beveryone');
+    expect(catchUp.replies[0]?.content).toContain('<@\u200b&123>');
+    expect(summary.replies[0]?.content).toMatch(/channel summary/i);
+    expect(shortQuery.replies[0]?.content).toMatch(
+      /unavailable for that request/i,
+    );
+    expect(noMatch.replies[0]?.content).toMatch(/will not guess/i);
+    expect(
+      [catchUp, summary, shortQuery, noMatch].every(
+        (fake) => fake.replies[0]?.ephemeral === true,
+      ),
+    ).toBe(true);
+  });
+
+  it('fails closed when daily rewards, streaks, roles, or RSS are unconfigured', async () => {
+    const daily = interaction({ commandName: 'daily' });
+    await handleCommand(daily.interaction, dependencies());
+    const streak = interaction({ commandName: 'streak' });
+    await handleCommand(streak.interaction, dependencies());
+    const roles = interaction({ commandName: 'roles' });
+    await handleCommand(roles.interaction, dependencies());
+    const rss = interaction({ commandName: 'rss', subcommand: 'list' });
+    await handleCommand(rss.interaction, dependencies());
+    const claimed = interaction({ commandName: 'daily' });
+    await handleCommand(claimed.interaction, {
+      ...dependencies(),
+      dailyRewardService: {
+        claim: async () => ({ awarded: true, amount: 10, day: '2026-09-11' }),
+      },
+    } as unknown as CommandDependencies);
+    const already = interaction({ commandName: 'daily' });
+    await handleCommand(already.interaction, {
+      ...dependencies(),
+      dailyRewardService: {
+        claim: async () => ({ awarded: false, amount: 0, day: '2026-09-11' }),
+      },
+    } as unknown as CommandDependencies);
+
+    expect(daily.replies[0]?.content).toMatch(/not configured/i);
+    expect(streak.replies[0]?.content).toMatch(/not configured/i);
+    expect(roles.replies[0]?.content).toMatch(/not configured/i);
+    expect(rss.replies[0]?.content).toMatch(/not configured/i);
+    expect(claimed.replies[0]?.content).toMatch(/claimed: 10/i);
+    expect(already.replies[0]?.content).toMatch(/already been claimed/i);
+  });
+
+  it('posts a configured /roles select without granting Discord role authority itself', async () => {
+    const fake = interaction({ commandName: 'roles' });
+    await handleCommand(fake.interaction, {
+      ...dependencies(),
+      config: {
+        ...dependencies().config,
+        engagement: engagementConfig({
+          roleMenuChoices: [
+            {
+              value: 'games',
+              label: 'Games',
+              roleId: '123456789012345678',
+            },
+          ],
+        }),
+      },
+    } as unknown as CommandDependencies);
+
+    expect(JSON.stringify(fake.replies[0])).toContain('roles:v1:select');
+    expect(JSON.stringify(fake.replies[0])).toContain('games');
+    expect(JSON.stringify(fake.replies[0])).not.toContain('123456789012345678');
+  });
 });
 
 function interaction(
@@ -1808,15 +2171,8 @@ function interaction(
     topic: string | null;
     userId: string;
     values: Readonly<Record<string, string | null>>;
-    subcommand:
-      | 'set'
-      | 'list'
-      | 'cancel'
-      | 'shared-set'
-      | 'status'
-      | 'enable'
-      | 'disable'
-      | 'generate';
+    subcommand: string;
+    integers: Readonly<Record<string, number | null>>;
     roleIds: readonly string[];
   }> = {},
 ): {
@@ -1869,6 +2225,10 @@ function interaction(
             ? prompt
             : null;
         },
+        getInteger: (name) =>
+          overrides.integers !== undefined && name in overrides.integers
+            ? (overrides.integers[name] ?? null)
+            : null,
       },
       deferReply: async (payload) => {
         deferred.push(payload);
@@ -1971,6 +2331,30 @@ function dependencies(
     ...(overrides.pollHealth === undefined
       ? {}
       : { pollHealth: overrides.pollHealth }),
+  };
+}
+
+function engagementConfig(
+  overrides: Partial<
+    NonNullable<CommandDependencies['config']['engagement']>
+  > = {},
+): NonNullable<CommandDependencies['config']['engagement']> {
+  return {
+    enabled: true,
+    channels: {
+      introductionId: '111111111111111111',
+      suggestionId: '222222222222222222',
+      eventId: '333333333333333333',
+      recapId: '444444444444444444',
+      activityId: '555555555555555555',
+      birthdayId: '666666666666666666',
+      rssId: '777777777777777777',
+    },
+    rssAllowedHosts: ['news.example.com'],
+    recapSchedule: '',
+    retentionDays: 30,
+    adminRoleIds: new Set(['admin-role']),
+    ...overrides,
   };
 }
 
