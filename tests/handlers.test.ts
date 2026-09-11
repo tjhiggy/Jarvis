@@ -333,6 +333,135 @@ describe('Discord event routing', () => {
 
     expect(handled).toBe(0);
   });
+
+  it('assigns and removes only a configured crew role from a string select', async () => {
+    const assigned = new Set<string>();
+    const added: string[] = [];
+    const removed: string[] = [];
+    const replies: ReplyPayload[] = [];
+    const member = {
+      roles: {
+        cache: { has: (roleId: string) => assigned.has(roleId) },
+        add: async (roleId: string) => {
+          added.push(roleId);
+          assigned.add(roleId);
+        },
+        remove: async (roleId: string) => {
+          removed.push(roleId);
+          assigned.delete(roleId);
+        },
+      },
+    };
+    const select = (value: string) => ({
+      isChatInputCommand: () => false,
+      isButton: () => false,
+      isStringSelectMenu: () => true,
+      customId: 'roles:v1:select',
+      values: [value],
+      guildId: 'guild-1',
+      user: { id: 'user-1' },
+      member,
+      reply: async (payload: ReplyPayload) => {
+        replies.push(payload);
+      },
+    });
+    const handlers = createDiscordHandlers(
+      dependencies({
+        roleMenuChoices: [
+          {
+            value: 'games',
+            label: 'Games',
+            roleId: '123456789012345678',
+          },
+        ],
+      }),
+    );
+
+    await handlers.onInteractionCreate(select('games'));
+    await handlers.onInteractionCreate(select('games'));
+
+    expect(added).toEqual(['123456789012345678']);
+    expect(removed).toEqual(['123456789012345678']);
+    expect(replies).toEqual([
+      expect.objectContaining({
+        content: 'Crew role **Games** assigned.',
+        ephemeral: true,
+        allowedMentions: { parse: [], repliedUser: false },
+      }),
+      expect.objectContaining({
+        content: 'Crew role **Games** removed.',
+        ephemeral: true,
+        allowedMentions: { parse: [], repliedUser: false },
+      }),
+    ]);
+  });
+
+  it('fails closed for DMs, unknown values, and Discord role-update errors', async () => {
+    const added: string[] = [];
+    const replies: ReplyPayload[] = [];
+    const handlers = createDiscordHandlers(
+      dependencies({
+        roleMenuChoices: [
+          {
+            value: 'games',
+            label: 'Games',
+            roleId: '123456789012345678',
+          },
+        ],
+      }),
+    );
+    const select = (overrides: {
+      guildId?: string | null;
+      values?: readonly string[];
+      customId?: string;
+      add?: () => Promise<unknown>;
+    }) => ({
+      isChatInputCommand: () => false,
+      isButton: () => false,
+      isStringSelectMenu: () => true,
+      customId: overrides.customId ?? 'roles:v1:select',
+      values: overrides.values ?? ['games'],
+      guildId: overrides.guildId === undefined ? 'guild-1' : overrides.guildId,
+      user: { id: 'user-1' },
+      member: {
+        roles: {
+          cache: { has: () => false },
+          add:
+            overrides.add ??
+            (async (roleId: string) => {
+              added.push(roleId);
+            }),
+          remove: async () => undefined,
+        },
+      },
+      reply: async (payload: ReplyPayload) => {
+        replies.push(payload);
+      },
+    });
+
+    await handlers.onInteractionCreate(select({ guildId: null }));
+    await handlers.onInteractionCreate(select({ values: ['admin'] }));
+    await handlers.onInteractionCreate(
+      select({ customId: 'poll:v1:abcdef234567' }),
+    );
+    await handlers.onInteractionCreate(
+      select({
+        add: async () => {
+          throw new Error('Missing Permissions on @everyone');
+        },
+      }),
+    );
+
+    expect(added).toEqual([]);
+    expect(replies.map((reply) => reply.content)).toEqual([
+      'This crew role menu is unavailable.',
+      'This crew role menu is unavailable.',
+      'This crew role menu is unavailable.',
+      'Jarvis could not update that crew role. Ask a MuthaShip administrator to verify role order and permissions.',
+    ]);
+    expect(JSON.stringify(replies)).not.toContain('Missing Permissions');
+    expect(replies.every((reply) => reply.ephemeral === true)).toBe(true);
+  });
 });
 
 function message(
@@ -394,6 +523,7 @@ function dependencies(
     conversationService: MessageHandlerDependencies['conversationService'];
     handleCommand: MessageHandlerDependencies['handleCommand'];
     pollController: MessageHandlerDependencies['pollController'];
+    roleMenuChoices: MessageHandlerDependencies['roleMenuChoices'];
   }> = {},
 ): MessageHandlerDependencies {
   return {
@@ -408,6 +538,9 @@ function dependencies(
     ...(overrides.pollController === undefined
       ? {}
       : { pollController: overrides.pollController }),
+    ...(overrides.roleMenuChoices === undefined
+      ? {}
+      : { roleMenuChoices: overrides.roleMenuChoices }),
   };
 }
 

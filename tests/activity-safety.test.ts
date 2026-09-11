@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   validateTriviaQuestion,
   TriviaService,
+  TriviaServiceError,
 } from '../src/engagement/activity.js';
 import { handleTriviaCommand } from '../src/commands/activity.js';
 
@@ -177,5 +178,102 @@ describe('trivia safety', () => {
         ],
       },
     ]);
+  });
+
+  it('fails closed in DMs and outside the activity channel without starting a round', async () => {
+    const starts: string[] = [];
+    const service = {
+      start: async () => {
+        starts.push('start');
+        return {
+          id: 'round-1',
+          question: { prompt: 'Question?', answers: ['A', 'B'] },
+        };
+      },
+    };
+    const dmReplies: string[] = [];
+    await handleTriviaCommand(
+      {
+        guildId: null,
+        channelId: 'activity-channel',
+        user: { id: 'member' },
+        options: { getSubcommand: () => 'start' },
+        reply: async (payload: { content?: string }) => {
+          dmReplies.push(payload.content ?? '');
+        },
+      },
+      {
+        enabled: true,
+        channelId: 'activity-channel',
+        service: service as never,
+      },
+    );
+    const wrongChannel: string[] = [];
+    await handleTriviaCommand(
+      {
+        guildId: 'guild-a',
+        channelId: 'other-channel',
+        user: { id: 'member' },
+        options: { getSubcommand: () => 'start' },
+        reply: async (payload: { content?: string }) => {
+          wrongChannel.push(payload.content ?? '');
+        },
+      },
+      {
+        enabled: true,
+        channelId: 'activity-channel',
+        service: service as never,
+      },
+    );
+    expect(starts).toEqual([]);
+    expect(dmReplies[0]).toMatch(/only in a server channel/i);
+    expect(wrongChannel[0]).toMatch(/not configured in this channel/i);
+  });
+
+  it('maps start failures without leaking internals or posting a public card', async () => {
+    const replies: Array<{ content?: string; ephemeral?: boolean }> = [];
+    const interact = () => ({
+      guildId: 'guild-a',
+      channelId: 'activity-channel',
+      user: { id: 'member' },
+      options: { getSubcommand: () => 'start' },
+      reply: async (payload: { content?: string; ephemeral?: boolean }) => {
+        replies.push(payload);
+      },
+    });
+    await handleTriviaCommand(interact(), {
+      enabled: true,
+      channelId: 'activity-channel',
+      service: {
+        start: async () => {
+          throw new TriviaServiceError('already-open');
+        },
+      } as never,
+    });
+    await handleTriviaCommand(interact(), {
+      enabled: true,
+      channelId: 'activity-channel',
+      service: {
+        start: async () => {
+          throw new TriviaServiceError('opted-out');
+        },
+      } as never,
+    });
+    await handleTriviaCommand(interact(), {
+      enabled: true,
+      channelId: 'activity-channel',
+      service: {
+        start: async () => {
+          throw new Error('sqlite UNIQUE constraint failed: trivia_rounds.id');
+        },
+      } as never,
+    });
+    expect(replies.map((reply) => reply.content)).toEqual([
+      'A trivia round is already open here. Let it finish first.',
+      'You have opted out of engagement collection.',
+      'Trivia could not start. Please retry later.',
+    ]);
+    expect(replies.every((reply) => reply.ephemeral === true)).toBe(true);
+    expect(JSON.stringify(replies)).not.toContain('sqlite');
   });
 });
