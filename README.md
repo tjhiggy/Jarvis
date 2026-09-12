@@ -300,21 +300,24 @@ be transformed before Discord receives the text.
 
 ## Docker
 
-Register commands from the host, then follow
-[Deployment](docs/DEPLOYMENT.md) for the hardened Compose workflow. The
-container exposes no inbound port, runs as a non-root user with a read-only root
-filesystem, includes the FAQ catalog in its read-only `/app/config` tree, and
-persists SQLite data in the `jarvis-data` named volume.
+Linux Compose is a first-class path. Register commands from the host or CI
+(`tsx` is not in the runtime image), then follow
+[Docker deployment](docs/DOCKER_DEPLOYMENT.md). The container exposes no inbound
+port, runs as a non-root user with a read-only root filesystem, includes the
+FAQ catalog in its read-only `/app/config` tree, and persists SQLite data in
+the `jarvis-data` named volume. One replica only; never `--scale`.
+`docker compose down --volumes` deletes that volume.
 
-If Jarvis runs in Docker Desktop while Ollama runs on the host, set:
+The default Compose profile reaches host Ollama at
+`http://host.docker.internal:11434`. Hosted Linux uses
+`docker-compose.hosted.yml` (`AI_PROVIDER=openai`, no `extra_hosts`, no
+`OLLAMA_*`) and takes secrets from the environment. A repo-local `.env` is
+not required for hosted `compose config`. Native Jarvis still uses
+`http://127.0.0.1:11434`. Do not publish Ollama, do not publish Command Deck,
+and do not run native and containerized Jarvis at the same time unless
+duplicate replies are somehow your product strategy.
 
-```dotenv
-OLLAMA_BASE_URL=http://host.docker.internal:11434
-```
-
-Native Jarvis uses `http://127.0.0.1:11434`. Do not publish Ollama to the
-internet, and do not run native and containerized Jarvis at the same time
-unless duplicate replies are somehow your product strategy.
+Volume backup and restore: [Docker volume backup](docs/DOCKER_VOLUME_BACKUP.md).
 
 ## Security and data
 
@@ -538,6 +541,8 @@ instead of guessing.
 | [Discord setup](docs/DISCORD_SETUP.md)                                   | Application creation, intents, minimum permissions, installation, and command registration  |
 | [Development](docs/DEVELOPMENT.md)                                       | Local workflows, repository map, scripts, testing, and change boundaries                    |
 | [Deployment](docs/DEPLOYMENT.md)                                         | Native Windows and Docker deployment, updates, backup, restore, and rollback                |
+| [Docker deployment](docs/DOCKER_DEPLOYMENT.md)                           | Linux Compose first-class path, hosted OpenAI overlay, replica guard, Command Deck tunnel   |
+| [Docker volume backup](docs/DOCKER_VOLUME_BACKUP.md)                     | Stop one replica, archive `jarvis-data`, restore, optional Litestream                       |
 | [Operations](docs/OPERATIONS.md)                                         | Health, logs, provider checks, retention, recovery, and outage handling                     |
 | [Platform recovery verification](docs/PLATFORM_RECOVERY_VERIFICATION.md) | Disposable recovery evidence, operator guidance, and linked focused defects                 |
 | [Troubleshooting](docs/TROUBLESHOOTING.md)                               | Safe diagnosis and recovery by symptom                                                      |

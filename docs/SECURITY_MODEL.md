@@ -73,6 +73,8 @@ the full normalized user prompt leaves the process as Tavily's search query.
 Tavily results are bounded, sanitized, untrusted evidence, not instructions.
 Docker administrators can inspect container environment values, so a production
 deployment should use the platform's approved secret-management boundary.
+Compose lists explicit keys and does not inject an entire `.env` file through
+`env_file`.
 
 The FAQ catalog is another trusted, operator-controlled local input.
 `FAQ_CATALOG_PATH` is read from the deployment environment, never from Discord.

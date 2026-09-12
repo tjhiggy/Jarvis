@@ -2,8 +2,9 @@
 
 Jarvis is one Node.js process with a local SQLite database. It receives Discord
 Gateway events over an outbound connection and does not expose an inbound web
-port. Native Windows is the primary deployment path. Docker is an optional
-alternative for hosts that already operate Docker Desktop.
+port. Native Windows remains a supported launch path. Linux Compose is a
+first-class Docker path; Docker Desktop is the Windows-hosted variant of the
+same files. See [Docker deployment](DOCKER_DEPLOYMENT.md).
 
 See [Configuration](CONFIGURATION.md) before deployment and
 [Discord setup](DISCORD_SETUP.md) before registering commands. Keep real values
@@ -141,23 +142,52 @@ model through the approved account workflow. Jarvis `/status` checks
 configuration after start; a non-sensitive `/ask` is the controlled
 end-to-end provider check.
 
-## Optional Docker deployment
+## Docker Compose deployment
 
-Docker Compose builds the Node 22 Debian image, runs as the unprivileged
-`jarvis` user, supplies `.env` at runtime, and mounts a named `jarvis-data`
-volume at `/app/data`. The container root filesystem is read-only; `/tmp` is a
-bounded non-executable tmpfs. No ports are published.
+Linux Compose and Docker Desktop share `docker-compose.yml`. The default
+profile is host Ollama (`host.docker.internal`). The hosted overlay
+(`docker-compose.hosted.yml`) sets `AI_PROVIDER=openai`, drops `extra_hosts`,
+and omits `OLLAMA_*`. Hosted runs take secrets from the process environment; a
+repo-local `.env` is not required. Compose lists explicit keys and does not
+use `env_file`.
 
-```powershell
+The stack is one replica (`container_name: jarvis`, `deploy.replicas: 1`).
+Never `docker compose up --scale`. Lease-fencing is crash/stale-worker
+recovery, not multi-process safety. Stamp `JARVIS_VERSION` and
+`JARVIS_COMMIT_SHA` at deploy time. Images are tagged with that commit SHA.
+The healthcheck is SQLite `SELECT 1` (and a loopback Command Deck probe when
+the console is enabled). No ports are published.
+
+```bash
+export JARVIS_VERSION=1.6.0
+export JARVIS_COMMIT_SHA="$(git rev-parse HEAD)"
 docker compose up --detach --build
 docker compose logs --follow jarvis
 ```
 
+```powershell
+$env:JARVIS_VERSION = "1.6.0"
+$env:JARVIS_COMMIT_SHA = (git rev-parse HEAD)
+docker compose up --detach --build
+docker compose logs --follow jarvis
+```
+
+Hosted OpenAI:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.hosted.yml up --detach --build
+```
+
 Compose sets `DATABASE_PATH=/app/data/discord-bot.db`. Preserve the named
 volume. `docker compose down` removes the container but keeps that volume;
-`docker compose down --volumes` deletes it and is not part of routine
-operations. When Docker Desktop uses an Ollama instance on the Windows host,
-set `OLLAMA_BASE_URL=http://host.docker.internal:11434`.
+`docker compose down --volumes` deletes it and is destructive. Local
+host-Ollama defaults to `OLLAMA_BASE_URL=http://host.docker.internal:11434`.
+Do not add an Ollama container. `register-commands` stays a host or CI job;
+the runtime image has no `tsx`. Command Deck stays on `127.0.0.1`; remote
+access is a netns-sharing tunnel sidecar, not a published port.
+
+See [Docker deployment](DOCKER_DEPLOYMENT.md) and
+[Volume backup and restore](DOCKER_VOLUME_BACKUP.md).
 
 ## Back up before upgrade
 
@@ -168,8 +198,8 @@ image. Stop the bot first so the backup captures a coherent database state.
 - Native: stop the Node process gracefully, then copy the configured database
   file and any SQLite companion files present in its directory to protected
   storage.
-- Docker: stop the Jarvis container, then use the organization's approved
-  Docker-volume backup procedure for `jarvis-data`.
+- Docker: stop the Jarvis container, then archive `jarvis-data` with the
+  procedure in [Volume backup and restore](DOCKER_VOLUME_BACKUP.md).
 
 Restrict backup access as tightly as production access. A backup is not a
 souvenir album for Discord history.

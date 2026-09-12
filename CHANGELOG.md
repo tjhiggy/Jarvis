@@ -6,7 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Linux Compose is a first-class Docker path with a hosted OpenAI overlay,
+  a real SQLite/Command Deck healthcheck, digest-pinned `node:22-bookworm-slim`,
+  commit-SHA image tags, deploy-time `JARVIS_VERSION` / `JARVIS_COMMIT_SHA`,
+  log rotation, `pids_limit`, and a `jarvis-data` volume backup runbook.
+
 ### Changed
+
+- Compose no longer requires a repo-local `.env` or injects that file through
+  `env_file`. Local host-Ollama remains the default profile; hosted Linux uses
+  the OpenAI overlay. Exactly one replica; never `--scale`.
 
 - Documented the MuthaShip Production RSS host allowlist and feed catalog:
   drop IGN, keep Xbox, PlayStation, PC Gamer, Steam News, Epic Games, and

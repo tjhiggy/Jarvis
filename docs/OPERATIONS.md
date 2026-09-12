@@ -109,9 +109,11 @@ edit SQLite by hand.
 
 ## Start and stop checks
 
-Before starting, select exactly one deployment path: native Windows or Docker.
-Verify the configured `.env` is available to that process, the configured
-database location is writable, and the selected AI provider is configured. For
+Before starting, select exactly one deployment path: native Windows, local
+Compose (host Ollama), or hosted Compose (OpenAI). Verify secrets are
+available to that process (a gitignored `.env` locally, or exported
+environment variables on hosted Linux), the configured database location is
+writable, and the selected AI provider is configured. For
 every deployment, also verify `FAQ_CATALOG_PATH` resolves to the approved local
 catalog. Jarvis reads but never modifies it; do not expose it through a
 Discord-writable path. The default Docker image already includes the catalog in
@@ -153,13 +155,18 @@ The `/faq` choices are part of the development-guild command definition. After
 deploying a release that changes the catalog or command set, an authorized
 operator must run:
 
+```bash
+npm run register-commands
+```
+
 ```powershell
 npm run register-commands
 ```
 
-Run it once against the intended `DISCORD_GUILD_ID`. Registration
-bulk-overwrites this application's command set in that guild and validates the
-catalog first, so it is a deployment action, not a health probe.
+Run it once against the intended `DISCORD_GUILD_ID` from a host or CI checkout
+that has Node 22 and `tsx`. The runtime image does not include that script.
+Registration bulk-overwrites this application's command set in that guild and
+validates the catalog first, so it is a deployment action, not a health probe.
 
 After registration and startup, manually verify `/faq`, one selected approved
 answer, the omitted-topic question listing, a request from a disallowed
@@ -298,10 +305,12 @@ the deployment. Stop the bot, copy the database using the procedure in
 
 To restore, stop Jarvis, retain the affected database as incident evidence
 under approved controls, put the approved backup at the configured
-`DATABASE_PATH` (or restore the Docker volume), confirm ownership and access,
-then start one process and run `/status`. A restore rolls conversation history
-back to the backup point. Treat it as an authorized recovery decision, not a
-casual undo button.
+`DATABASE_PATH` (or restore the Docker volume using
+[Volume backup and restore](DOCKER_VOLUME_BACKUP.md)), confirm ownership and
+access, then start exactly one process and run `/status`. A restore rolls
+conversation history back to the backup point. Treat it as an authorized
+recovery decision, not a casual undo button. `docker compose down --volumes`
+deletes `jarvis-data` and is destructive.
 
 ## Schema rollback classification
 

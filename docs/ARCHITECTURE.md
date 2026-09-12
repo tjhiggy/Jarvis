@@ -138,7 +138,10 @@ bounded cleanup; pending and claimed work remains durable for recovery.
 
 Delivery claims use `BEGIN IMMEDIATE`, a random lease token, and a five-minute
 lease. Completion or release must present that current token, so a stale worker
-cannot mark a reclaimed delivery complete. A scheduler evaluates policy before
+cannot mark a reclaimed delivery complete. Lease-fencing is crash and
+stale-worker recovery inside one process. It is not multi-replica safety.
+Compose keeps one replica (`container_name: jarvis`, `deploy.replicas: 1`);
+never `--scale`. A scheduler evaluates policy before
 preparation and again after claiming, immediately before Discord delivery.
 Failures release the claim with a bounded error category; a completed post is
 never retried. The application stops schedulers, drains active commands and
