@@ -15,6 +15,10 @@ import {
 import { isAllowedChannel } from '../src/discord/access.js';
 import { ReminderServiceError } from '../src/reminders/reminder-service.js';
 import type { ReminderView } from '../src/reminders/reminder-types.js';
+import {
+  BirthdayService,
+  type BirthdayRecord,
+} from '../src/engagement/birthdays.js';
 
 const safeMentions = { parse: [], repliedUser: false };
 
@@ -1742,6 +1746,224 @@ describe('handleCommand', () => {
     });
   });
 
+  it('keeps /birthday fail-closed in a DM or when the service is unconfigured', async () => {
+    const unconfigured = interaction({
+      commandName: 'birthday',
+      subcommand: 'set',
+      values: { date: '07-04' },
+    });
+    await handleCommand(unconfigured.interaction, dependencies());
+    expect(unconfigured.replies).toEqual([
+      expect.objectContaining({
+        content: 'Birthday features are not configured on the MuthaShip.',
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+
+    const { service, upsert } = birthdayHarness();
+    const dm = interaction({
+      commandName: 'birthday',
+      guildId: null,
+      subcommand: 'set',
+      values: { date: '07-04' },
+    });
+    await handleCommand(dm.interaction, {
+      ...dependencies(),
+      birthdayService: service,
+    });
+    expect(upsert).not.toHaveBeenCalled();
+    expect(dm.replies[0]).toEqual(
+      expect.objectContaining({
+        content: 'Birthday features are not configured on the MuthaShip.',
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+  });
+
+  it('rejects year-bearing or invalid birthday dates without persisting', async () => {
+    const { service, upsert } = birthdayHarness();
+    const deps = { ...dependencies(), birthdayService: service };
+
+    for (const date of ['1990-07-04', '02-31', '13-01', '']) {
+      const fake = interaction({
+        commandName: 'birthday',
+        subcommand: 'set',
+        values: { date },
+      });
+      await handleCommand(fake.interaction, deps);
+      expect(fake.replies[0]).toEqual(
+        expect.objectContaining({
+          content: 'Birthday must use valid MM-DD format. No year is stored.',
+          ephemeral: true,
+          allowedMentions: safeMentions,
+        }),
+      );
+      expect(JSON.stringify(fake.replies)).not.toMatch(/1990|sqlite|internal/i);
+    }
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('stores a personal birthday privately with UTC default and no year in replies', async () => {
+    const { service, upsert, get, remove } = birthdayHarness();
+    const deps = { ...dependencies(), birthdayService: service };
+
+    const created = interaction({
+      commandName: 'birthday',
+      subcommand: 'set',
+      values: { date: '7-4', timezone: '  ' },
+    });
+    await handleCommand(created.interaction, deps);
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        guildId: 'guild-1',
+        userId: 'user-1',
+        month: 7,
+        day: 4,
+        timezone: 'UTC',
+        enabled: true,
+      }),
+    );
+    expect(created.replies[0]).toEqual(
+      expect.objectContaining({
+        content:
+          'Your birthday is saved privately. Jarvis will announce it on the MuthaShip without revealing the date.',
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+    expect(created.replies[0]?.content).not.toMatch(/1990|07-04|7-4/);
+
+    get.mockResolvedValueOnce({
+      guildId: 'guild-1',
+      userId: 'user-1',
+      month: 7,
+      day: 4,
+      timezone: 'America/New_York',
+      enabled: true,
+      updatedAt: new Date('2026-07-04T12:00:00.000Z'),
+    });
+    const shown = interaction({
+      commandName: 'birthday',
+      subcommand: 'show',
+    });
+    await handleCommand(shown.interaction, deps);
+    expect(shown.replies[0]).toEqual(
+      expect.objectContaining({
+        content: 'Your birthday is saved as 07-04 (America/New_York).',
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+    expect(shown.replies[0]?.content).not.toMatch(/2026|year/i);
+
+    const missing = interaction({
+      commandName: 'birthday',
+      subcommand: 'show',
+    });
+    await handleCommand(missing.interaction, deps);
+    expect(missing.replies[0]?.content).toBe(
+      'You have not opted in to birthday announcements.',
+    );
+
+    const deleted = interaction({
+      commandName: 'birthday',
+      subcommand: 'delete',
+    });
+    await handleCommand(deleted.interaction, deps);
+    expect(remove).toHaveBeenCalledWith('guild-1', 'user-1');
+    expect(deleted.replies[0]).toEqual(
+      expect.objectContaining({
+        content: 'Your MuthaShip birthday has been deleted.',
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+  });
+
+  it('keeps /engagement proactive fail-closed when unconfigured and never posts from preview', async () => {
+    const unconfigured = interaction({
+      commandName: 'engagement',
+      subcommand: 'proactive',
+      values: { action: 'enable' },
+      roleIds: ['admin-role'],
+    });
+    await handleCommand(unconfigured.interaction, dependencies());
+    expect(unconfigured.replies).toEqual([
+      expect.objectContaining({
+        content: 'Proactive engagement is not configured on the MuthaShip.',
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    ]);
+
+    const setState = vi.fn(async () => undefined);
+    const preview = vi.fn(async () => '@everyone Crew check-in');
+    const status = vi.fn(async () => ({
+      state: 'paused' as const,
+      lastPostedAt: new Date('2026-09-01T12:00:00.000Z'),
+    }));
+    const configured = {
+      ...dependencies(),
+      proactiveService: { preview, setState, status },
+    } as unknown as CommandDependencies;
+
+    const previewed = interaction({
+      commandName: 'engagement',
+      subcommand: 'proactive',
+      values: { action: 'preview' },
+      roleIds: ['admin-role'],
+    });
+    await handleCommand(previewed.interaction, configured);
+    expect(setState).not.toHaveBeenCalled();
+    expect(previewed.replies[0]).toEqual(
+      expect.objectContaining({
+        content: expect.stringMatching(/Preview only\. Nothing was posted\./),
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+    expect(previewed.replies[0]?.content).not.toContain('@everyone');
+
+    const enabled = interaction({
+      commandName: 'engagement',
+      subcommand: 'proactive',
+      values: { action: 'enable' },
+      roleIds: ['admin-role'],
+    });
+    await handleCommand(enabled.interaction, configured);
+    expect(setState).toHaveBeenCalledWith('enabled');
+    expect(enabled.replies[0]?.content).toMatch(/enabled/i);
+    expect(enabled.replies[0]?.content).not.toMatch(/posted/i);
+
+    const paused = interaction({
+      commandName: 'engagement',
+      subcommand: 'proactive',
+      values: { action: 'pause' },
+      roleIds: ['admin-role'],
+    });
+    await handleCommand(paused.interaction, configured);
+    expect(setState).toHaveBeenCalledWith('paused');
+
+    const reported = interaction({
+      commandName: 'engagement',
+      subcommand: 'proactive',
+      values: { action: 'status' },
+      roleIds: ['admin-role'],
+    });
+    await handleCommand(reported.interaction, configured);
+    expect(reported.replies[0]?.content).toMatch(
+      /Proactive engagement: paused[\s\S]*2026-09-01T12:00:00.000Z/,
+    );
+    expect(reported.replies[0]).toEqual(
+      expect.objectContaining({
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      }),
+    );
+  });
+
   it('restricts image generation to configured administrators and channel', async () => {
     const generate = vi.fn(async () => ({
       bytes: Buffer.from('png'),
@@ -1816,7 +2038,10 @@ function interaction(
       | 'status'
       | 'enable'
       | 'disable'
-      | 'generate';
+      | 'generate'
+      | 'show'
+      | 'delete'
+      | 'proactive';
     roleIds: readonly string[];
   }> = {},
 ): {
@@ -2054,6 +2279,24 @@ function expectSafePublicChunks(
     });
     expect(payload.content?.length).toBeLessThanOrEqual(2_000);
   }
+}
+
+function birthdayHarness() {
+  const upsert = vi.fn(async (value: BirthdayRecord) => value);
+  const get = vi.fn(async (): Promise<BirthdayRecord | undefined> => undefined);
+  const remove = vi.fn(async () => true);
+  return {
+    service: new BirthdayService({
+      get,
+      upsert,
+      delete: remove,
+      due: vi.fn(),
+      claimAnnouncement: vi.fn(),
+    }),
+    upsert,
+    get,
+    remove,
+  };
 }
 
 function faqDependencies(

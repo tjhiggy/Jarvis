@@ -73,6 +73,75 @@ describe('handleNotificationCommand', () => {
     });
   });
 
+  it('stays private in a DM or blank guild and does not persist', async () => {
+    const store = preferenceStore();
+    for (const guildId of [null, '   ']) {
+      const request = interaction('enable', 'event_reminder');
+      request.value.guildId = guildId;
+      await handleNotificationCommand(request.value, { store });
+      expect(store.setMemberPreference).not.toHaveBeenCalled();
+      expect(request.reply).toHaveBeenCalledWith({
+        content:
+          'Notification preferences are available only in a MuthaShip server.',
+        ephemeral: true,
+        allowedMentions: safeMentions,
+      });
+    }
+  });
+
+  it('rejects an invalid category or action without persisting', async () => {
+    const store = preferenceStore();
+    const unknown = interaction('enable', 'trivia');
+    await handleNotificationCommand(unknown.value, { store });
+    expect(store.setMemberPreference).not.toHaveBeenCalled();
+    expect(unknown.reply).toHaveBeenCalledWith({
+      content: 'Choose a valid notification category.',
+      ephemeral: true,
+      allowedMentions: safeMentions,
+    });
+
+    const publicCategory = interaction('enable', 'proactive');
+    await handleNotificationCommand(publicCategory.value, { store });
+    expect(store.setMemberPreference).not.toHaveBeenCalled();
+    expect(publicCategory.reply).toHaveBeenCalledWith({
+      content:
+        'That category is a public channel broadcast, so a personal toggle would not hide it. Ask a MuthaShip administrator to pause or move the broadcast instead.',
+      ephemeral: true,
+      allowedMentions: safeMentions,
+    });
+
+    const unknownAction = interaction('toggle', 'birthday');
+    await handleNotificationCommand(unknownAction.value, { store });
+    expect(store.setMemberPreference).not.toHaveBeenCalled();
+    expect(unknownAction.reply).toHaveBeenCalledWith({
+      content: 'Choose a valid notification action.',
+      ephemeral: true,
+      allowedMentions: safeMentions,
+    });
+  });
+
+  it('persists a birthday disable choice privately', async () => {
+    const request = interaction('disable', 'birthday');
+    const store = preferenceStore();
+    const now = new Date('2026-09-12T10:00:00.000Z');
+
+    await handleNotificationCommand(request.value, { store, now: () => now });
+
+    expect(store.setMemberPreference).toHaveBeenCalledWith({
+      serverId: 'server-1',
+      userId: 'crew-member-1',
+      category: 'birthday',
+      enabled: false,
+      updatedAt: now,
+    });
+    expect(request.reply).toHaveBeenCalledWith({
+      content:
+        'Birthday mentions are now disabled for you on this MuthaShip server.',
+      ephemeral: true,
+      allowedMentions: safeMentions,
+    });
+  });
+
   it('returns a generic private recovery message when storage fails', async () => {
     const request = interaction('disable', 'birthday');
     const store = preferenceStore({
@@ -94,7 +163,7 @@ function interaction(action: string, category?: string, bot = false) {
   const reply = vi.fn().mockResolvedValue(undefined);
   return {
     value: {
-      guildId: 'server-1',
+      guildId: 'server-1' as string | null,
       user: { id: 'crew-member-1', bot },
       options: {
         getSubcommand: () => action,
