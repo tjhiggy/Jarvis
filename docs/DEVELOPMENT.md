@@ -46,20 +46,23 @@ The registration command changes this application's command set in the configure
 
 ## Repository layout
 
-| Path                            | Purpose                                                                      |
-| ------------------------------- | ---------------------------------------------------------------------------- |
-| `src/index.ts`                  | Application composition and lifecycle.                                       |
-| `src/commands/`                 | Slash-command definitions and handlers.                                      |
-| `src/config/`                   | Environment parsing and trusted persona loading.                             |
-| `src/discord/`                  | Gateway-event normalization, access checks, and safe delivery.               |
-| `src/services/`                 | Conversation policy, coordination, history, and provider orchestration.      |
-| `src/openai/` and `src/ollama/` | Provider adapters behind `AIService`.                                        |
-| `src/search/`                   | Optional Tavily grounding wrapper.                                           |
-| `src/storage/`                  | `ConversationStore` contract and SQLite adapter.                             |
-| `src/security/`                 | Event de-duplication and rate limiting.                                      |
-| `tests/`                        | Vitest coverage for runtime, configuration, adapters, storage, and controls. |
-| `scripts/register-commands.ts`  | Explicit development-guild command registration.                             |
-| `config/jarvis-persona.md`      | Operator-controlled persona content loaded at startup.                       |
+| Path                             | Purpose                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| `src/index.ts`                   | Application composition and lifecycle.                                          |
+| `src/commands/`                  | Slash-command definitions and handlers.                                         |
+| `src/config/`                    | Environment parsing and trusted persona loading.                                |
+| `src/discord/`                   | Gateway-event normalization, access checks, and safe delivery.                  |
+| `src/services/`                  | Conversation policy, coordination, history, and provider orchestration.         |
+| `src/openai/` and `src/ollama/`  | Provider adapters behind `AIService`.                                           |
+| `src/search/`                    | Optional Tavily grounding wrapper.                                              |
+| `src/storage/`                   | `ConversationStore` contract and SQLite adapter.                                |
+| `src/security/`                  | Event de-duplication and rate limiting.                                         |
+| `tests/`                         | Vitest coverage for runtime, configuration, adapters, storage, and controls.    |
+| `scripts/register-commands.ts`   | Explicit development-guild command registration (host or CI; not in the image). |
+| `scripts/docker-healthcheck.mjs` | Container healthcheck: SQLite `SELECT 1`, optional Command Deck loopback.       |
+| `docker-compose.yml`             | Local/default Compose: one replica, host Ollama.                                |
+| `docker-compose.hosted.yml`      | Hosted overlay: OpenAI, no `extra_hosts`, no `OLLAMA_*`.                        |
+| `config/jarvis-persona.md`       | Operator-controlled persona content loaded at startup.                          |
 
 ## Tests and quality checks
 

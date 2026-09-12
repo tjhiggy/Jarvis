@@ -126,8 +126,10 @@ Docker is targeting the wrong host endpoint.
 
 **Safe diagnosis.** For native deployment, verify the configured endpoint and
 model against the local Ollama inventory using its supported operator workflow.
-For Docker Desktop with host Ollama, verify
-`OLLAMA_BASE_URL=http://host.docker.internal:11434`.
+For Compose with host Ollama (Linux or Docker Desktop), verify
+`OLLAMA_BASE_URL=http://host.docker.internal:11434`. Hosted Compose uses
+`AI_PROVIDER=openai` and does not set `OLLAMA_*`. Do not add an Ollama
+container to the hosted stack.
 
 **Resolution.** Start Ollama using its supported workflow, pull the configured
 model, correct the URL or model value, and restart Jarvis. Do not publish the

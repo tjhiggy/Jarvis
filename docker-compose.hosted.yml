@@ -1,27 +1,17 @@
-name: jarvis
-
-# Local / default profile: host Ollama via host.docker.internal.
-# Hosted OpenAI: docker compose -f docker-compose.yml -f docker-compose.hosted.yml
+# Hosted overlay. Requires Compose v2.24+ for !reset / !override.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.hosted.yml up --detach --build
 #
-# Single-replica guard: container_name prevents a second container.
-# deploy.replicas: 1 documents the cap. Never `docker compose up --scale`.
-# Lease-fencing is crash/stale-worker recovery, not multi-process safety.
+# AI_PROVIDER=openai. No extra_hosts. No OLLAMA_* variables.
+# Do not add an Ollama service. Do not publish ports. Never --scale.
 
 services:
   jarvis:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        JARVIS_VERSION: ${JARVIS_VERSION:-development}
-        JARVIS_COMMIT_SHA: ${JARVIS_COMMIT_SHA:-development}
-    image: jarvis-discord-bot:${JARVIS_COMMIT_SHA:-local}
-    container_name: jarvis
-    environment:
+    extra_hosts: !reset
+    environment: !override
       - DATABASE_PATH=/app/data/discord-bot.db
       - NODE_ENV=production
-      - AI_PROVIDER=${AI_PROVIDER:-ollama}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - AI_PROVIDER=openai
       - JARVIS_VERSION
       - JARVIS_COMMIT_SHA
       - JARVIS_BUILD_TIMESTAMP
@@ -33,9 +23,6 @@ services:
       - OPENAI_MODEL
       - OPENAI_TIMEOUT_MS
       - OPENAI_MAX_RETRIES
-      - OLLAMA_MODEL
-      - OLLAMA_TIMEOUT_MS
-      - OLLAMA_MAX_RETRIES
       - TAVILY_API_KEY
       - WEB_SEARCH_TIMEOUT_MS
       - WEB_SEARCH_CACHE_TTL_MS
@@ -94,36 +81,3 @@ services:
       - COMMAND_DECK_API_RATE_LIMIT
       - COMMAND_DECK_API_WINDOW_SECONDS
       - COMMAND_DECK_API_MAX_CLOCK_SKEW_SECONDS
-    read_only: true
-    init: true
-    restart: unless-stopped
-    mem_limit: 768m
-    cpus: 1.5
-    pids_limit: 256
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: '5'
-    deploy:
-      replicas: 1
-    healthcheck:
-      test: ['CMD', 'node', 'scripts/docker-healthcheck.mjs']
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,size=64m
-    volumes:
-      - jarvis-data:/app/data
-    stop_grace_period: 30s
-
-volumes:
-  jarvis-data:

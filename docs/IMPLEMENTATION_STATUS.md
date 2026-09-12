@@ -53,7 +53,7 @@ ledger for automated versus operator-owned evidence.
 | Economy and progression           | Foundation only           | Server-scoped contracts, bounded ledger/progression storage, and aggregate projections                                                | Complete rewards, inventory, trading, XP, leaderboards, titles, and user-facing workflows |
 | Community games and entertainment | Foundation only           | Validated allowlisted catalog and safety boundaries                                                                                   | Delivery adapters, moderation workflow, scheduling, and opt-in experiences                |
 | Support tickets                   | Foundation only           | Privacy-safe service and repository boundary                                                                                          | Discord channel/thread adapter and operator workflow                                      |
-| Docker deployment                 | Evaluated                 | Hardened deployment guidance and rehearsal evidence                                                                                   | Adopt as the primary production path only after operator decision and migration evidence  |
+| Docker deployment                 | Evaluated                 | Linux Compose first-class path, hosted OpenAI overlay, digest-pinned image, volume backup runbook                                     | Adopt as the primary production path only after operator decision and migration evidence  |
 
 ## Required configuration versus implementation
 
