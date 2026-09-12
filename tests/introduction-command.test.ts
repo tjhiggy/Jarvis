@@ -3,11 +3,194 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { IntroductionService } from '../src/engagement/introductions.js';
+import {
+  handleIntroductionCommand,
+  handleIntroductionDeletionCommand,
+} from '../src/commands/introduction.js';
+import {
+  IntroductionService,
+  IntroductionServiceError,
+} from '../src/engagement/introductions.js';
 import type { EngagementRepository } from '../src/engagement/storage.js';
 import { EngagementRecordConflictError } from '../src/engagement/storage.js';
 import { RateLimiter } from '../src/security/rate-limiter.js';
 import { SQLiteEngagementRepository } from '../src/storage/engagement-sqlite.js';
+
+describe('introduction commands', () => {
+  it('stays private in a DM or when introductions are unconfigured', async () => {
+    const calls: string[] = [];
+    const service = {
+      preview: async () => {
+        calls.push('preview');
+        return { id: 'draft-1' };
+      },
+      confirm: async () => {
+        calls.push('confirm');
+        return { id: 'intro-1' };
+      },
+      cancel: () => {
+        calls.push('cancel');
+        return true;
+      },
+      delete: async () => {
+        calls.push('delete');
+        return true;
+      },
+    } as any;
+
+    const dm = command('preview');
+    dm.guildId = null;
+    await handleIntroductionCommand(dm, {
+      enabled: true,
+      channelId: 'introductions',
+      service,
+    });
+    expect(calls).toEqual([]);
+    expect(dm.replies[0]).toEqual(
+      expect.objectContaining({
+        content: 'This command is available only in a server channel.',
+        ephemeral: true,
+        allowedMentions: { parse: [], repliedUser: false },
+      }),
+    );
+
+    const unconfigured = command('preview');
+    await handleIntroductionCommand(unconfigured, {
+      enabled: false,
+      channelId: 'introductions',
+      service,
+    });
+    expect(calls).toEqual([]);
+    expect(unconfigured.replies[0]?.content).toBe(
+      'Guided introductions are not configured on the MuthaShip.',
+    );
+
+    const missingService = command('preview');
+    await handleIntroductionDeletionCommand(missingService, undefined);
+    expect(missingService.replies[0]?.content).toBe(
+      'Guided introductions are not configured on the MuthaShip.',
+    );
+  });
+
+  it('keeps cancel and delete owner-scoped and private', async () => {
+    const cancel = command('cancel', { draft_id: 'draft-1' });
+    await handleIntroductionCommand(cancel, {
+      enabled: true,
+      channelId: 'introductions',
+      service: {
+        cancel: () => false,
+      } as any,
+    });
+    expect(cancel.replies[0]).toEqual(
+      expect.objectContaining({
+        content: 'That private preview was not found or is not yours.',
+        ephemeral: true,
+      }),
+    );
+
+    const deleted = command('delete', { id: 'intro-1' });
+    await handleIntroductionDeletionCommand(deleted, {
+      delete: async () => false,
+    } as any);
+    expect(deleted.replies[0]).toEqual(
+      expect.objectContaining({
+        content: 'That active introduction was not found or is not yours.',
+        ephemeral: true,
+      }),
+    );
+  });
+
+  it('maps opted-out, duplicate, and invalid preview errors without leaking internals', async () => {
+    const cases = [
+      [
+        'opted-out',
+        'You have opted out of engagement collection, so no introduction was saved or posted.',
+      ],
+      [
+        'duplicate',
+        'You already have an active introduction. Delete it before posting another.',
+      ],
+      [
+        'invalid-input',
+        'Use a name, interests, and aboard message within the stated limits.',
+      ],
+      [
+        'missing-channel',
+        'Introductions need a configured destination channel before anything can be posted.',
+      ],
+    ] as const;
+
+    for (const [code, message] of cases) {
+      const preview = command('preview', {
+        interests: '@everyone space cats',
+        aboard: 'secret sqlite path',
+      });
+      await handleIntroductionCommand(preview, {
+        enabled: true,
+        channelId: 'introductions',
+        service: {
+          preview: async () => {
+            throw new IntroductionServiceError(code);
+          },
+        } as any,
+      });
+      expect(preview.replies[0]).toEqual(
+        expect.objectContaining({
+          content: message,
+          ephemeral: true,
+        }),
+      );
+      expect(preview.replies[0]?.content).not.toMatch(
+        /@everyone|sqlite|space cats/i,
+      );
+    }
+  });
+
+  it('shows a private preview card and confirms only for the owner draft', async () => {
+    const preview = command('preview', {
+      interests: 'Space cats',
+      aboard: 'Here for the crew.',
+    });
+    await handleIntroductionCommand(preview, {
+      enabled: true,
+      channelId: 'introductions',
+      service: {
+        preview: async () => ({
+          id: 'draft-1',
+          displayName: 'Ripley',
+          interests: 'Space cats',
+          introduction: 'Here for the crew.',
+        }),
+      } as any,
+    });
+    expect(preview.replies[0]).toEqual(
+      expect.objectContaining({ ephemeral: true }),
+    );
+    expect(JSON.stringify(preview.replies[0])).toContain(
+      'preview:v1:introduction:draft-1:confirm',
+    );
+    expect(JSON.stringify(preview.replies[0])).toMatch(
+      /Nothing has been saved/,
+    );
+
+    const confirm = command('confirm', { draft_id: 'draft-1' });
+    await handleIntroductionCommand(confirm, {
+      enabled: true,
+      channelId: 'introductions',
+      service: {
+        confirm: async () => ({ id: 'intro-9' }),
+      } as any,
+    });
+    expect(confirm.replies[0]).toEqual(
+      expect.objectContaining({
+        content: expect.stringMatching(
+          /Posted to the configured introduction channel.*intro-9/,
+        ),
+        ephemeral: true,
+      }),
+    );
+  });
+});
 
 describe('IntroductionService', () => {
   it('keeps a preview private until its owner confirms and lets the owner cancel it', async () => {
@@ -259,6 +442,23 @@ describe('IntroductionService', () => {
     ).resolves.toBeUndefined();
   });
 });
+
+function command(subcommand: string, strings: Record<string, string> = {}) {
+  const replies: Array<Record<string, unknown>> = [];
+  return {
+    guildId: 'guild-1' as string | null,
+    user: { id: 'user-1', globalName: 'Ripley', username: 'ripley' },
+    member: { displayName: 'Ripley' },
+    options: {
+      getSubcommand: () => subcommand,
+      getString: (name: string) => strings[name] ?? null,
+    },
+    replies,
+    reply: async (payload: Record<string, unknown>) => {
+      replies.push(payload);
+    },
+  };
+}
 
 function introductionInput() {
   return {

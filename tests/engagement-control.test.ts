@@ -191,6 +191,119 @@ describe('engagement controls', () => {
     ]);
   });
 
+  it('stays private in a DM or when engagement is unconfigured', async () => {
+    const dmReplies: Array<{ content?: string; ephemeral?: boolean }> = [];
+    let paused = 0;
+    await handleEngagementCommand(
+      {
+        ...interaction(dmReplies, 'pause', ['admin-role']),
+        guildId: null,
+      },
+      {
+        enabled: true,
+        adminRoleIds: new Set(['admin-role']),
+        repository: {
+          ...repository(),
+          setEngagementPaused: async () => {
+            paused += 1;
+          },
+        },
+      },
+    );
+    expect(paused).toBe(0);
+    expect(dmReplies[0]).toEqual(
+      expect.objectContaining({
+        content: 'This command is available only in a server channel.',
+        ephemeral: true,
+      }),
+    );
+
+    const unconfigured: Array<{ content?: string; ephemeral?: boolean }> = [];
+    await handleEngagementCommand(
+      interaction(unconfigured, 'pause', ['admin-role']),
+      {
+        enabled: false,
+        adminRoleIds: new Set(['admin-role']),
+        repository: repository(),
+      },
+    );
+    expect(unconfigured[0]).toEqual(
+      expect.objectContaining({
+        content: 'Engagement controls are not configured on the MuthaShip.',
+        ephemeral: true,
+      }),
+    );
+  });
+
+  it('lets a configured administrator resume scheduling', async () => {
+    const replies: Array<{ content?: string; ephemeral?: boolean }> = [];
+    const changes: unknown[][] = [];
+    await handleEngagementCommand(
+      interaction(replies, 'resume', ['admin-role']),
+      {
+        enabled: true,
+        adminRoleIds: new Set(['admin-role']),
+        repository: {
+          ...repository(),
+          setEngagementPaused: async (...value) => {
+            changes.push(value);
+          },
+        },
+      },
+    );
+    expect(changes[0]?.slice(0, 3)).toEqual(['guild-1', false, 'admin-1']);
+    expect(replies[0]).toEqual(
+      expect.objectContaining({
+        content: expect.stringMatching(/resumed/i),
+        ephemeral: true,
+      }),
+    );
+  });
+
+  it('does not let a non-admin delete another member and reports missing metrics privately', async () => {
+    const denied: Array<{ content?: string; ephemeral?: boolean }> = [];
+    const targets: string[] = [];
+    await handleEngagementCommand(
+      interaction(denied, 'delete', [], { user_id: 'crew-member-2' }),
+      {
+        enabled: true,
+        adminRoleIds: new Set(['admin-role']),
+        repository: {
+          ...repository(),
+          deleteOwnerData: async (_serverId: string, userId: string) => {
+            targets.push(userId);
+            return { completed: 0, pending: 0 };
+          },
+        },
+      },
+    );
+    expect(targets).toEqual([]);
+    expect(denied[0]).toEqual(
+      expect.objectContaining({
+        content: expect.stringMatching(
+          /restricted to configured MuthaShip administrators/i,
+        ),
+        ephemeral: true,
+      }),
+    );
+
+    const metrics: Array<{ content?: string; ephemeral?: boolean }> = [];
+    await handleEngagementCommand(
+      interaction(metrics, 'metrics', ['admin-role']),
+      {
+        enabled: true,
+        adminRoleIds: new Set(['admin-role']),
+        repository: repository(),
+      },
+    );
+    expect(metrics[0]).toEqual(
+      expect.objectContaining({
+        content: 'Aggregate metrics are not available on this MuthaShip.',
+        ephemeral: true,
+      }),
+    );
+  });
+
   it('denies profile feature control to non-administrators', async () => {
     const replies: Array<{ content?: string; ephemeral?: boolean }> = [];
     let changes = 0;
